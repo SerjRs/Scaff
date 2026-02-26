@@ -3,6 +3,8 @@ import type { WebSocketServer } from "ws";
 import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
 import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
+import { stopGatewayRouter } from "../router/gateway-integration.js";
+import { stopGatewayCortex } from "../cortex/gateway-bridge.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 
@@ -48,6 +50,13 @@ export function createGatewayCloseHandler(params: {
     if (params.tailscaleCleanup) {
       await params.tailscaleCleanup();
     }
+    // Stop the Router early — before channels/canvas so in-flight jobs
+    // don't try to deliver through torn-down channels.
+    stopGatewayRouter();
+
+    // Stop Cortex (waits for current turn to finish, then checkpoints).
+    await stopGatewayCortex();
+
     if (params.canvasHost) {
       try {
         await params.canvasHost.close();

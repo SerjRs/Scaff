@@ -20,6 +20,8 @@ import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import type { loadOpenClawPlugins } from "../plugins/loader.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
+import { initGatewayRouter } from "../router/gateway-integration.js";
+import { initGatewayCortex, type GatewayCortexHandle } from "../cortex/gateway-bridge.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
   scheduleRestartSentinelWake,
@@ -159,6 +161,30 @@ export async function startGatewaySidecars(params: {
     params.log.warn(`plugin services failed to start: ${String(err)}`);
   }
 
+  // Start the Router service if enabled in config.
+  try {
+    if (params.cfg.router?.enabled) {
+      initGatewayRouter(params.cfg.router);
+      params.log.warn("[router] Router started");
+    } else {
+      params.log.warn("[router] Router disabled");
+    }
+  } catch (err) {
+    params.log.warn(`[router] Failed to start: ${String(err)}`);
+  }
+
+  // Start Cortex if enabled in cortex/config.json
+  let cortexHandle: GatewayCortexHandle | null = null;
+  try {
+    cortexHandle = await initGatewayCortex({
+      cfg: params.cfg,
+      defaultWorkspaceDir: params.defaultWorkspaceDir,
+      log: params.log,
+    });
+  } catch (err) {
+    params.log.warn(`[cortex] Failed to start: ${String(err)}`);
+  }
+
   void startGatewayMemoryBackend({ cfg: params.cfg, log: params.log }).catch((err) => {
     params.log.warn(`qmd memory startup initialization failed: ${String(err)}`);
   });
@@ -169,5 +195,5 @@ export async function startGatewaySidecars(params: {
     }, 750);
   }
 
-  return { browserControl, pluginServices };
+  return { browserControl, pluginServices, cortexHandle };
 }
