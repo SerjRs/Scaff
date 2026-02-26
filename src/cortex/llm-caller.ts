@@ -6,7 +6,8 @@
  *
  * Auth flow:
  *   resolveModel() → getApiKeyForModel() → Anthropic SDK → messages.create()
- *   On 401: rotate auth profile and retry once.
+ *   OAuth tokens (sk-ant-oat01-*) use authToken param (Bearer header).
+ *   Regular API keys (sk-ant-api*) use apiKey param (x-api-key header).
  *
  * @see docs/cortex-implementation-tasks.md Task 23
  */
@@ -80,8 +81,6 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
 
   // Ensure we have at least one user message (API requirement)
   if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
-    // If the foreground is empty or ends with assistant, add a minimal user turn
-    // This shouldn't happen in normal flow but guards against edge cases
     if (messages.length === 0) {
       messages.push({ role: "user", content: "(no message)" });
     }
@@ -146,6 +145,28 @@ function consolidateMessages(messages: AnthropicMessage[]): AnthropicMessage[] {
 }
 
 // ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+/** Detect if an API key is an OAuth token (needs Bearer auth) vs regular key */
+function isOAuthToken(key: string): boolean {
+  return key.startsWith("sk-ant-oat");
+}
+
+/**
+ * Create an Anthropic client with the correct auth method.
+ * OAuth tokens → authToken (Authorization: Bearer)
+ * Regular keys → apiKey (x-api-key header)
+ */
+async function createAnthropicClient(key: string) {
+  const Anthropic = (await import("@anthropic-ai/sdk")).default;
+  if (isOAuthToken(key)) {
+    return new Anthropic({ authToken: key });
+  }
+  return new Anthropic({ apiKey: key });
+}
+
+// ---------------------------------------------------------------------------
 // LLM Caller Factory
 // ---------------------------------------------------------------------------
 
@@ -164,7 +185,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
       const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
       const { getApiKeyForModel } = await import("../agents/model-auth.js");
 
-      const { model, authStorage } = resolveModel(
+      const { model } = resolveModel(
         params.provider,
         params.modelId,
         params.agentDir,
@@ -176,43 +197,43 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
         return "NO_REPLY";
       }
 
-      // Get API key (with profile resolution)
-      const auth = await getApiKeyForModel({
-        model,
-        cfg: params.config,
-        agentDir: params.agentDir,
-      });
+      // Try profiles in order: lastGood first, then others
+      const profiles = await getProfileCandidates(params);
 
-      if (!auth.apiKey) {
-        params.onError(new Error(`[cortex-llm] No API key for ${params.provider}`));
-        return "NO_REPLY";
-      }
-
-      // Call Anthropic Messages API
-      const response = await callAnthropicMessages({
-        apiKey: auth.apiKey,
-        model: params.modelId,
-        system,
-        messages,
-        maxTokens: params.maxResponseTokens,
-      });
-
-      return response;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-
-      // On auth failure, try profile rotation
-      if (isAuthError(error)) {
+      for (const profileId of profiles) {
         try {
-          return await retryWithRotatedProfile(params, context);
-        } catch (retryErr) {
-          params.onError(
-            retryErr instanceof Error ? retryErr : new Error(String(retryErr)),
-          );
-          return "NO_REPLY";
+          const auth = await getApiKeyForModel({
+            model,
+            cfg: params.config,
+            agentDir: params.agentDir,
+            profileId,
+          });
+
+          if (!auth.apiKey) continue;
+
+          const response = await callAnthropicMessages({
+            key: auth.apiKey,
+            model: params.modelId,
+            system,
+            messages,
+            maxTokens: params.maxResponseTokens,
+          });
+
+          return response;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
+            params.onError(new Error(`[cortex-llm] Auth failed for profile ${profileId}: ${msg}`));
+            continue; // Try next profile
+          }
+          throw err; // Non-auth error — don't retry
         }
       }
 
+      params.onError(new Error(`[cortex-llm] All auth profiles exhausted`));
+      return "NO_REPLY";
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
       params.onError(error);
       return "NO_REPLY";
     }
@@ -220,18 +241,46 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
 }
 
 // ---------------------------------------------------------------------------
+// Profile resolution
+// ---------------------------------------------------------------------------
+
+async function getProfileCandidates(params: LLMCallerParams): Promise<(string | undefined)[]> {
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const profilesPath = path.join(params.agentDir, "auth-profiles.json");
+    const data = JSON.parse(fs.readFileSync(profilesPath, "utf-8"));
+
+    const lastGood = data.lastGood?.[params.provider];
+    const allProfiles = Object.keys(data.profiles ?? {}).filter((id) =>
+      id.startsWith(`${params.provider}:`),
+    );
+
+    // lastGood first, then others
+    const candidates: string[] = [];
+    if (lastGood) candidates.push(lastGood);
+    for (const p of allProfiles) {
+      if (p !== lastGood) candidates.push(p);
+    }
+
+    return candidates.length > 0 ? candidates : [undefined];
+  } catch {
+    return [undefined]; // Fallback: let getApiKeyForModel pick
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Anthropic API call
 // ---------------------------------------------------------------------------
 
 async function callAnthropicMessages(params: {
-  apiKey: string;
+  key: string;
   model: string;
   system: string;
   messages: AnthropicMessage[];
   maxTokens: number;
 }): Promise<string> {
-  const Anthropic = (await import("@anthropic-ai/sdk")).default;
-  const client = new Anthropic({ apiKey: params.apiKey });
+  const client = await createAnthropicClient(params.key);
 
   const response = await client.messages.create({
     model: params.model,
@@ -250,63 +299,6 @@ async function callAnthropicMessages(params: {
   }
 
   return textBlocks.map((block: any) => block.text).join("\n");
-}
-
-// ---------------------------------------------------------------------------
-// Auth retry
-// ---------------------------------------------------------------------------
-
-function isAuthError(error: Error): boolean {
-  const msg = error.message.toLowerCase();
-  return (
-    msg.includes("401") ||
-    msg.includes("unauthorized") ||
-    msg.includes("authentication") ||
-    msg.includes("invalid x-api-key") ||
-    msg.includes("invalid api key")
-  );
-}
-
-async function retryWithRotatedProfile(
-  params: LLMCallerParams,
-  context: AssembledContext,
-): Promise<string> {
-  const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
-  const { getApiKeyForModel } = await import("../agents/model-auth.js");
-
-  const { model } = resolveModel(
-    params.provider,
-    params.modelId,
-    params.agentDir,
-    params.config,
-  );
-
-  if (!model) {
-    throw new Error(`[cortex-llm] Model not found on retry: ${params.provider}/${params.modelId}`);
-  }
-
-  // Try alternative auth profiles
-  // The auth system supports multiple profiles per provider — get all and try the next one
-  const auth = await getApiKeyForModel({
-    model,
-    cfg: params.config,
-    agentDir: params.agentDir,
-    // preferredProfile is not set — let the system pick the next available
-  });
-
-  if (!auth.apiKey) {
-    throw new Error(`[cortex-llm] No alternative auth profile for ${params.provider}`);
-  }
-
-  const { system, messages } = contextToMessages(context);
-
-  return callAnthropicMessages({
-    apiKey: auth.apiKey,
-    model: params.modelId,
-    system,
-    messages,
-    maxTokens: params.maxResponseTokens,
-  });
 }
 
 // ---------------------------------------------------------------------------
