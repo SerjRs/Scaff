@@ -857,6 +857,18 @@ export const chatHandlers: GatewayRequestHandlers = {
         },
       });
 
+      // Feed message to Cortex (shadow or live mode) — no-op if disabled
+      try {
+        const { feedCortex } = await import("../../../cortex/gateway-bridge.js");
+        const { createEnvelope } = await import("../../../cortex/types.js");
+        feedCortex(createEnvelope({
+          channel: "webchat",
+          sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
+          content: parsedMessage,
+          priority: "urgent",
+        }));
+      } catch { /* Cortex not available — ignore */ }
+
       let agentRunStarted = false;
       void dispatchInboundMessage({
         ctx,
