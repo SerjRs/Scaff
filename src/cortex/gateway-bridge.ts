@@ -109,6 +109,20 @@ export async function initGatewayCortex(params: {
     onError: (err) => {
       params.log.warn(`[cortex] Error: ${err.message}`);
     },
+    // When a message completes silently (NO_REPLY or error), fire any pending
+    // delivery callbacks so live-mode webchat clients don't hang indefinitely
+    onMessageComplete: (_envelopeId, replyContext, silent) => {
+      if (!silent) return; // Adapter already fired the callback for non-silent
+      const runId = replyContext?.messageId;
+      if (!runId) return;
+      const deliveryCallbacks = (globalThis as any).__openclaw_cortex_delivery__ as
+        | Map<string, (content: string) => void>
+        | undefined;
+      if (deliveryCallbacks?.has(runId)) {
+        // Fire with empty string — broadcastChatFinal will handle gracefully
+        deliveryCallbacks.get(runId)!("");
+      }
+    },
   });
 
   // Register webchat adapter with live delivery via globalThis callbacks

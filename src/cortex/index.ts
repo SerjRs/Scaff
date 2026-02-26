@@ -28,6 +28,8 @@ export interface CortexConfig {
   pollIntervalMs?: number;
   callLLM: (context: AssembledContext) => Promise<string>;
   onError?: (error: Error) => void;
+  /** Called after every message completes (including silent/NO_REPLY and failures) */
+  onMessageComplete?: (envelopeId: string, replyContext: import("./types.js").ReplyContext | undefined, silent: boolean) => void;
 }
 
 export interface CortexInstance {
@@ -96,6 +98,7 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
         pollIntervalMs: config.pollIntervalMs ?? 500,
         callLLM: config.callLLM,
         onError,
+        onMessageComplete: config.onMessageComplete,
       });
     }
     return loop;

@@ -877,14 +877,16 @@ export const chatHandlers: GatewayRequestHandlers = {
             // Keyed by runId so the adapter can match response to request
             const cortexDeliveryCallbacks = ((globalThis as any).__openclaw_cortex_delivery__ ??= new Map()) as Map<string, (content: string) => void>;
             cortexDeliveryCallbacks.set(clientRunId, (content: string) => {
-              const now = Date.now();
-              const message = {
-                role: "assistant",
-                content: [{ type: "text", text: content }],
-                timestamp: now,
-                stopReason: "stop",
-                usage: { input: 0, output: 0, totalTokens: 0 },
-              };
+              // Empty content = silent response (NO_REPLY) — still unblock the client
+              const message = content.trim()
+                ? {
+                    role: "assistant",
+                    content: [{ type: "text", text: content }],
+                    timestamp: Date.now(),
+                    stopReason: "stop",
+                    usage: { input: 0, output: 0, totalTokens: 0 },
+                  }
+                : undefined;
               broadcastChatFinal({
                 context,
                 runId: clientRunId,

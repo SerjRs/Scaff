@@ -1,13 +1,14 @@
 /**
  * Cortex LLM Caller
  *
- * Makes real LLM calls using the gateway's auth infrastructure.
- * Converts Cortex's AssembledContext into Anthropic Messages API format.
+ * Makes real LLM calls using the same pi-ai streaming infrastructure
+ * as the main agent. This ensures OAuth tokens, beta headers, Claude Code
+ * identity preamble, and cache control are all handled identically.
  *
  * Auth flow:
- *   resolveModel() → getApiKeyForModel() → Anthropic SDK → messages.create()
- *   OAuth tokens (sk-ant-oat01-*) use authToken param (Bearer header).
- *   Regular API keys (sk-ant-api*) use apiKey param (x-api-key header).
+ *   resolveModel() → getApiKeyForModel() → pi-ai completeSimple()
+ *   pi-ai internally creates the Anthropic client with correct auth
+ *   (authToken + defaultHeaders for OAuth, apiKey for regular keys).
  *
  * @see docs/cortex-implementation-tasks.md Task 23
  */
@@ -145,33 +146,19 @@ function consolidateMessages(messages: AnthropicMessage[]): AnthropicMessage[] {
 }
 
 // ---------------------------------------------------------------------------
-// Auth helpers
-// ---------------------------------------------------------------------------
-
-/** Detect if an API key is an OAuth token (needs Bearer auth) vs regular key */
-function isOAuthToken(key: string): boolean {
-  return key.startsWith("sk-ant-oat");
-}
-
-/**
- * Create an Anthropic client with the correct auth method.
- * OAuth tokens → authToken (Authorization: Bearer)
- * Regular keys → apiKey (x-api-key header)
- */
-async function createAnthropicClient(key: string) {
-  const Anthropic = (await import("@anthropic-ai/sdk")).default;
-  if (isOAuthToken(key)) {
-    return new Anthropic({ authToken: key });
-  }
-  return new Anthropic({ apiKey: key });
-}
-
-// ---------------------------------------------------------------------------
 // LLM Caller Factory
 // ---------------------------------------------------------------------------
 
 /**
- * Create a real LLM caller that uses the gateway's auth infrastructure.
+ * Create a real LLM caller that uses the same pi-ai streaming infrastructure
+ * as the main agent (runEmbeddedPiAgent → streamSimple → streamAnthropic).
+ *
+ * pi-ai's streamAnthropic → createClient() handles:
+ * - OAuth token detection (sk-ant-oat-*)
+ * - authToken vs apiKey distinction
+ * - Required beta headers (claude-code-20250219, oauth-2025-04-20, etc.)
+ * - Claude Code identity preamble in system prompt
+ * - Cache control and prompt caching
  *
  * Uses dynamic imports to avoid hard dependency on gateway internals
  * at module load time (Cortex should be testable standalone).
@@ -181,7 +168,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
     try {
       const { system, messages } = contextToMessages(context);
 
-      // Resolve auth through gateway infrastructure
+      // Resolve model through the same path as the main agent
       const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
       const { getApiKeyForModel } = await import("../agents/model-auth.js");
 
@@ -211,15 +198,34 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
 
           if (!auth.apiKey) continue;
 
-          const response = await callAnthropicMessages({
-            key: auth.apiKey,
-            model: params.modelId,
-            system,
-            messages,
-            maxTokens: params.maxResponseTokens,
-          });
+          // Use pi-ai's completeSimple — the same function the main agent
+          // uses via createAgentSession → streamSimple. This goes through
+          // pi-ai's streamAnthropic → createClient which handles all OAuth
+          // complexity (headers, betas, Claude Code identity).
+          const { completeSimple } = await import("@mariozechner/pi-ai");
 
-          return response;
+          const result = await completeSimple(
+            model,
+            {
+              systemPrompt: system,
+              messages: messages.map((m) => ({
+                role: m.role,
+                content: m.content,
+              })),
+            },
+            {
+              apiKey: auth.apiKey,
+              maxTokens: params.maxResponseTokens,
+            },
+          );
+
+          // Extract text from pi-ai's response format
+          const textContent = (result as any).content
+            ?.filter((block: any) => block.type === "text")
+            ?.map((block: any) => block.text)
+            ?.join("\n");
+
+          return textContent || "NO_REPLY";
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
@@ -267,38 +273,6 @@ async function getProfileCandidates(params: LLMCallerParams): Promise<(string | 
   } catch {
     return [undefined]; // Fallback: let getApiKeyForModel pick
   }
-}
-
-// ---------------------------------------------------------------------------
-// Anthropic API call
-// ---------------------------------------------------------------------------
-
-async function callAnthropicMessages(params: {
-  key: string;
-  model: string;
-  system: string;
-  messages: AnthropicMessage[];
-  maxTokens: number;
-}): Promise<string> {
-  const client = await createAnthropicClient(params.key);
-
-  const response = await client.messages.create({
-    model: params.model,
-    max_tokens: params.maxTokens,
-    system: params.system,
-    messages: params.messages,
-  });
-
-  // Extract text from response
-  const textBlocks = response.content.filter(
-    (block: any) => block.type === "text",
-  );
-
-  if (textBlocks.length === 0) {
-    return "NO_REPLY";
-  }
-
-  return textBlocks.map((block: any) => block.text).join("\n");
 }
 
 // ---------------------------------------------------------------------------

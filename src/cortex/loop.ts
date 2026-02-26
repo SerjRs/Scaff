@@ -32,6 +32,8 @@ export interface CortexLoopOptions {
   pollIntervalMs: number;
   callLLM: (context: AssembledContext) => Promise<string>;
   onError: (error: Error) => void;
+  /** Called after every message completes (including silent/NO_REPLY) */
+  onMessageComplete?: (envelopeId: string, replyContext: import("./types.js").ReplyContext | undefined, silent: boolean) => void;
 }
 
 export interface CortexLoop {
@@ -45,7 +47,7 @@ export interface CortexLoop {
 // ---------------------------------------------------------------------------
 
 export function startLoop(opts: CortexLoopOptions): CortexLoop {
-  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, callLLM, onError } = opts;
+  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, callLLM, onError, onMessageComplete } = opts;
 
   let running = true;
   let processed = 0;
@@ -104,6 +106,10 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           },
         });
 
+        // 7b. Notify completion — always fires, even for silent responses
+        // Allows live-mode delivery (e.g. webchat) to unblock the client
+        onMessageComplete?.(msg.envelope.id, msg.envelope.replyContext, output.targets.length === 0);
+
         // 8. Record response in session
         appendResponse(db, output, msg.envelope.id);
 
@@ -124,6 +130,8 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         const error = err instanceof Error ? err : new Error(String(err));
         markFailed(db, msg.envelope.id, error.message);
         onError(error);
+        // Still notify completion so live-mode clients don't hang
+        onMessageComplete?.(msg.envelope.id, msg.envelope.replyContext, true);
       }
     } catch (err) {
       // Bus-level error
