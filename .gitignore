@@ -112,6 +112,31 @@ Swabble/build/
 dist/protocol.schema.json
 .ant-colony/
 
+# Scaff runtime data (NEVER COMMIT — sensitive auth, queues, local config)
+/credentials/
+/agents/
+/browser/
+/logs/
+/media/
+/devices/
+/subagents/
+/identity/
+/learning/
+/canvas/
+/cron/
+/router/
+/cortex/
+/workspace/
+/workspace-main/
+/workspace-router-executor/
+/.openclaw/
+/openclaw.json
+/openclaw.json.bak
+/exec-approvals.json
+/update-check.json
+/gateway.cmd
+/packages/packages/
+
 # Eclipse
 **/.project
 **/.classpath

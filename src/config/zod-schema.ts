@@ -742,6 +742,29 @@ export const OpenClawSchema = z
       })
       .strict()
       .optional(),
+    router: z
+      .object({
+        enabled: z.boolean().optional(),
+        evaluator: z
+          .object({
+            model: z.string().optional(),
+            tier: z.union([z.literal("haiku"), z.literal("sonnet"), z.literal("opus")]).optional(),
+            timeout: z.number().optional(),
+            fallback_weight: z.number().int().min(1).max(10).optional(),
+          })
+          .strict()
+          .optional(),
+        tiers: z
+          .object({
+            haiku: z.object({ range: z.tuple([z.number(), z.number()]), model: z.string() }).strict().optional(),
+            sonnet: z.object({ range: z.tuple([z.number(), z.number()]), model: z.string() }).strict().optional(),
+            opus: z.object({ range: z.tuple([z.number(), z.number()]), model: z.string() }).strict().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {

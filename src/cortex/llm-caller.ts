@@ -184,6 +184,8 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
         return "NO_REPLY";
       }
 
+      params.onError(new Error(`[cortex-llm] DEBUG model: api=${(model as any).api} id=${(model as any).id}`));
+
       // Try profiles in order: lastGood first, then others
       const profiles = await getProfileCandidates(params);
 
@@ -196,7 +198,27 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             profileId,
           });
 
+          params.onError(new Error(`[cortex-llm] DEBUG auth: profile=${profileId} key=${auth.apiKey ? auth.apiKey.substring(0, 20) + "..." : "null"}`));
+
           if (!auth.apiKey) continue;
+
+          // Build properly-typed pi-ai messages.
+          // UserMessage accepts string content; AssistantMessage requires array content.
+          const piMessages = messages.map((m) => {
+            if (m.role === "user") {
+              return { role: "user" as const, content: m.content, timestamp: Date.now() };
+            }
+            return {
+              role: "assistant" as const,
+              content: [{ type: "text" as const, text: m.content }],
+              api: (model as any).api,
+              provider: params.provider,
+              model: (model as any).id ?? params.modelId,
+              usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+              stopReason: "stop" as const,
+              timestamp: Date.now(),
+            };
+          });
 
           // Use pi-ai's completeSimple — the same function the main agent
           // uses via createAgentSession → streamSimple. This goes through
@@ -208,22 +230,23 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             model,
             {
               systemPrompt: system,
-              messages: messages.map((m) => ({
-                role: m.role,
-                content: m.content,
-              })),
+              messages: piMessages as any,
             },
             {
               apiKey: auth.apiKey,
               maxTokens: params.maxResponseTokens,
-            },
+            } as any,
           );
 
+          params.onError(new Error(`[cortex-llm] DEBUG result: stopReason=${result.stopReason} errorMsg=${result.errorMessage ?? "none"} contentLen=${result.content?.length ?? 0}`));
+
           // Extract text from pi-ai's response format
-          const textContent = (result as any).content
+          const textContent = result.content
             ?.filter((block: any) => block.type === "text")
-            ?.map((block: any) => block.text)
+            ?.map((block: any) => (block as any).text)
             ?.join("\n");
+
+          params.onError(new Error(`[cortex-llm] DEBUG textContent: "${textContent?.substring(0, 80) ?? "undefined"}"`));
 
           return textContent || "NO_REPLY";
         } catch (err) {

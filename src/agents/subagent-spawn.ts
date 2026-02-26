@@ -3,6 +3,7 @@ import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinkin
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
+import { routerCallGateway, isGatewayRouterActive } from "../router/gateway-integration.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.js";
@@ -264,7 +265,13 @@ export async function spawnSubagentDirect(
       };
     }
   }
-  const childSessionKey = `agent:${targetAgentId}:subagent:${crypto.randomUUID()}`;
+  // When the Router is active, run subagents under the isolated `router-executor`
+  // agent. This agent has an empty workspace — no SOUL.md, AGENTS.md, USER.md,
+  // MEMORY.md, no tools, no memory search. The Router's tier template provides
+  // the executor's only instructions. Full context isolation.
+  const routerActive = isGatewayRouterActive();
+  const effectiveAgentId = routerActive ? "router-executor" : targetAgentId;
+  const childSessionKey = `agent:${effectiveAgentId}:subagent:${crypto.randomUUID()}`;
   const childDepth = callerDepth + 1;
   const spawnedByKey = requesterInternalKey;
   const targetAgentConfig = resolveAgentConfig(cfg, targetAgentId);
@@ -401,8 +408,11 @@ export async function spawnSubagentDirect(
   const childIdem = crypto.randomUUID();
   let childRunId: string = childIdem;
   try {
-    const response = await callGateway<{ runId: string }>({
-      method: "agent",
+    // Use the Router for agent execution when active; otherwise fall through
+    // to the standard callGateway path. Only the agent execution call is
+    // routed — all sessions.patch / sessions.delete calls above remain direct.
+    const agentCallOpts = {
+      method: "agent" as const,
       params: {
         message: childTaskMessage,
         sessionKey: childSessionKey,
@@ -423,7 +433,13 @@ export async function spawnSubagentDirect(
         groupSpace: ctx.agentGroupSpace ?? undefined,
       },
       timeoutMs: 10_000,
-    });
+    };
+    const response = isGatewayRouterActive()
+      ? await routerCallGateway<{ runId: string }>(
+          agentCallOpts,
+          spawnMode === "run" ? "sync" : "async",
+        )
+      : await callGateway<{ runId: string }>(agentCallOpts);
     if (typeof response?.runId === "string" && response.runId) {
       childRunId = response.runId;
     }

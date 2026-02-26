@@ -429,6 +429,10 @@ export async function runEmbeddedPiAgent(
       const applyApiKeyInfo = async (candidate?: string): Promise<void> => {
         apiKeyInfo = await resolveApiKeyForCandidate(candidate);
         const resolvedProfileId = apiKeyInfo.profileId ?? candidate;
+        const keyPrefix = apiKeyInfo.apiKey ? apiKeyInfo.apiKey.slice(0, 20) + "..." : "(none)";
+        log.warn(
+          `[DIAG-AUTH] applyApiKeyInfo: profile=${resolvedProfileId ?? "(default)"} mode=${apiKeyInfo.mode} source=${apiKeyInfo.source} key=${keyPrefix} provider=${model.provider}`,
+        );
         if (!apiKeyInfo.apiKey) {
           if (apiKeyInfo.mode !== "aws-sdk") {
             throw new Error(
@@ -957,6 +961,12 @@ export async function runEmbeddedPiAgent(
           const billingFailure = isBillingAssistantError(lastAssistant);
           const failoverFailure = isFailoverAssistantError(lastAssistant);
           const assistantFailoverReason = classifyFailoverReason(lastAssistant?.errorMessage ?? "");
+          log.warn(
+            `[DIAG-ERR] raw errorMessage=${JSON.stringify(lastAssistant?.errorMessage ?? "(none)")} ` +
+            `stopReason=${lastAssistant?.stopReason ?? "(none)"} ` +
+            `auth=${authFailure} rateLimit=${rateLimitFailure} billing=${billingFailure} failover=${failoverFailure} ` +
+            `profile=${lastProfileId ?? "(none)"} provider=${provider}/${modelId} timedOut=${timedOut} aborted=${aborted}`,
+          );
           const cloudCodeAssistFormatError = attempt.cloudCodeAssistFormatError;
           const imageDimensionError = parseImageDimensionError(lastAssistant?.errorMessage ?? "");
 
