@@ -82,22 +82,19 @@ export async function initGatewayCortex(params: {
 
   params.log.warn(`[cortex] Starting (mode: ${config.defaultMode})`);
 
-  // Use real LLM caller if any channel is in live mode, otherwise stub
-  const hasLiveChannel = Object.values(config.channels).some((mode) => mode === "live");
-  const callLLM = hasLiveChannel
-    ? createGatewayLLMCaller({
-        provider: "anthropic",
-        modelId: "claude-sonnet-4-20250514",
-        agentDir: resolveUserPath(".openclaw/agents/main/agent"),
-        config: params.cfg,
-        maxResponseTokens: 8192,
-        onError: (err) => {
-          params.log.warn(`[cortex-llm] ${err.message}`);
-        },
-      })
-    : createStubLLMCaller();
+  // Always use real LLM caller — hot-reload means channels can switch to live at any time
+  const callLLM = createGatewayLLMCaller({
+    provider: "anthropic",
+    modelId: "claude-opus-4-6",
+    agentDir: resolveUserPath(".openclaw/agents/main/agent"),
+    config: params.cfg,
+    maxResponseTokens: 8192,
+    onError: (err) => {
+      params.log.warn(`[cortex-llm] ${err.message}`);
+    },
+  });
 
-  params.log.warn(`[cortex] LLM: ${hasLiveChannel ? "live (anthropic/claude-sonnet-4-20250514)" : "stub (shadow only)"}`);
+  params.log.warn(`[cortex] LLM: live (anthropic/claude-opus-4-6)`);
 
   const instance = await startCortex({
     agentId: "main",
@@ -126,33 +123,32 @@ export async function initGatewayCortex(params: {
   });
 
   // Register webchat adapter with live delivery via globalThis callbacks
+  // Always register webchat adapter — hot-reload means channels can switch to live at any time
   // chat.ts registers a delivery callback per runId in __openclaw_cortex_delivery__
-  if (hasLiveChannel) {
-    const { WebchatAdapter } = await import("./adapters/webchat.js");
-    const webchatAdapter = new WebchatAdapter(async (target) => {
-      const deliveryCallbacks = (globalThis as any).__openclaw_cortex_delivery__ as
-        | Map<string, (content: string) => void>
-        | undefined;
+  const { WebchatAdapter } = await import("./adapters/webchat.js");
+  const webchatAdapter = new WebchatAdapter(async (target) => {
+    const deliveryCallbacks = (globalThis as any).__openclaw_cortex_delivery__ as
+      | Map<string, (content: string) => void>
+      | undefined;
 
-      if (!deliveryCallbacks) {
-        params.log.warn("[cortex] No delivery callbacks registered — webchat response dropped");
-        return;
-      }
+    if (!deliveryCallbacks) {
+      params.log.warn("[cortex] No delivery callbacks registered — webchat response dropped");
+      return;
+    }
 
-      // Find the delivery callback by runId from the replyContext
-      const runId = target.replyTo;
-      if (runId && deliveryCallbacks.has(runId)) {
-        const deliver = deliveryCallbacks.get(runId)!;
-        deliver(target.content);
-      } else {
-        // No matching runId — broadcast to all connected webchat clients
-        // This handles cases where the runId wasn't propagated
-        params.log.warn(`[cortex] No delivery callback for runId=${runId} — response may not reach client`);
-      }
-    });
-    instance.registerAdapter(webchatAdapter);
-    params.log.warn("[cortex] Webchat adapter registered for live delivery");
-  }
+    // Find the delivery callback by runId from the replyContext
+    const runId = target.replyTo;
+    if (runId && deliveryCallbacks.has(runId)) {
+      const deliver = deliveryCallbacks.get(runId)!;
+      deliver(target.content);
+    } else {
+      // No matching runId — broadcast to all connected webchat clients
+      // This handles cases where the runId wasn't propagated
+      params.log.warn(`[cortex] No delivery callback for runId=${runId} — response may not reach client`);
+    }
+  });
+  instance.registerAdapter(webchatAdapter);
+  params.log.warn("[cortex] Webchat adapter registered for live delivery");
 
   const shadowHook = createShadowHook(instance);
 
