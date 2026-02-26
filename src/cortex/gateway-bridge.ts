@@ -18,6 +18,7 @@ import { startCortex, stopCortex, _resetSingleton, type CortexInstance } from ".
 import { resolveChannelMode, createShadowHook, type ShadowHook } from "./shadow.js";
 import type { CortexModeConfig, CortexEnvelope, ChannelId, CortexMode } from "./types.js";
 import type { AssembledContext } from "./context.js";
+import { createGatewayLLMCaller, createStubLLMCaller } from "./llm-caller.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,17 +82,63 @@ export async function initGatewayCortex(params: {
 
   params.log.warn(`[cortex] Starting (mode: ${config.defaultMode})`);
 
+  // Use real LLM caller if any channel is in live mode, otherwise stub
+  const hasLiveChannel = Object.values(config.channels).some((mode) => mode === "live");
+  const callLLM = hasLiveChannel
+    ? createGatewayLLMCaller({
+        provider: "anthropic",
+        modelId: "claude-sonnet-4-20250514",
+        agentDir: resolveUserPath(".openclaw/agents/main/agent"),
+        config: params.cfg,
+        maxResponseTokens: 8192,
+        onError: (err) => {
+          params.log.warn(`[cortex-llm] ${err.message}`);
+        },
+      })
+    : createStubLLMCaller();
+
+  params.log.warn(`[cortex] LLM: ${hasLiveChannel ? "live (anthropic/claude-sonnet-4-20250514)" : "stub (shadow only)"}`);
+
   const instance = await startCortex({
     agentId: "main",
     workspaceDir,
     dbPath,
     maxContextTokens: 200_000,
     pollIntervalMs: 500,
-    callLLM: createStubLLM(),
+    callLLM,
     onError: (err) => {
       params.log.warn(`[cortex] Error: ${err.message}`);
     },
   });
+
+  // Register webchat adapter with live delivery via globalThis callbacks
+  // chat.ts registers a delivery callback per runId in __openclaw_cortex_delivery__
+  if (hasLiveChannel) {
+    const { WebchatAdapter } = await import("./adapters/webchat.js");
+    const webchatAdapter = new WebchatAdapter(async (target) => {
+      const deliveryCallbacks = (globalThis as any).__openclaw_cortex_delivery__ as
+        | Map<string, (content: string) => void>
+        | undefined;
+
+      if (!deliveryCallbacks) {
+        params.log.warn("[cortex] No delivery callbacks registered — webchat response dropped");
+        return;
+      }
+
+      // Find the delivery callback by runId from the replyContext
+      const runId = target.replyTo;
+      if (runId && deliveryCallbacks.has(runId)) {
+        const deliver = deliveryCallbacks.get(runId)!;
+        deliver(target.content);
+      } else {
+        // No matching runId — broadcast to all connected webchat clients
+        // This handles cases where the runId wasn't propagated
+        params.log.warn(`[cortex] No delivery callback for runId=${runId} — response may not reach client`);
+      }
+    });
+    instance.registerAdapter(webchatAdapter);
+    params.log.warn("[cortex] Webchat adapter registered for live delivery");
+  }
 
   const shadowHook = createShadowHook(instance);
 
@@ -109,11 +156,12 @@ export async function initGatewayCortex(params: {
   const channelModes = Object.entries(config.channels)
     .map(([ch, mode]) => `${ch}=${mode}`)
     .join(", ");
-  // Expose feedCortex + createEnvelope on globalThis so bundled dynamic imports
+  // Expose Cortex functions on globalThis so bundled dynamic imports
   // in chat.ts (and other channel handlers) can reach them without relative paths.
   // Same pattern as Router's globalThis.__openclaw_router_instance__.
   (globalThis as any).__openclaw_cortex_feed__ = feedCortex;
   (globalThis as any).__openclaw_cortex_createEnvelope__ = (await import("./types.js")).createEnvelope;
+  (globalThis as any).__openclaw_cortex_getChannelMode__ = getCortexChannelMode;
 
   params.log.warn(`[cortex] Started. Channels: ${channelModes || "(all default: " + config.defaultMode + ")"}`);
 
@@ -154,20 +202,4 @@ export function feedCortex(envelope: CortexEnvelope): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Stub LLM (placeholder until full integration)
-// ---------------------------------------------------------------------------
-
-/**
- * Stub LLM caller for shadow/initial mode.
- * In shadow mode, we want Cortex to process messages but we don't need
- * a real LLM call — we just log what it would have done.
- * In live mode, this gets replaced with the real callGateway path.
- */
-function createStubLLM(): (context: AssembledContext) => Promise<string> {
-  return async (_context: AssembledContext): Promise<string> => {
-    // Shadow mode: return NO_REPLY (silence) so Cortex processes
-    // but doesn't attempt to send anything through adapters
-    return "NO_REPLY";
-  };
-}
+// LLM callers moved to llm-caller.ts (Task 23)

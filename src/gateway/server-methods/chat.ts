@@ -857,21 +857,88 @@ export const chatHandlers: GatewayRequestHandlers = {
         },
       });
 
-      // Feed message to Cortex (shadow or live mode) — no-op if disabled
+      // ---------------------------------------------------------------
+      // Cortex integration (shadow or live mode)
       // Uses globalThis to avoid bundler dynamic-import resolution issues
       // (same pattern as Router's globalThis.__openclaw_router_instance__)
-      try {
-        const feed = (globalThis as any).__openclaw_cortex_feed__ as ((e: any) => void) | undefined;
-        const mkEnvelope = (globalThis as any).__openclaw_cortex_createEnvelope__ as ((p: any) => any) | undefined;
-        if (feed && mkEnvelope) {
-          feed(mkEnvelope({
+      // ---------------------------------------------------------------
+      const cortexFeed = (globalThis as any).__openclaw_cortex_feed__ as ((e: any) => void) | undefined;
+      const cortexMkEnvelope = (globalThis as any).__openclaw_cortex_createEnvelope__ as ((p: any) => any) | undefined;
+      const cortexGetMode = (globalThis as any).__openclaw_cortex_getChannelMode__ as ((ch: string) => string) | undefined;
+
+      const cortexMode = cortexGetMode ? cortexGetMode("webchat") : "off";
+
+      // Live mode: Cortex handles end-to-end — skip dispatchInboundMessage
+      if (cortexMode === "live" && cortexFeed && cortexMkEnvelope) {
+        // Slash commands still bypass Cortex
+        if (!parsedMessage.trim().startsWith("/")) {
+          try {
+            // Register the broadcast function for Cortex to deliver responses
+            // Keyed by runId so the adapter can match response to request
+            const cortexDeliveryCallbacks = ((globalThis as any).__openclaw_cortex_delivery__ ??= new Map()) as Map<string, (content: string) => void>;
+            cortexDeliveryCallbacks.set(clientRunId, (content: string) => {
+              const now = Date.now();
+              const message = {
+                role: "assistant",
+                content: [{ type: "text", text: content }],
+                timestamp: now,
+                stopReason: "stop",
+                usage: { input: 0, output: 0, totalTokens: 0 },
+              };
+              broadcastChatFinal({
+                context,
+                runId: clientRunId,
+                sessionKey: rawSessionKey,
+                message,
+              });
+              // Cleanup
+              cortexDeliveryCallbacks.delete(clientRunId);
+              context.chatAbortControllers.delete(clientRunId);
+            });
+
+            // Feed to Cortex with runId in replyContext for delivery matching
+            cortexFeed(cortexMkEnvelope({
+              channel: "webchat",
+              sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
+              content: parsedMessage,
+              priority: "urgent",
+              replyContext: { channel: "webchat", messageId: clientRunId },
+            }));
+
+            // Cortex will process asynchronously and call the delivery callback
+            // Set a timeout to clean up if Cortex doesn't respond
+            setTimeout(() => {
+              if (cortexDeliveryCallbacks.has(clientRunId)) {
+                cortexDeliveryCallbacks.delete(clientRunId);
+                context.chatAbortControllers.delete(clientRunId);
+                broadcastChatError({
+                  context,
+                  runId: clientRunId,
+                  sessionKey: rawSessionKey,
+                  errorMessage: "Cortex processing timeout",
+                });
+              }
+            }, 120_000); // 2 minute timeout
+
+            return; // Skip dispatchInboundMessage — Cortex handles it
+          } catch (err) {
+            context.logGateway.warn(`[cortex] Live mode failed, falling back to old handler: ${String(err)}`);
+            // Fall through to dispatchInboundMessage
+          }
+        }
+      }
+
+      // Shadow mode: feed to Cortex AND run old handler
+      if (cortexMode === "shadow" && cortexFeed && cortexMkEnvelope) {
+        try {
+          cortexFeed(cortexMkEnvelope({
             channel: "webchat",
             sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
             content: parsedMessage,
             priority: "urgent",
           }));
-        }
-      } catch { /* Cortex not available — ignore */ }
+        } catch { /* Cortex not available — ignore */ }
+      }
 
       let agentRunStarted = false;
       void dispatchInboundMessage({
