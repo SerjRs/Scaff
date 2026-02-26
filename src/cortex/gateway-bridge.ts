@@ -109,6 +109,12 @@ export async function initGatewayCortex(params: {
   const channelModes = Object.entries(config.channels)
     .map(([ch, mode]) => `${ch}=${mode}`)
     .join(", ");
+  // Expose feedCortex + createEnvelope on globalThis so bundled dynamic imports
+  // in chat.ts (and other channel handlers) can reach them without relative paths.
+  // Same pattern as Router's globalThis.__openclaw_router_instance__.
+  (globalThis as any).__openclaw_cortex_feed__ = feedCortex;
+  (globalThis as any).__openclaw_cortex_createEnvelope__ = (await import("./types.js")).createEnvelope;
+
   params.log.warn(`[cortex] Started. Channels: ${channelModes || "(all default: " + config.defaultMode + ")"}`);
 
   return handle;

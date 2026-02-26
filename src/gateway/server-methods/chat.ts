@@ -858,15 +858,19 @@ export const chatHandlers: GatewayRequestHandlers = {
       });
 
       // Feed message to Cortex (shadow or live mode) — no-op if disabled
+      // Uses globalThis to avoid bundler dynamic-import resolution issues
+      // (same pattern as Router's globalThis.__openclaw_router_instance__)
       try {
-        const { feedCortex } = await import("../../../cortex/gateway-bridge.js");
-        const { createEnvelope } = await import("../../../cortex/types.js");
-        feedCortex(createEnvelope({
-          channel: "webchat",
-          sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
-          content: parsedMessage,
-          priority: "urgent",
-        }));
+        const feed = (globalThis as any).__openclaw_cortex_feed__ as ((e: any) => void) | undefined;
+        const mkEnvelope = (globalThis as any).__openclaw_cortex_createEnvelope__ as ((p: any) => any) | undefined;
+        if (feed && mkEnvelope) {
+          feed(mkEnvelope({
+            channel: "webchat",
+            sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
+            content: parsedMessage,
+            priority: "urgent",
+          }));
+        }
       } catch { /* Cortex not available — ignore */ }
 
       let agentRunStarted = false;
