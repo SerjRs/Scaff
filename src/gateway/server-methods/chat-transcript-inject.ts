@@ -1,5 +1,24 @@
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 
+export function appendInjectedUserMessageToTranscript(params: {
+  transcriptPath: string;
+  message: string;
+  now?: number;
+}): GatewayInjectedTranscriptAppendResult {
+  try {
+    const sessionManager = SessionManager.open(params.transcriptPath);
+    const messageBody = {
+      role: "user" as const,
+      content: [{ type: "text", text: params.message }],
+      timestamp: params.now ?? Date.now(),
+    };
+    const messageId = sessionManager.appendMessage(messageBody as any);
+    return { ok: true, messageId, message: messageBody as any };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 type AppendMessageArg = Parameters<SessionManager["appendMessage"]>[0];
 
 export type GatewayInjectedAbortMeta = {

@@ -45,7 +45,7 @@ import {
 import { formatForLog } from "../ws-log.js";
 import { injectTimestamp, timestampOptsFromConfig } from "./agent-timestamp.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
-import { appendInjectedAssistantMessageToTranscript } from "./chat-transcript-inject.js";
+import { appendInjectedAssistantMessageToTranscript, appendInjectedUserMessageToTranscript } from "./chat-transcript-inject.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 
 type TranscriptAppendResult = {
@@ -732,7 +732,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       }
     }
     const rawSessionKey = p.sessionKey;
-    const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
+    const { cfg, entry, storePath, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
     const timeoutMs = resolveAgentTimeoutMs({
       cfg,
       overrideMs: p.timeoutMs,
@@ -921,6 +921,18 @@ export const chatHandlers: GatewayRequestHandlers = {
                 });
               }
             }, 120_000); // 2 minute timeout
+
+            // Save user message to transcript so it persists in the UI
+            // (dispatchInboundMessage normally does this — we must do it manually)
+            const transcriptPath = resolveTranscriptPath({
+              sessionId: entry?.sessionId ?? clientRunId,
+              storePath,
+              sessionFile: entry?.sessionFile,
+              agentId,
+            });
+            if (transcriptPath) {
+              appendInjectedUserMessageToTranscript({ transcriptPath, message: parsedMessage });
+            }
 
             return; // Skip dispatchInboundMessage — Cortex handles it
           } catch (err) {
