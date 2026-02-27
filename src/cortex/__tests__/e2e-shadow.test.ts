@@ -71,7 +71,7 @@ describe("E2E: Shadow Mode", () => {
       pollIntervalMs: 50,
       callLLM: async () => {
         llmCalled = true;
-        return "shadow response"; // Would send, but adapters should be no-op in shadow
+        return { text: "shadow response", toolCalls: [] }; // Would send, but adapters should be no-op in shadow
       },
     });
 
@@ -104,7 +104,7 @@ describe("E2E: Shadow Mode", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     instance.registerAdapter({
@@ -165,7 +165,7 @@ describe("E2E: Shadow Mode", () => {
       pollIntervalMs: 20,
       callLLM: async () => {
         processCount++;
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       },
     });
 
@@ -195,7 +195,7 @@ describe("E2E: Shadow Mode", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     const hook = createShadowHook(instance);

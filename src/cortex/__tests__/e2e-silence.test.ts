@@ -38,7 +38,7 @@ describe("E2E: Silence & No-Output", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "HEARTBEAT_OK",
+      callLLM: async () => ({ text: "HEARTBEAT_OK", toolCalls: [] }),
     });
     instance.registerAdapter({
       channelId: "cron",
@@ -70,7 +70,7 @@ describe("E2E: Silence & No-Output", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
     instance.registerAdapter({
       channelId: "webchat",
@@ -98,7 +98,7 @@ describe("E2E: Silence & No-Output", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
     instance.registerAdapter({
       channelId: "webchat",
@@ -133,7 +133,7 @@ describe("E2E: Silence & No-Output", () => {
       callLLM: async () => {
         callCount++;
         // Alternate: silence, response, silence, response
-        return callCount % 2 === 0 ? "real response" : "NO_REPLY";
+        return { text: callCount % 2 === 0 ? "real response" : "NO_REPLY", toolCalls: [] };
       },
     });
     instance.registerAdapter({

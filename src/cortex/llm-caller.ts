@@ -13,14 +13,27 @@
  * @see docs/cortex-implementation-tasks.md Task 23
  */
 
-import type { AssembledContext, ContextLayer } from "./context.js";
+import type { AssembledContext } from "./context.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/** A tool call extracted from the LLM response */
+export interface CortexToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+/** Structured result from a Cortex LLM call */
+export interface CortexLLMResult {
+  text: string;
+  toolCalls: CortexToolCall[];
+}
+
 export interface CortexLLMCaller {
-  (context: AssembledContext): Promise<string>;
+  (context: AssembledContext): Promise<CortexLLMResult>;
 }
 
 export interface LLMCallerParams {
@@ -44,6 +57,48 @@ export interface ContextAsMessages {
 }
 
 // ---------------------------------------------------------------------------
+// sessions_spawn tool definition
+// ---------------------------------------------------------------------------
+
+/**
+ * The single tool available to Cortex. Delegates tasks to the Router
+ * for execution by a sub-agent with the appropriate model tier.
+ *
+ * pi-ai's convertTools() reads .properties and .required from the schema,
+ * so a plain JSON Schema object works — no TypeBox dependency needed.
+ */
+export const SESSIONS_SPAWN_TOOL = {
+  name: "sessions_spawn",
+  description: `Delegate a task to the Router for execution. Use when the user's request requires \
+research, file operations, computation, web search, code execution, or any work \
+beyond conversation. The Router will select the appropriate model and execute. \
+Results will arrive as a follow-up message — respond to the user immediately \
+with an acknowledgment ("Let me look into that") then deliver the result when it arrives.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      task: {
+        type: "string",
+        description:
+          "Complete, self-contained description of the task to execute. Include all context needed — the executor has no access to this conversation.",
+      },
+      mode: {
+        type: "string",
+        enum: ["run"],
+        description: "Always 'run' — one-shot task execution",
+      },
+      priority: {
+        type: "string",
+        enum: ["urgent", "normal", "background"],
+        description:
+          "How urgently the result needs Cortex's attention. urgent = critical alerts, time-sensitive. normal = user is waiting for the answer. background = proactive work, no one waiting.",
+      },
+    },
+    required: ["task"],
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Context → Messages
 // ---------------------------------------------------------------------------
 
@@ -53,74 +108,37 @@ export interface ContextAsMessages {
  * Mapping:
  * - system_floor → system parameter (identity, memory, workspace)
  * - background   → appended to system (cross-channel awareness)
- * - foreground   → messages array (conversation history)
- *
- * The foreground layer is parsed into user/assistant turns.
- * Lines starting with "Cortex:" are assistant messages.
- * All other lines are user messages.
+ * - foregroundMessages → messages array (structured, no text round-trip)
  */
 export function contextToMessages(context: AssembledContext): ContextAsMessages {
   // Build system prompt from system_floor + background
   const systemParts: string[] = [];
-  const foregroundContent: string[] = [];
 
   for (const layer of context.layers) {
     if (layer.name === "system_floor" && layer.content) {
       systemParts.push(layer.content);
     } else if (layer.name === "background" && layer.content) {
       systemParts.push(layer.content);
-    } else if (layer.name === "foreground" && layer.content) {
-      foregroundContent.push(layer.content);
     }
+    // foreground is handled via foregroundMessages (structured)
     // archived layers have no content
   }
 
   const system = systemParts.join("\n\n---\n\n");
 
-  // Parse foreground into message turns
-  const messages = parseForegroundToMessages(foregroundContent.join("\n"));
+  // Convert structured session messages directly — no lossy text parsing
+  const messages: AnthropicMessage[] = context.foregroundMessages.map((msg) => ({
+    role: msg.role as "user" | "assistant",
+    content: msg.content,
+  }));
 
   // Ensure we have at least one user message (API requirement)
-  if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
-    if (messages.length === 0) {
-      messages.push({ role: "user", content: "(no message)" });
-    }
+  if (messages.length === 0) {
+    messages.push({ role: "user", content: "(no message)" });
   }
 
   // Ensure messages alternate correctly (Anthropic requirement)
   return { system, messages: consolidateMessages(messages) };
-}
-
-/**
- * Parse foreground text into user/assistant message turns.
- *
- * Format from context.ts formatSessionMessage():
- *   "Cortex: <response>"          → assistant
- *   "[webchat] user-id: <text>"   → user
- *   "[whatsapp] user-id: <text>"  → user
- */
-function parseForegroundToMessages(foreground: string): AnthropicMessage[] {
-  if (!foreground.trim()) return [];
-
-  const lines = foreground.split("\n").filter((l) => l.trim());
-  const messages: AnthropicMessage[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith("Cortex:")) {
-      const content = line.slice("Cortex:".length).trim();
-      if (content) {
-        messages.push({ role: "assistant", content });
-      }
-    } else {
-      // User message — strip the [channel] prefix for cleaner context
-      const content = line.replace(/^\[[\w-]+\]\s*[\w-]+:\s*/, "").trim() || line.trim();
-      if (content) {
-        messages.push({ role: "user", content });
-      }
-    }
-  }
-
-  return messages;
 }
 
 /**
@@ -164,7 +182,7 @@ function consolidateMessages(messages: AnthropicMessage[]): AnthropicMessage[] {
  * at module load time (Cortex should be testable standalone).
  */
 export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller {
-  return async (context: AssembledContext): Promise<string> => {
+  return async (context: AssembledContext): Promise<CortexLLMResult> => {
     try {
       const { system, messages } = contextToMessages(context);
 
@@ -181,7 +199,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
 
       if (!model) {
         params.onError(new Error(`[cortex-llm] Model not found: ${params.provider}/${params.modelId}`));
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       }
 
       params.onError(new Error(`[cortex-llm] DEBUG model: api=${(model as any).api} id=${(model as any).id}`));
@@ -231,6 +249,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             {
               systemPrompt: system,
               messages: piMessages as any,
+              tools: [SESSIONS_SPAWN_TOOL] as any,
             },
             {
               apiKey: auth.apiKey,
@@ -240,15 +259,28 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
 
           params.onError(new Error(`[cortex-llm] DEBUG result: stopReason=${result.stopReason} errorMsg=${result.errorMessage ?? "none"} contentLen=${result.content?.length ?? 0}`));
 
-          // Extract text from pi-ai's response format
+          // Extract text blocks
           const textContent = result.content
             ?.filter((block: any) => block.type === "text")
             ?.map((block: any) => (block as any).text)
             ?.join("\n");
 
+          // Extract tool calls (sessions_spawn)
+          const toolCalls: CortexToolCall[] = result.content
+            ?.filter((block: any) => block.type === "toolCall")
+            ?.map((block: any) => ({
+              id: block.id as string,
+              name: block.name as string,
+              arguments: (block.arguments ?? {}) as Record<string, unknown>,
+            })) ?? [];
+
+          if (toolCalls.length > 0) {
+            params.onError(new Error(`[cortex-llm] Tool calls: ${toolCalls.map((t) => `${t.name}(${JSON.stringify(t.arguments).substring(0, 100)})`).join(", ")}`));
+          }
+
           params.onError(new Error(`[cortex-llm] DEBUG textContent: "${textContent?.substring(0, 80) ?? "undefined"}"`));
 
-          return textContent || "NO_REPLY";
+          return { text: textContent || "NO_REPLY", toolCalls };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
@@ -260,11 +292,11 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
       }
 
       params.onError(new Error(`[cortex-llm] All auth profiles exhausted`));
-      return "NO_REPLY";
+      return { text: "NO_REPLY", toolCalls: [] };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       params.onError(error);
-      return "NO_REPLY";
+      return { text: "NO_REPLY", toolCalls: [] };
     }
   };
 }
@@ -304,7 +336,7 @@ async function getProfileCandidates(params: LLMCallerParams): Promise<(string | 
 
 /** Create a stub LLM caller that always returns NO_REPLY */
 export function createStubLLMCaller(): CortexLLMCaller {
-  return async (_context: AssembledContext): Promise<string> => {
-    return "NO_REPLY";
+  return async (_context: AssembledContext): Promise<CortexLLMResult> => {
+    return { text: "NO_REPLY", toolCalls: [] };
   };
 }

@@ -44,7 +44,7 @@ describe("E2E: Priority & Serialization", () => {
           const match = fg.content.match(/(urgent|normal|background)-msg/);
           if (match) processOrder.push(match[0]);
         }
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       },
     });
     instance.registerAdapter({
@@ -99,7 +99,7 @@ describe("E2E: Priority & Serialization", () => {
             processOrder.push(matches[matches.length - 1][0]);
           }
         }
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       },
     });
     instance.registerAdapter({
@@ -139,7 +139,7 @@ describe("E2E: Priority & Serialization", () => {
         maxConcurrent = Math.max(maxConcurrent, concurrent);
         await wait(50); // Simulate processing time
         concurrent--;
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       },
     });
     instance.registerAdapter({

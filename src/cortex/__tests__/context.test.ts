@@ -124,10 +124,12 @@ describe("buildForeground", () => {
     appendToSession(db, makeEnvelope("whatsapp", "whatsapp msg"));
     appendToSession(db, makeEnvelope("webchat", "webchat msg 2"));
 
-    const layer = buildForeground(db, "webchat", 10000);
+    const { layer, messages } = buildForeground(db, "webchat", 10000);
     expect(layer.content).toContain("webchat msg");
     expect(layer.content).toContain("webchat msg 2");
     expect(layer.content).not.toContain("whatsapp msg");
+    expect(messages).toHaveLength(2);
+    expect(messages.every((m) => m.channel === "webchat")).toBe(true);
   });
 
   it("respects token budget (truncates oldest when over)", () => {
@@ -137,16 +139,17 @@ describe("buildForeground", () => {
     }
 
     const smallBudget = 50; // Very small — should only fit a few messages
-    const layer = buildForeground(db, "webchat", smallBudget);
+    const { layer } = buildForeground(db, "webchat", smallBudget);
     expect(layer.tokens).toBeLessThanOrEqual(smallBudget);
     // Should contain the most recent messages, not the oldest
     expect(layer.content).toContain("message number 99");
   });
 
   it("returns empty for channel with no messages", () => {
-    const layer = buildForeground(db, "webchat", 10000);
+    const { layer, messages } = buildForeground(db, "webchat", 10000);
     expect(layer.content).toBe("");
     expect(layer.tokens).toBe(0);
+    expect(messages).toHaveLength(0);
   });
 });
 

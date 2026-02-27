@@ -13,7 +13,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import { getChannelStates, getSessionHistory, getPendingOps } from "./session.js";
+import { getChannelStates, getSessionHistory, getPendingOps, type SessionMessage } from "./session.js";
 import type { ChannelId, CortexEnvelope, PendingOperation } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -30,6 +30,8 @@ export interface AssembledContext {
   layers: ContextLayer[];
   totalTokens: number;
   foregroundChannel: ChannelId;
+  /** Structured foreground messages — used by contextToMessages() to avoid lossy text round-trip */
+  foregroundMessages: SessionMessage[];
   backgroundSummaries: Map<ChannelId, string>;
   pendingOps: PendingOperation[];
 }
@@ -105,7 +107,7 @@ export function buildForeground(
   db: DatabaseSync,
   channel: ChannelId,
   budget: number,
-): ContextLayer {
+): { layer: ContextLayer; messages: SessionMessage[] } {
   // Get all messages from this channel, newest first for budget trimming
   const allMessages = getSessionHistory(db, { channel });
 
@@ -130,9 +132,12 @@ export function buildForeground(
 
   const content = lines.join("\n");
   return {
-    name: "foreground",
-    tokens: estimateTokens(content),
-    content,
+    layer: {
+      name: "foreground",
+      tokens: estimateTokens(content),
+      content,
+    },
+    messages: messagesToInclude,
   };
 }
 
@@ -191,7 +196,7 @@ export async function assembleContext(params: {
 
   // 3. Foreground — gets remaining budget
   const remainingBudget = Math.max(0, maxTokens - systemFloor.tokens - background.tokens);
-  const foreground = buildForeground(db, triggerEnvelope.channel, remainingBudget);
+  const { layer: foreground, messages: foregroundMessages } = buildForeground(db, triggerEnvelope.channel, remainingBudget);
 
   // 4. Archived — not in context (zero cost)
   const archived: ContextLayer = { name: "archived", tokens: 0, content: "" };
@@ -212,6 +217,7 @@ export async function assembleContext(params: {
     layers,
     totalTokens,
     foregroundChannel: triggerEnvelope.channel,
+    foregroundMessages,
     backgroundSummaries,
     pendingOps,
   };

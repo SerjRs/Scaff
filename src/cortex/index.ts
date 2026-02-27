@@ -11,7 +11,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { initBus, enqueue, countPending } from "./bus.js";
 import { createAdapterRegistry, type AdapterRegistry, type ChannelAdapter } from "./channel-adapter.js";
 import type { AssembledContext } from "./context.js";
-import { startLoop, type CortexLoop } from "./loop.js";
+import type { CortexLLMResult } from "./llm-caller.js";
+import { startLoop, type CortexLoop, type SpawnParams } from "./loop.js";
 import { repairBusState } from "./recovery.js";
 import { initSessionTables, getChannelStates, getPendingOps } from "./session.js";
 import type { ChannelId, CortexEnvelope, ChannelState, PendingOperation } from "./types.js";
@@ -26,10 +27,12 @@ export interface CortexConfig {
   dbPath?: string;
   maxContextTokens: number;
   pollIntervalMs?: number;
-  callLLM: (context: AssembledContext) => Promise<string>;
+  callLLM: (context: AssembledContext) => Promise<CortexLLMResult>;
   onError?: (error: Error) => void;
   /** Called after every message completes (including silent/NO_REPLY and failures) */
   onMessageComplete?: (envelopeId: string, replyContext: import("./types.js").ReplyContext | undefined, silent: boolean) => void;
+  /** Called when the LLM calls sessions_spawn. Returns job ID or null on failure. */
+  onSpawn?: (params: SpawnParams) => string | null;
 }
 
 export interface CortexInstance {
@@ -99,6 +102,7 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
         callLLM: config.callLLM,
         onError,
         onMessageComplete: config.onMessageComplete,
+        onSpawn: config.onSpawn,
       });
     }
     return loop;

@@ -16,6 +16,7 @@ import {
   type CortexLLMCaller,
 } from "../llm-caller.js";
 import type { AssembledContext } from "../context.js";
+import type { SessionMessage } from "../session.js";
 import { WebchatAdapter } from "../adapters/webchat.js";
 
 // ---------------------------------------------------------------------------
@@ -49,11 +50,11 @@ function createMockLLM(responses: string[]): {
   const calls: AssembledContext[] = [];
   let callIndex = 0;
 
-  const caller: CortexLLMCaller = async (context: AssembledContext): Promise<string> => {
+  const caller: CortexLLMCaller = async (context: AssembledContext) => {
     calls.push(context);
     const response = responses[callIndex] ?? "NO_REPLY";
     callIndex++;
-    return response;
+    return { text: response, toolCalls: [] };
   };
 
   return { caller, calls };
@@ -84,6 +85,9 @@ describe("contextToMessages", () => {
       ],
       totalTokens: 110,
       foregroundChannel: "webchat",
+      foregroundMessages: [
+        { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user", content: "hello", timestamp: "2026-02-27T10:00:00Z" },
+      ],
       backgroundSummaries: new Map(),
       pendingOps: [],
     };
@@ -104,6 +108,9 @@ describe("contextToMessages", () => {
       ],
       totalTokens: 90,
       foregroundChannel: "webchat",
+      foregroundMessages: [
+        { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user", content: "hi", timestamp: "2026-02-27T10:00:00Z" },
+      ],
       backgroundSummaries: new Map([["whatsapp", "3 unread"]]),
       pendingOps: [],
     };
@@ -118,21 +125,18 @@ describe("contextToMessages", () => {
     const context: AssembledContext = {
       layers: [
         { name: "system_floor", tokens: 10, content: "System" },
-        {
-          name: "foreground",
-          tokens: 50,
-          content: [
-            "[webchat] webchat-user: hello",
-            "Cortex: Hi there!",
-            "[webchat] webchat-user: how are you?",
-            "Cortex: I'm doing well.",
-          ].join("\n"),
-        },
+        { name: "foreground", tokens: 50, content: "(text representation)" },
         { name: "background", tokens: 0, content: "" },
         { name: "archived", tokens: 0, content: "" },
       ],
       totalTokens: 60,
       foregroundChannel: "webchat",
+      foregroundMessages: [
+        { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "webchat-user", content: "hello", timestamp: "2026-02-27T10:00:00Z" },
+        { id: 2, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex", content: "Hi there!", timestamp: "2026-02-27T10:00:01Z" },
+        { id: 3, envelopeId: "e2", role: "user", channel: "webchat", senderId: "webchat-user", content: "how are you?", timestamp: "2026-02-27T10:00:02Z" },
+        { id: 4, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "I'm doing well.", timestamp: "2026-02-27T10:00:03Z" },
+      ],
       backgroundSummaries: new Map(),
       pendingOps: [],
     };
@@ -150,20 +154,17 @@ describe("contextToMessages", () => {
     const context: AssembledContext = {
       layers: [
         { name: "system_floor", tokens: 10, content: "System" },
-        {
-          name: "foreground",
-          tokens: 30,
-          content: [
-            "[webchat] user1: hello",
-            "[webchat] user2: world",
-            "Cortex: Hi!",
-          ].join("\n"),
-        },
+        { name: "foreground", tokens: 30, content: "(text representation)" },
         { name: "background", tokens: 0, content: "" },
         { name: "archived", tokens: 0, content: "" },
       ],
       totalTokens: 40,
       foregroundChannel: "webchat",
+      foregroundMessages: [
+        { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user1", content: "hello", timestamp: "2026-02-27T10:00:00Z" },
+        { id: 2, envelopeId: "e2", role: "user", channel: "webchat", senderId: "user2", content: "world", timestamp: "2026-02-27T10:00:01Z" },
+        { id: 3, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "Hi!", timestamp: "2026-02-27T10:00:02Z" },
+      ],
       backgroundSummaries: new Map(),
       pendingOps: [],
     };
@@ -185,6 +186,7 @@ describe("contextToMessages", () => {
       ],
       totalTokens: 10,
       foregroundChannel: "webchat",
+      foregroundMessages: [],
       backgroundSummaries: new Map(),
       pendingOps: [],
     };
@@ -192,6 +194,37 @@ describe("contextToMessages", () => {
     const result = contextToMessages(context);
     expect(result.messages.length).toBeGreaterThanOrEqual(1);
     expect(result.messages[0].role).toBe("user");
+  });
+
+  it("preserves multi-line assistant messages without corruption", () => {
+    const multiLineResponse = "Line 1 of my response.\nLine 2 continues here.\nLine 3 finishes.";
+    const context: AssembledContext = {
+      layers: [
+        { name: "system_floor", tokens: 10, content: "System" },
+        { name: "foreground", tokens: 50, content: "(text representation)" },
+        { name: "background", tokens: 0, content: "" },
+        { name: "archived", tokens: 0, content: "" },
+      ],
+      totalTokens: 60,
+      foregroundChannel: "webchat",
+      foregroundMessages: [
+        { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user", content: "tell me something", timestamp: "2026-02-27T10:00:00Z" },
+        { id: 2, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex", content: multiLineResponse, timestamp: "2026-02-27T10:00:01Z" },
+        { id: 3, envelopeId: "e2", role: "user", channel: "webchat", senderId: "user", content: "thanks", timestamp: "2026-02-27T10:00:02Z" },
+      ],
+      backgroundSummaries: new Map(),
+      pendingOps: [],
+    };
+
+    const result = contextToMessages(context);
+    expect(result.messages).toEqual([
+      { role: "user", content: "tell me something" },
+      { role: "assistant", content: multiLineResponse },
+      { role: "user", content: "thanks" },
+    ]);
+    // The entire multi-line response stays as ONE assistant message
+    expect(result.messages[1].content).toContain("\n");
+    expect(result.messages[1].content.split("\n")).toHaveLength(3);
   });
 });
 
@@ -320,9 +353,9 @@ describe("E2E: LLM Caller Pipeline", () => {
       callCount++;
       if (callCount === 1) {
         await wait(10_000);
-        return "too late";
+        return { text: "too late", toolCalls: [] };
       }
-      return "fast reply";
+      return { text: "fast reply", toolCalls: [] };
     };
 
     const dbPath = path.join(tmpDir, "bus.sqlite");
@@ -389,7 +422,7 @@ describe("E2E: LLM Caller Pipeline", () => {
       if (callCount === 2) {
         throw new Error("LLM crashed!");
       }
-      return `reply-${callCount}`;
+      return { text: `reply-${callCount}`, toolCalls: [] };
     };
 
     const sent: OutputTarget[] = [];
@@ -433,7 +466,7 @@ describe("E2E: LLM Caller Pipeline", () => {
       const myIndex = ++callCount;
       callOrder.push(myIndex);
       await wait(50);
-      return `reply-${myIndex}`;
+      return { text: `reply-${myIndex}`, toolCalls: [] };
     };
 
     const dbPath = path.join(tmpDir, "bus.sqlite");

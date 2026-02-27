@@ -76,7 +76,7 @@ describe("CortexLoop", () => {
       workspaceDir,
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "Hi Serj!",
+      callLLM: async () => ({ text: "Hi Serj!", toolCalls: [] }),
       onError: () => {},
     });
 
@@ -111,7 +111,7 @@ describe("CortexLoop", () => {
         const content = adapter.sent.length === 0 ? "first" :
           adapter.sent.length === 1 ? "second" : "third";
         order.push(content);
-        return content;
+        return { text: content, toolCalls: [] };
       },
       onError: () => {},
     });
@@ -142,7 +142,7 @@ describe("CortexLoop", () => {
       callLLM: async () => {
         callCount++;
         if (callCount === 1) throw new Error("LLM timeout");
-        return "success";
+        return { text: "success", toolCalls: [] };
       },
       onError: (err) => { errors.push(err); },
     });
@@ -171,7 +171,7 @@ describe("CortexLoop", () => {
       pollIntervalMs: 10,
       callLLM: async () => {
         await wait(100);
-        return "done";
+        return { text: "done", toolCalls: [] };
       },
       onError: () => {},
     });
@@ -192,7 +192,7 @@ describe("CortexLoop", () => {
       workspaceDir,
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "ok",
+      callLLM: async () => ({ text: "ok", toolCalls: [] }),
       onError: () => {},
     });
 
@@ -212,7 +212,7 @@ describe("CortexLoop", () => {
       workspaceDir,
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "ok",
+      callLLM: async () => ({ text: "ok", toolCalls: [] }),
       onError: (err) => { errors.push(err); },
     });
 

@@ -53,7 +53,7 @@ describe("startCortex", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "ok",
+      callLLM: async () => ({ text: "ok", toolCalls: [] }),
     });
 
     expect(instance).toBeDefined();
@@ -68,7 +68,7 @@ describe("startCortex", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "ok",
+      callLLM: async () => ({ text: "ok", toolCalls: [] }),
       onError: (err) => { errors.push(err); },
     });
 
@@ -86,7 +86,7 @@ describe("startCortex", () => {
       pollIntervalMs: 50,
       callLLM: async () => {
         received = "processed";
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       },
     });
 
@@ -109,7 +109,7 @@ describe("startCortex", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "ok",
+      callLLM: async () => ({ text: "ok", toolCalls: [] }),
     });
 
     await stopCortex(instance);
@@ -123,7 +123,7 @@ describe("startCortex", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "ok",
+      callLLM: async () => ({ text: "ok", toolCalls: [] }),
     });
 
     const stats = instance.stats();
@@ -140,7 +140,7 @@ describe("startCortex", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "ok",
+      callLLM: async () => ({ text: "ok", toolCalls: [] }),
     });
 
     await expect(
@@ -149,7 +149,7 @@ describe("startCortex", () => {
         workspaceDir,
         dbPath: path.join(tmpDir, "bus2.sqlite"),
         maxContextTokens: 10000,
-        callLLM: async () => "ok",
+        callLLM: async () => ({ text: "ok", toolCalls: [] }),
       }),
     ).rejects.toThrow("already running");
   });
@@ -162,7 +162,7 @@ describe("startCortex", () => {
       workspaceDir,
       dbPath,
       maxContextTokens: 10000,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
     first.registerAdapter({
       channelId: "webchat",
@@ -188,7 +188,7 @@ describe("startCortex", () => {
       pollIntervalMs: 50,
       callLLM: async () => {
         processed = true;
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       },
     });
     instance.registerAdapter({

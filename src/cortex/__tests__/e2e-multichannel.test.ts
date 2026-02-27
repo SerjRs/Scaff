@@ -45,7 +45,7 @@ describe("E2E: Multi-Channel Conversation", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "Hello from Cortex!",
+      callLLM: async () => ({ text: "Hello from Cortex!", toolCalls: [] }),
     });
     instance.registerAdapter({
       channelId: "webchat",
@@ -70,7 +70,7 @@ describe("E2E: Multi-Channel Conversation", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "WA reply",
+      callLLM: async () => ({ text: "WA reply", toolCalls: [] }),
     });
     instance.registerAdapter({
       channelId: "whatsapp",
@@ -93,7 +93,7 @@ describe("E2E: Multi-Channel Conversation", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
     ["webchat", "whatsapp", "telegram"].forEach((ch) => {
       instance!.registerAdapter({
@@ -126,7 +126,7 @@ describe("E2E: Multi-Channel Conversation", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 30,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
     ["webchat", "whatsapp", "telegram"].forEach((ch) => {
       instance!.registerAdapter({

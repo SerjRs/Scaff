@@ -36,7 +36,7 @@ describe("E2E: Sub-agent & Router Awareness", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
     instance.registerAdapter({
       channelId: "router",
@@ -67,7 +67,7 @@ describe("E2E: Sub-agent & Router Awareness", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
     instance.registerAdapter({
       channelId: "subagent",
@@ -94,7 +94,7 @@ describe("E2E: Sub-agent & Router Awareness", () => {
       workspaceDir: path.join(tmpDir, "workspace"),
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     // Add pending ops
@@ -127,7 +127,7 @@ describe("E2E: Sub-agent & Router Awareness", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
       onError: (err) => { errors.push(err); },
     });
     instance.registerAdapter({

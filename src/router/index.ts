@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { initRouterDb, enqueue as dbEnqueue, getJob } from "./queue.js";
 import { recover } from "./recovery.js";
-import { startNotifier, waitForJob } from "./notifier.js";
+import { startNotifier, waitForJob, type OnDeliveredCallback } from "./notifier.js";
 import { startRouterLoop } from "./loop.js";
 import { routerEvents, type AgentExecutor } from "./worker.js";
 import type { JobType, RouterConfig, RouterJob } from "./types.js";
@@ -66,6 +66,7 @@ export interface RouterInstance {
 export function startRouter(
   config: RouterConfig,
   executor?: AgentExecutor,
+  onDelivered?: OnDeliveredCallback,
 ): RouterInstance {
   // 1. Initialize the SQLite database
   const db: DatabaseSync = initRouterDb();
@@ -77,7 +78,7 @@ export function startRouter(
   );
 
   // 3. Start the Notifier (listens on routerEvents for delivery)
-  const stopNotifier = startNotifier(db);
+  const stopNotifier = startNotifier(db, onDelivered);
 
   // 4. Start the Router Loop + Watchdog
   const loop = startRouterLoop(db, config, executor);

@@ -17,12 +17,21 @@ import {
 } from "./bus.js";
 import type { AdapterRegistry } from "./channel-adapter.js";
 import { assembleContext, type AssembledContext } from "./context.js";
+import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
-import { appendToSession, appendResponse, updateChannelState, getChannelStates, getPendingOps } from "./session.js";
+import { appendToSession, appendResponse, updateChannelState, getChannelStates, getPendingOps, addPendingOp } from "./session.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** Parameters passed to the onSpawn callback when Cortex delegates to the Router */
+export interface SpawnParams {
+  task: string;
+  replyChannel: string | null;
+  resultPriority: "urgent" | "normal" | "background";
+  envelopeId: string;
+}
 
 export interface CortexLoopOptions {
   db: DatabaseSync;
@@ -30,10 +39,12 @@ export interface CortexLoopOptions {
   workspaceDir: string;
   maxContextTokens: number;
   pollIntervalMs: number;
-  callLLM: (context: AssembledContext) => Promise<string>;
+  callLLM: (context: AssembledContext) => Promise<CortexLLMResult>;
   onError: (error: Error) => void;
   /** Called after every message completes (including silent/NO_REPLY) */
   onMessageComplete?: (envelopeId: string, replyContext: import("./types.js").ReplyContext | undefined, silent: boolean) => void;
+  /** Called when the LLM calls sessions_spawn. Returns job ID or null on failure. */
+  onSpawn?: (params: SpawnParams) => string | null;
 }
 
 export interface CortexLoop {
@@ -47,7 +58,7 @@ export interface CortexLoop {
 // ---------------------------------------------------------------------------
 
 export function startLoop(opts: CortexLoopOptions): CortexLoop {
-  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, callLLM, onError, onMessageComplete } = opts;
+  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, callLLM, onError, onMessageComplete, onSpawn } = opts;
 
   let running = true;
   let processed = 0;
@@ -89,7 +100,32 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         });
 
         // 5. Call LLM
-        const llmResponse = await callLLM(context);
+        const llmResult = await callLLM(context);
+        const llmResponse = llmResult.text;
+
+        // 5b. Handle tool calls (sessions_spawn → Router delegation)
+        for (const tc of llmResult.toolCalls) {
+          if (tc.name === "sessions_spawn" && onSpawn) {
+            const args = tc.arguments as { task?: string; priority?: string };
+            const task = args.task ?? "";
+            const resultPriority = (args.priority as "urgent" | "normal" | "background") ?? "normal";
+            // Reply channel = source channel if user-facing, null if internal/system
+            const replyChannel = (msg.envelope.channel !== "router" && msg.envelope.channel !== "cron")
+              ? msg.envelope.channel
+              : null;
+
+            const jobId = onSpawn({ task, replyChannel, resultPriority, envelopeId: msg.envelope.id });
+            if (jobId) {
+              addPendingOp(db, {
+                id: jobId,
+                type: "router_job",
+                description: task.slice(0, 200),
+                dispatchedAt: new Date().toISOString(),
+                expectedChannel: "router",
+              });
+            }
+          }
+        }
 
         // 6. Parse response
         const output = parseResponse({

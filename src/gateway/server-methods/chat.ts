@@ -898,6 +898,35 @@ export const chatHandlers: GatewayRequestHandlers = {
               context.chatAbortControllers.delete(clientRunId);
             });
 
+            // Expose async broadcast for Cortex webchat adapter — used when
+            // Cortex needs to push a message to webchat without a pending request
+            // (e.g. Router result processed by the Cortex bus).
+            // Captures stable server-level broadcast functions, set once.
+            if (!(globalThis as any).__openclaw_cortex_webchat_broadcast__) {
+              const broadcastContext = {
+                broadcast: context.broadcast,
+                nodeSendToSession: context.nodeSendToSession,
+                agentRunSeq: context.agentRunSeq,
+              };
+              const broadcastSessionKey = rawSessionKey;
+              (globalThis as any).__openclaw_cortex_webchat_broadcast__ = (content: string) => {
+                if (!content.trim()) return;
+                const pushRunId = crypto.randomUUID();
+                broadcastChatFinal({
+                  context: broadcastContext,
+                  runId: pushRunId,
+                  sessionKey: broadcastSessionKey,
+                  message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: content }],
+                    timestamp: Date.now(),
+                    stopReason: "stop",
+                    usage: { input: 0, output: 0, totalTokens: 0 },
+                  },
+                });
+              };
+            }
+
             // Feed to Cortex with runId in replyContext for delivery matching
             cortexFeed(cortexMkEnvelope({
               channel: "webchat",

@@ -4,6 +4,12 @@ import { routerEvents } from "./worker.js";
 import type { RouterJob } from "./types.js";
 
 // ---------------------------------------------------------------------------
+// Callback type — fires after each delivery for session push, cleanup, etc.
+// ---------------------------------------------------------------------------
+
+export type OnDeliveredCallback = (jobId: string, job: RouterJob) => void;
+
+// ---------------------------------------------------------------------------
 // Terminal statuses — deliverResult only acts on these
 // ---------------------------------------------------------------------------
 
@@ -52,15 +58,29 @@ export function deliverResult(db: DatabaseSync, jobId: string): void {
  * Start the Notifier: register listeners on `routerEvents` for job lifecycle
  * events (`job:completed`, `job:failed`).
  *
+ * The optional `onDelivered` callback fires after each delivery — use it to
+ * push the result to the issuer's session (§3.7 step 3).
+ *
  * Returns a cleanup function that removes the listeners.
  */
-export function startNotifier(db: DatabaseSync): () => void {
+export function startNotifier(
+  db: DatabaseSync,
+  onDelivered?: OnDeliveredCallback,
+): () => void {
   const onCompleted = ({ jobId }: { jobId: string }) => {
+    const job = getJob(db, jobId);
     deliverResult(db, jobId);
+    if (onDelivered && job) {
+      try { onDelivered(jobId, job); } catch { /* best-effort */ }
+    }
   };
 
   const onFailed = ({ jobId }: { jobId: string }) => {
+    const job = getJob(db, jobId);
     deliverResult(db, jobId);
+    if (onDelivered && job) {
+      try { onDelivered(jobId, job); } catch { /* best-effort */ }
+    }
   };
 
   routerEvents.on("job:completed", onCompleted);

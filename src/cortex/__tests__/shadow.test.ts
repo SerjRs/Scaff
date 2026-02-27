@@ -103,7 +103,7 @@ describe("createShadowHook", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     const hook = createShadowHook(instance);
@@ -123,7 +123,7 @@ describe("createShadowHook", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     const hook = createShadowHook(instance);
@@ -140,7 +140,7 @@ describe("createShadowHook", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     const hook = createShadowHook(instance);
@@ -157,7 +157,7 @@ describe("createShadowHook", () => {
       workspaceDir,
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     const hook = createShadowHook(instance);

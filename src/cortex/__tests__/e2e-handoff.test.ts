@@ -38,7 +38,7 @@ describe("E2E: Channel Handoff", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 30,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     ["webchat", "whatsapp"].forEach((ch) => {
@@ -83,7 +83,7 @@ describe("E2E: Channel Handoff", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 20,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     ["webchat", "whatsapp"].forEach((ch) => {
@@ -125,7 +125,7 @@ describe("E2E: Channel Handoff", () => {
       dbPath: path.join(tmpDir, "bus.sqlite"),
       maxContextTokens: 10000,
       pollIntervalMs: 30,
-      callLLM: async () => "reply here",
+      callLLM: async () => ({ text: "reply here", toolCalls: [] }),
     });
 
     ["webchat", "whatsapp"].forEach((ch) => {

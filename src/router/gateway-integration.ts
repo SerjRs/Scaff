@@ -17,8 +17,10 @@ import fs from "node:fs";
 import type { CallGatewayOptions } from "../gateway/call.js";
 import { callGateway } from "../gateway/call.js";
 import { startRouter, type RouterInstance, type AgentExecutor } from "./index.js";
+import type { OnDeliveredCallback } from "./notifier.js";
 import type { RouterConfig, RouterJob } from "./types.js";
 import { resolveStateDir } from "../config/paths.js";
+import { getCortexSessionKey } from "../cortex/session.js";
 
 // ---------------------------------------------------------------------------
 // Global singleton — use globalThis to survive bundler chunk splitting.
@@ -198,7 +200,43 @@ export function initGatewayRouter(config: RouterConfig): void {
   }
 
   const executor = createGatewayExecutor();
-  setRouterInstance(startRouter(config, executor));
+
+  // §3.7 Step 3: Push result to the issuer's session on delivery.
+  // Same mechanism as subagent completion announcements — callGateway({ method: "agent" }).
+  // NOTE: Cortex-issued jobs are handled by gateway-bridge.ts via routerEvents —
+  // skip them here to avoid double-handling (which causes ghost messages on WhatsApp).
+  const cortexSessionKey = getCortexSessionKey("main");
+  const onDelivered: OnDeliveredCallback = (jobId, job) => {
+    const issuer = job.issuer;
+    if (!issuer) return;
+    if (issuer === cortexSessionKey) return; // Cortex handles its own results via the bus
+
+    const content = job.status === "completed"
+      ? (job.result ?? "Task completed.")
+      : `Error: ${job.error ?? "Unknown error"}`;
+
+    const systemMessage = [
+      `[System Message] Router Job ${jobId} ${job.status}.`,
+      "",
+      "Result:",
+      content,
+    ].join("\n");
+
+    // Fire-and-forget — don't block the Notifier
+    callGateway({
+      method: "agent",
+      params: {
+        sessionKey: issuer,
+        message: systemMessage,
+        deliver: true,
+      },
+      timeoutMs: 30_000,
+    }).catch((err) => {
+      console.log(`[router] Failed to push result to issuer ${issuer}: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  };
+
+  setRouterInstance(startRouter(config, executor, onDelivered));
   console.log("[router] Gateway Router initialized");
 }
 

@@ -70,7 +70,7 @@ describe("E2E: Crash Recovery", () => {
       callLLM: async (ctx) => {
         // Track which messages get processed by checking foreground content
         processedContents.push("processed");
-        return "NO_REPLY";
+        return { text: "NO_REPLY", toolCalls: [] };
       },
     });
     instance.registerAdapter({
@@ -107,7 +107,7 @@ describe("E2E: Crash Recovery", () => {
       dbPath,
       maxContextTokens: 10000,
       pollIntervalMs: 50,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
       onError: (err) => { errors.push(err.message); },
     });
 
@@ -169,7 +169,7 @@ describe("E2E: Crash Recovery", () => {
       workspaceDir: path.join(tmpDir, "workspace"),
       dbPath: path.join(tmpDir, "fresh.sqlite"),
       maxContextTokens: 10000,
-      callLLM: async () => "NO_REPLY",
+      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
     });
 
     const stats = instance.stats();
