@@ -166,6 +166,20 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 expectedChannel: "router",
                 status: "pending",
               });
+
+              // Store dispatch evidence so the LLM knows it dispatched this task.
+              // Without this, the LLM's tool_use blocks are lost and it treats
+              // returning results as "stale" / "not mine".
+              const dispatchEvidence = db.prepare(`
+                INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata)
+                VALUES (?, 'assistant', ?, 'cortex', ?, ?, NULL)
+              `);
+              dispatchEvidence.run(
+                msg.envelope.id,
+                msg.envelope.channel,
+                `[DISPATCHED THROUGH sessions_spawn] job=${jobId} — "${task.slice(0, 200)}" (priority: ${resultPriority}, reply_channel: ${replyChannel ?? "none"}, awaiting result)`,
+                new Date().toISOString(),
+              );
             }
           }
         }

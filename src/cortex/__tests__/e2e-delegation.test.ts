@@ -138,6 +138,16 @@ describe("E2E: Delegation Flow", () => {
     expect(getPendingOps(instance.db)).toHaveLength(1);
     expect(getPendingOps(instance.db)[0].id).toBe("job-123");
 
+    // Dispatch evidence stored in session so LLM knows it dispatched this task
+    const historyAfterDispatch = getSessionHistory(instance.db);
+    const dispatchEvidence = historyAfterDispatch.find((m) =>
+      m.role === "assistant" && m.content.includes("[DISPATCHED THROUGH sessions_spawn]"),
+    );
+    expect(dispatchEvidence).toBeDefined();
+    expect(dispatchEvidence!.content).toContain("job=job-123");
+    expect(dispatchEvidence!.content).toContain("Research the weather in Bucharest");
+    expect(dispatchEvidence!.content).toContain("reply_channel: webchat");
+
     // Step 2: Simulate Router result arriving
     instance.enqueue(createEnvelope({
       channel: "router",
@@ -233,6 +243,14 @@ describe("E2E: Delegation Flow", () => {
 
     // Spawn had correct priority
     expect(spawns[0].resultPriority).toBe("background");
+
+    // Dispatch evidence includes priority and reply channel
+    const history = getSessionHistory(instance.db);
+    const evidence = history.find((m) => m.content.includes("[DISPATCHED THROUGH sessions_spawn]"));
+    expect(evidence).toBeDefined();
+    expect(evidence!.content).toContain("job=job-789");
+    expect(evidence!.content).toContain("priority: background");
+    expect(evidence!.content).toContain("reply_channel: webchat");
   });
 
   it("result delivered to correct channel: webchat user gets answer on webchat", async () => {
