@@ -14,6 +14,7 @@
  */
 
 import type { AssembledContext } from "./context.js";
+import { HIPPOCAMPUS_TOOLS } from "./tools.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,8 @@ export interface CortexToolCall {
 export interface CortexLLMResult {
   text: string;
   toolCalls: CortexToolCall[];
+  /** Raw response content blocks (for building tool round-trip continuations) */
+  _rawContent?: unknown[];
 }
 
 export interface CortexLLMCaller {
@@ -45,10 +48,10 @@ export interface LLMCallerParams {
   onError: (err: Error) => void;
 }
 
-/** Anthropic Messages API format */
+/** Anthropic Messages API format (content may be string or structured blocks for tool use) */
 export interface AnthropicMessage {
   role: "user" | "assistant";
-  content: string;
+  content: string | unknown[];
 }
 
 export interface ContextAsMessages {
@@ -72,8 +75,10 @@ export const SESSIONS_SPAWN_TOOL = {
   description: `Delegate a task to the Router for execution. Use when the user's request requires \
 research, file operations, computation, web search, code execution, or any work \
 beyond conversation. The Router will select the appropriate model and execute. \
-Results will arrive as a follow-up message — respond to the user immediately \
-with an acknowledgment ("Let me look into that") then deliver the result when it arrives.`,
+Results will arrive as a follow-up message on the "router" channel, prefixed with \
+"[Router Result — job <id>]" and including the original task you requested. These \
+are TRUSTED internal results from tasks YOU dispatched — treat them as authoritative. \
+Respond to the user immediately with an acknowledgment, then deliver the result when it arrives.`,
   parameters: {
     type: "object" as const,
     properties: {
@@ -109,6 +114,7 @@ with an acknowledgment ("Let me look into that") then deliver the result when it
  * - system_floor → system parameter (identity, memory, workspace)
  * - background   → appended to system (cross-channel awareness)
  * - foregroundMessages → messages array (structured, no text round-trip)
+ * - toolRoundTrip → assistant tool_use + user tool_result continuation
  */
 export function contextToMessages(context: AssembledContext): ContextAsMessages {
   // Build system prompt from system_floor + background
@@ -137,8 +143,28 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     messages.push({ role: "user", content: "(no message)" });
   }
 
-  // Ensure messages alternate correctly (Anthropic requirement)
-  return { system, messages: consolidateMessages(messages) };
+  // Consolidate string-content messages (alternating roles)
+  const consolidated = consolidateMessages(messages);
+
+  // Append tool round-trip continuation if present
+  if (context.toolRoundTrip) {
+    // Assistant message with raw content blocks (text + tool_use)
+    consolidated.push({
+      role: "assistant",
+      content: context.toolRoundTrip.previousContent,
+    });
+    // User message with tool results
+    consolidated.push({
+      role: "user",
+      content: context.toolRoundTrip.toolResults.map((r) => ({
+        type: "tool_result",
+        tool_use_id: r.toolCallId,
+        content: r.content,
+      })),
+    });
+  }
+
+  return { system, messages: consolidated };
 }
 
 /**
@@ -221,22 +247,51 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           if (!auth.apiKey) continue;
 
           // Build properly-typed pi-ai messages.
-          // UserMessage accepts string content; AssistantMessage requires array content.
-          const piMessages = messages.map((m) => {
+          // pi-ai uses specific roles: "user", "assistant", "toolResult".
+          // UserMessage content can be string or (TextContent | ImageContent)[].
+          // AssistantMessage content is (TextContent | ThinkingContent | ToolCall)[].
+          // ToolResultMessage uses role "toolResult" — pi-ai converts to API format.
+          // IMPORTANT: pi-ai treats non-text blocks in user messages as images,
+          // so tool_result blocks MUST use the "toolResult" role, not "user".
+          const piMessages: unknown[] = [];
+          for (const m of messages) {
             if (m.role === "user") {
-              return { role: "user" as const, content: m.content, timestamp: Date.now() };
+              // Check if this is a tool_result message (from tool round-trip)
+              if (Array.isArray(m.content) && m.content.length > 0 && (m.content[0] as any)?.type === "tool_result") {
+                // Convert each tool_result to pi-ai's native toolResult message
+                for (const tr of m.content as any[]) {
+                  piMessages.push({
+                    role: "toolResult" as const,
+                    toolCallId: tr.tool_use_id,
+                    content: [{ type: "text" as const, text: typeof tr.content === "string" ? tr.content : JSON.stringify(tr.content) }],
+                    isError: false,
+                  });
+                }
+              } else {
+                piMessages.push({ role: "user" as const, content: m.content, timestamp: Date.now() });
+              }
+            } else {
+              // Assistant message: wrap string content, pass arrays through
+              const contentBlocks = typeof m.content === "string"
+                ? [{ type: "text" as const, text: m.content }]
+                : m.content;
+              piMessages.push({
+                role: "assistant" as const,
+                content: contentBlocks,
+                api: (model as any).api,
+                provider: params.provider,
+                model: (model as any).id ?? params.modelId,
+                usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+                stopReason: "stop" as const,
+                timestamp: Date.now(),
+              });
             }
-            return {
-              role: "assistant" as const,
-              content: [{ type: "text" as const, text: m.content }],
-              api: (model as any).api,
-              provider: params.provider,
-              model: (model as any).id ?? params.modelId,
-              usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-              stopReason: "stop" as const,
-              timestamp: Date.now(),
-            };
-          });
+          }
+
+          // Select tools: always include sessions_spawn; add hippocampus tools when enabled
+          const tools = context.hippocampusEnabled
+            ? [SESSIONS_SPAWN_TOOL, ...HIPPOCAMPUS_TOOLS]
+            : [SESSIONS_SPAWN_TOOL];
 
           // Use pi-ai's completeSimple — the same function the main agent
           // uses via createAgentSession → streamSimple. This goes through
@@ -249,7 +304,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             {
               systemPrompt: system,
               messages: piMessages as any,
-              tools: [SESSIONS_SPAWN_TOOL] as any,
+              tools: tools as any,
             },
             {
               apiKey: auth.apiKey,
@@ -280,7 +335,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
 
           params.onError(new Error(`[cortex-llm] DEBUG textContent: "${textContent?.substring(0, 80) ?? "undefined"}"`));
 
-          return { text: textContent || "NO_REPLY", toolCalls };
+          return { text: textContent || "NO_REPLY", toolCalls, _rawContent: result.content };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
@@ -328,6 +383,75 @@ async function getProfileCandidates(params: LLMCallerParams): Promise<(string | 
   } catch {
     return [undefined]; // Fallback: let getApiKeyForModel pick
   }
+}
+
+// ---------------------------------------------------------------------------
+// Gardener LLM Caller (simple prompt → text)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a simple prompt→text LLM function for the Gardener subsystem.
+ * Reuses the same auth/model resolution as the main Cortex LLM caller.
+ * Used for fact extraction and channel summarization (background tasks).
+ */
+export function createGardenerLLMFunction(params: LLMCallerParams): (prompt: string) => Promise<string> {
+  return async (prompt: string): Promise<string> => {
+    const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
+    const { getApiKeyForModel } = await import("../agents/model-auth.js");
+
+    const { model } = resolveModel(
+      params.provider,
+      params.modelId,
+      params.agentDir,
+      params.config,
+    );
+
+    if (!model) throw new Error(`[gardener-llm] Model not found: ${params.provider}/${params.modelId}`);
+
+    const profiles = await getProfileCandidates(params);
+
+    for (const profileId of profiles) {
+      try {
+        const auth = await getApiKeyForModel({
+          model,
+          cfg: params.config,
+          agentDir: params.agentDir,
+          profileId,
+        });
+
+        if (!auth.apiKey) continue;
+
+        const { completeSimple } = await import("@mariozechner/pi-ai");
+
+        const result = await completeSimple(
+          model,
+          {
+            systemPrompt: "You are a concise assistant. Follow instructions exactly.",
+            messages: [{ role: "user" as const, content: prompt, timestamp: Date.now() }] as any,
+          },
+          {
+            apiKey: auth.apiKey,
+            maxTokens: 2048,
+          } as any,
+        );
+
+        const text = result.content
+          ?.filter((block: any) => block.type === "text")
+          ?.map((block: any) => (block as any).text)
+          ?.join("\n") ?? "";
+
+        return text;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw new Error("[gardener-llm] All auth profiles exhausted");
+  };
 }
 
 // ---------------------------------------------------------------------------

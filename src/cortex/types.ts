@@ -199,6 +199,9 @@ export interface ChannelState {
 /** Types of operations Cortex can have in flight */
 export type PendingOpType = "router_job" | "subagent" | "cron_task";
 
+/** Lifecycle status: pending → completed → gardened → archived */
+export type PendingOpStatus = "pending" | "completed" | "gardened" | "archived";
+
 /** An operation Cortex dispatched and is awaiting */
 export interface PendingOperation {
   id: string;
@@ -206,6 +209,16 @@ export interface PendingOperation {
   description: string;
   dispatchedAt: string;
   expectedChannel: ChannelId;
+  /** Lifecycle status (default: "pending") */
+  status: PendingOpStatus;
+  /** When the result arrived */
+  completedAt?: string;
+  /** Result content from Router/sub-agent */
+  result?: string;
+  /** When the Gardener extracted facts from this op */
+  gardenedAt?: string;
+  /** When the issuer acknowledged seeing this result (read/unread inbox pattern) */
+  acknowledgedAt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,11 +244,17 @@ export interface CheckpointData {
 /** Operating mode — off/shadow/live per the safety architecture */
 export type CortexMode = "off" | "shadow" | "live";
 
+/** Hippocampus memory subsystem configuration */
+export interface HippocampusConfig {
+  enabled: boolean;
+}
+
 /** Per-channel mode configuration */
 export interface CortexModeConfig {
   enabled: boolean;
   defaultMode: CortexMode;
   channels: Partial<Record<string, CortexMode>>;
+  hippocampus?: HippocampusConfig;
 }
 
 // ---------------------------------------------------------------------------

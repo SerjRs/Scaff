@@ -89,6 +89,7 @@ describe("recoverState", () => {
       description: "test job",
       dispatchedAt: "2026-02-26T15:00:00Z",
       expectedChannel: "router",
+      status: "pending",
     });
     const result = recoverState(db);
     expect(result.pendingOps).toHaveLength(1);

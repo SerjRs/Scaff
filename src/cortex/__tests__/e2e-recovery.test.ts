@@ -152,6 +152,7 @@ describe("E2E: Crash Recovery", () => {
       description: "In-flight job",
       dispatchedAt: new Date().toISOString(),
       expectedChannel: "router",
+      status: "pending",
     });
     db.close();
 

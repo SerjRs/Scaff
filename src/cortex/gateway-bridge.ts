@@ -17,7 +17,7 @@ import { resolveUserPath } from "../utils.js";
 import { startCortex, stopCortex, _resetSingleton, type CortexInstance } from "./index.js";
 import { resolveChannelMode, createShadowHook, type ShadowHook } from "./shadow.js";
 import type { CortexModeConfig, CortexEnvelope, ChannelId, CortexMode } from "./types.js";
-import { createGatewayLLMCaller } from "./llm-caller.js";
+import { createGatewayLLMCaller, createGardenerLLMFunction } from "./llm-caller.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,6 +54,7 @@ function loadCortexConfig(): CortexModeConfig | null {
       enabled: raw.enabled === true,
       defaultMode: raw.defaultMode ?? "off",
       channels: raw.channels ?? {},
+      hippocampus: { enabled: raw.hippocampus?.enabled === true },
     };
   } catch {
     return null;
@@ -104,6 +105,20 @@ export async function initGatewayCortex(params: {
 
   params.log.warn(`[cortex] LLM: live (anthropic/${cortexModel})`);
 
+  // Gardener LLM functions — reuse same auth/model infrastructure
+  // Uses the same model as Cortex main LLM for now (could be Haiku for cost efficiency)
+  const gardenerLLMParams = {
+    provider: "anthropic",
+    modelId: cortexModel,
+    agentDir: resolveUserPath(".openclaw/agents/main/agent"),
+    config: params.cfg,
+    maxResponseTokens: 2048,
+    onError: (err: Error) => {
+      params.log.warn(`[cortex-gardener] ${err.message}`);
+    },
+  };
+  const gardenerLLM = createGardenerLLMFunction(gardenerLLMParams);
+
   // Pre-import Router and session modules for the synchronous onSpawn callback
   const { getGatewayRouter } = await import("../router/gateway-integration.js");
   const { getCortexSessionKey } = await import("./session.js");
@@ -114,6 +129,9 @@ export async function initGatewayCortex(params: {
     dbPath,
     maxContextTokens: 200_000,
     pollIntervalMs: 500,
+    hippocampusEnabled: config.hippocampus?.enabled === true,
+    gardenerSummarizeLLM: config.hippocampus?.enabled ? gardenerLLM : undefined,
+    gardenerExtractLLM: config.hippocampus?.enabled ? gardenerLLM : undefined,
     callLLM,
     onError: (err) => {
       params.log.warn(`[cortex] Error: ${err.message}`);
@@ -203,7 +221,21 @@ export async function initGatewayCortex(params: {
   // The Router Notifier (§3.7) handles delivery for non-Cortex issuers via callGateway.
   const cortexIssuer = getCortexSessionKey("main");
   const { createEnvelope } = await import("./types.js");
-  const { removePendingOp } = await import("./session.js");
+  const { completePendingOp, failPendingOp, getPendingOps } = await import("./session.js");
+
+  // Startup cleanup: fail any orphaned pending ops from prior crashes/restarts.
+  // These would pollute the System Floor indefinitely since no job:failed event will fire.
+  try {
+    const orphaned = getPendingOps(instance.db).filter((op) => op.status === "pending");
+    for (const op of orphaned) {
+      failPendingOp(instance.db, op.id, "orphaned from prior session (startup cleanup)");
+    }
+    if (orphaned.length > 0) {
+      params.log.warn(`[cortex] Startup: cleaned up ${orphaned.length} orphaned pending op(s)`);
+    }
+  } catch {
+    // Best-effort
+  }
 
   try {
     const { routerEvents } = await import("../router/worker.js");
@@ -218,10 +250,13 @@ export async function initGatewayCortex(params: {
         const resultPriority = meta.resultPriority ?? "normal";
         const replyChannel = meta.replyChannel ?? null;
 
-        // Build result content
-        const content = job.status === "completed"
+        // Build result content with task provenance so the LLM knows
+        // this is the answer to a task IT previously dispatched via sessions_spawn
+        const originalTask = payload.message ?? "(unknown task)";
+        const resultBody = job.status === "completed"
           ? (job.result ?? "Task completed.")
           : `Error: ${job.error ?? "Unknown error"}`;
+        const content = `[Router Result — job ${jobId}]\nTask you requested: "${originalTask.slice(0, 300)}"\nStatus: ${job.status}\n\n${resultBody}`;
 
         // Feed result into Cortex bus with the priority set at dispatch time
         const envelope = createEnvelope({
@@ -234,8 +269,8 @@ export async function initGatewayCortex(params: {
 
         instance.enqueue(envelope);
 
-        // Clear pending op from session state
-        removePendingOp(instance.db, jobId);
+        // Mark pending op as completed with the result (lifecycle: pending → completed)
+        completePendingOp(instance.db, jobId, content);
 
         params.log.warn(`[cortex] Router result ingested: job=${jobId} status=${job.status} priority=${resultPriority}`);
       } catch (err) {
@@ -243,9 +278,21 @@ export async function initGatewayCortex(params: {
       }
     };
 
+    // Clean up Cortex pending ops when Router jobs fail (eval/dispatch crash, worker error)
+    const onJobFailed = ({ jobId, error }: { jobId: string; error: string }) => {
+      try {
+        failPendingOp(instance.db, jobId, error);
+        params.log.warn(`[cortex] Pending op cleaned up for failed Router job ${jobId}: ${error}`);
+      } catch {
+        // Best-effort — don't block the Router
+      }
+    };
+
     routerEvents.on("job:delivered", onJobDelivered);
+    routerEvents.on("job:failed", onJobFailed);
     routerListenerCleanup = () => {
       routerEvents.removeListener("job:delivered", onJobDelivered);
+      routerEvents.removeListener("job:failed", onJobFailed);
     };
     params.log.warn("[cortex] Subscribed to Router job:delivered events");
   } catch {

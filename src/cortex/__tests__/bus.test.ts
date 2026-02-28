@@ -295,7 +295,7 @@ describe("checkpoint", () => {
         { channel: "webchat", lastMessageAt: new Date().toISOString(), unreadCount: 0, layer: "foreground" as const },
       ],
       pendingOps: [
-        { id: "job-1", type: "router_job" as const, description: "Analyze code", dispatchedAt: new Date().toISOString(), expectedChannel: "router" },
+        { id: "job-1", type: "router_job" as const, description: "Analyze code", dispatchedAt: new Date().toISOString(), expectedChannel: "router", status: "pending" as const },
       ],
     };
 

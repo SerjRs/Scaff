@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { dequeue, getHungJobs, getJob, updateJob } from "./queue.js";
 import { evaluate } from "./evaluator.js";
 import { dispatch } from "./dispatcher.js";
-import type { AgentExecutor } from "./worker.js";
+import { routerEvents, type AgentExecutor } from "./worker.js";
 import type { RouterConfig, RouterJob } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -95,6 +95,7 @@ export function startRouterLoop(
             status: "failed",
             error: errorMessage,
           });
+          routerEvents.emit("job:failed", { jobId: retryJob.id, error: errorMessage });
         }
         return; // Process one job per tick
       }
@@ -133,6 +134,7 @@ export function startRouterLoop(
           status: "failed",
           error: errorMessage,
         });
+        routerEvents.emit("job:failed", { jobId: job.id, error: errorMessage });
       }
     } catch {
       // Top-level safety net — never let the loop crash

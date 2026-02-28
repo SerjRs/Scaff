@@ -209,6 +209,7 @@ export function initGatewayRouter(config: RouterConfig): void {
   const onDelivered: OnDeliveredCallback = (jobId, job) => {
     const issuer = job.issuer;
     if (!issuer) return;
+    console.log(`[router/notifier] onDelivered: jobId=${jobId} issuer="${issuer}" cortexKey="${cortexSessionKey}" match=${issuer === cortexSessionKey}`);
     if (issuer === cortexSessionKey) return; // Cortex handles its own results via the bus
 
     const content = job.status === "completed"

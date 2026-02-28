@@ -15,6 +15,7 @@ import type {
   CortexEnvelope,
   CortexOutput,
   PendingOperation,
+  PendingOpStatus,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -58,12 +59,24 @@ export function initSessionTables(db: DatabaseSync): void {
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS cortex_pending_ops (
-      id              TEXT PRIMARY KEY,
-      type            TEXT NOT NULL,
-      description     TEXT NOT NULL,
-      dispatched_at   TEXT NOT NULL,
-      expected_channel TEXT NOT NULL
+      id               TEXT PRIMARY KEY,
+      type             TEXT NOT NULL,
+      description      TEXT NOT NULL,
+      dispatched_at    TEXT NOT NULL,
+      expected_channel TEXT NOT NULL,
+      status           TEXT NOT NULL DEFAULT 'pending',
+      completed_at     TEXT,
+      result           TEXT,
+      gardened_at      TEXT
     )
+  `);
+
+  // Migration MUST run before index creation — existing tables may lack the status column
+  _migratePendingOps(db);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pending_ops_status
+    ON cortex_pending_ops(status)
   `);
 }
 
@@ -148,7 +161,7 @@ export function getSessionHistory(
     SELECT id, envelope_id, role, channel, sender_id, content, timestamp, metadata
     FROM cortex_session
   `;
-  const params: unknown[] = [];
+  const params: import("node:sqlite").SQLInputValue[] = [];
 
   if (opts?.channel) {
     sql += ` WHERE channel = ?`;
@@ -192,7 +205,7 @@ export function updateChannelState(
 
   if (existing) {
     const updates: string[] = [];
-    const values: unknown[] = [];
+    const values: import("node:sqlite").SQLInputValue[] = [];
 
     if (state.lastMessageAt !== undefined) {
       updates.push("last_message_at = ?");
@@ -249,25 +262,152 @@ export function getChannelStates(db: DatabaseSync): ChannelState[] {
 /** Add a pending operation */
 export function addPendingOp(db: DatabaseSync, op: PendingOperation): void {
   db.prepare(`
-    INSERT OR REPLACE INTO cortex_pending_ops (id, type, description, dispatched_at, expected_channel)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(op.id, op.type, op.description, op.dispatchedAt, op.expectedChannel);
+    INSERT OR REPLACE INTO cortex_pending_ops (id, type, description, dispatched_at, expected_channel, status)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(op.id, op.type, op.description, op.dispatchedAt, op.expectedChannel, op.status ?? "pending");
 }
 
-/** Remove a pending operation (completed or cancelled) */
+/**
+ * Remove a pending operation (legacy — prefer completePendingOp).
+ * @deprecated Use completePendingOp for the lifecycle-based approach.
+ */
 export function removePendingOp(db: DatabaseSync, id: string): void {
   db.prepare(`DELETE FROM cortex_pending_ops WHERE id = ?`).run(id);
 }
 
-/** Get all pending operations */
-export function getPendingOps(db: DatabaseSync): PendingOperation[] {
-  const rows = db.prepare(`SELECT * FROM cortex_pending_ops ORDER BY dispatched_at ASC`).all() as Record<string, unknown>[];
+/** Mark a pending op as completed and attach the result */
+export function completePendingOp(db: DatabaseSync, id: string, result: string): void {
+  db.prepare(`
+    UPDATE cortex_pending_ops
+    SET status = 'completed', completed_at = ?, result = ?
+    WHERE id = ?
+  `).run(new Date().toISOString(), result, id);
+}
 
-  return rows.map((row) => ({
+/** Mark a pending op as failed. Stays visible in the System Floor until acknowledged. */
+export function failPendingOp(db: DatabaseSync, id: string, error: string): void {
+  db.prepare(`
+    UPDATE cortex_pending_ops
+    SET status = 'failed', completed_at = ?, result = ?
+    WHERE id = ? AND status = 'pending'
+  `).run(new Date().toISOString(), `Error: ${error}`, id);
+}
+
+/** Get all completed ops (for Op Harvester) */
+export function getCompletedOps(db: DatabaseSync): PendingOperation[] {
+  const rows = db.prepare(
+    `SELECT * FROM cortex_pending_ops WHERE status = 'completed' ORDER BY completed_at ASC`,
+  ).all() as Record<string, unknown>[];
+  return rows.map(rowToPendingOp);
+}
+
+/** Mark ops as gardened (facts extracted) */
+export function markOpsGardened(db: DatabaseSync, ids: string[]): void {
+  const now = new Date().toISOString();
+  const stmt = db.prepare(`
+    UPDATE cortex_pending_ops
+    SET status = 'gardened', gardened_at = ?
+    WHERE id = ?
+  `);
+  for (const id of ids) {
+    stmt.run(now, id);
+  }
+}
+
+/** Archive old gardened ops (zero token cost after this) */
+export function archiveOldGardenedOps(db: DatabaseSync, olderThanDays = 7): number {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - olderThanDays);
+  const result = db.prepare(`
+    UPDATE cortex_pending_ops
+    SET status = 'archived'
+    WHERE status = 'gardened' AND gardened_at < ?
+  `).run(cutoff.toISOString());
+  return Number(result.changes);
+}
+
+/**
+ * Get active pending operations for System Floor injection.
+ *
+ * Returns:
+ * - All `pending` ops (still waiting for a result)
+ * - `completed` ops that have NOT been acknowledged (fresh results — inbox "unread")
+ * - `failed` ops that have NOT been acknowledged (the LLM must see failures to inform the user)
+ *
+ * Acknowledged completed/failed ops drop from the System Floor. This is the structural
+ * mechanism that lets any issuer distinguish new results from old ones (§6.4).
+ */
+export function getPendingOps(db: DatabaseSync): PendingOperation[] {
+  const rows = db.prepare(
+    `SELECT * FROM cortex_pending_ops
+     WHERE (status = 'pending')
+        OR (status = 'completed' AND acknowledged_at IS NULL)
+        OR (status = 'failed' AND acknowledged_at IS NULL)
+     ORDER BY dispatched_at ASC`,
+  ).all() as Record<string, unknown>[];
+  return rows.map(rowToPendingOp);
+}
+
+/**
+ * Mark all fresh completed/failed ops as acknowledged.
+ *
+ * Called by the issuer after processing a turn — signals that the results
+ * have been "read" and should no longer appear in the System Floor.
+ * This is the universal read/unread inbox pattern (§6.4).
+ *
+ * @returns Number of ops acknowledged
+ */
+export function acknowledgeCompletedOps(db: DatabaseSync): number {
+  const result = db.prepare(`
+    UPDATE cortex_pending_ops
+    SET acknowledged_at = ?
+    WHERE (status = 'completed' OR status = 'failed') AND acknowledged_at IS NULL
+  `).run(new Date().toISOString());
+  return Number(result.changes);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function rowToPendingOp(row: Record<string, unknown>): PendingOperation {
+  return {
     id: row.id as string,
     type: row.type as PendingOperation["type"],
     description: row.description as string,
     dispatchedAt: row.dispatched_at as string,
     expectedChannel: row.expected_channel as ChannelId,
-  }));
+    status: (row.status as PendingOpStatus) ?? "pending",
+    completedAt: (row.completed_at as string) ?? undefined,
+    result: (row.result as string) ?? undefined,
+    gardenedAt: (row.gardened_at as string) ?? undefined,
+    acknowledgedAt: (row.acknowledged_at as string) ?? undefined,
+  };
+}
+
+/** Migration: add lifecycle columns to existing cortex_pending_ops tables */
+function _migratePendingOps(db: DatabaseSync): void {
+  try {
+    // Check if status column exists by querying table info
+    const columns = db.prepare(`PRAGMA table_info(cortex_pending_ops)`).all() as { name: string }[];
+    const colNames = new Set(columns.map((c) => c.name));
+
+    if (!colNames.has("status")) {
+      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'`);
+    }
+    if (!colNames.has("completed_at")) {
+      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN completed_at TEXT`);
+    }
+    if (!colNames.has("result")) {
+      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN result TEXT`);
+    }
+    if (!colNames.has("gardened_at")) {
+      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN gardened_at TEXT`);
+    }
+    if (!colNames.has("acknowledged_at")) {
+      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN acknowledged_at TEXT`);
+    }
+  } catch {
+    // Table doesn't exist yet or migration already done — no-op
+  }
 }

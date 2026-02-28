@@ -13,6 +13,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import type { HotFact } from "./hippocampus.js";
 import { getChannelStates, getSessionHistory, getPendingOps, type SessionMessage } from "./session.js";
 import type { ChannelId, CortexEnvelope, PendingOperation } from "./types.js";
 
@@ -26,6 +27,13 @@ export interface ContextLayer {
   content: string;
 }
 
+/** Tool result entry for sync tool round-trips */
+export interface ToolResultEntry {
+  toolCallId: string;
+  toolName: string;
+  content: string;
+}
+
 export interface AssembledContext {
   layers: ContextLayer[];
   totalTokens: number;
@@ -34,6 +42,13 @@ export interface AssembledContext {
   foregroundMessages: SessionMessage[];
   backgroundSummaries: Map<ChannelId, string>;
   pendingOps: PendingOperation[];
+  /** Whether Hippocampus memory subsystem is active */
+  hippocampusEnabled?: boolean;
+  /** For sync tool round-trips: previous LLM response + tool results */
+  toolRoundTrip?: {
+    previousContent: unknown[];
+    toolResults: ToolResultEntry[];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -60,10 +75,11 @@ const SYSTEM_FLOOR_FILES = [
   "MEMORY.md",
 ];
 
-/** Load system floor: identity + memory + workspace context + pending ops */
+/** Load system floor: identity + memory + workspace context + pending ops + hot facts */
 export async function loadSystemFloor(
   workspaceDir: string,
   pendingOps?: PendingOperation[],
+  hotFacts?: HotFact[],
 ): Promise<ContextLayer> {
   const sections: string[] = [];
 
@@ -83,11 +99,31 @@ export async function loadSystemFloor(
   }
 
   // Add pending operations state
+  // Only unacknowledged ops reach here (getPendingOps filters acknowledged ones out).
+  // Completed/failed ops are always fresh — mark them clearly so the LLM acts on them.
   if (pendingOps && pendingOps.length > 0) {
     const opsText = pendingOps
-      .map((op) => `- [${op.type}] ${op.description} (dispatched: ${op.dispatchedAt})`)
+      .map((op) => {
+        if (op.status === "completed" && op.result) {
+          const truncatedResult = op.result.length > 200 ? op.result.slice(0, 200) + "..." : op.result;
+          return `- [NEW RESULT] [${op.type}] ${op.description} — Result: ${truncatedResult}`;
+        }
+        if (op.status === "failed") {
+          const errorDetail = op.result ?? "Unknown error";
+          return `- [FAILED] [${op.type}] ${op.description} — ${errorDetail}. Inform the user that this task failed.`;
+        }
+        return `- [PENDING] [${op.type}] ${op.description} (dispatched: ${op.dispatchedAt}) — awaiting result`;
+      })
       .join("\n");
     sections.push(`## Active Operations\n${opsText}`);
+  }
+
+  // Add hot memory facts (Hippocampus Layer 1)
+  if (hotFacts && hotFacts.length > 0) {
+    const factsText = hotFacts
+      .map((f) => `- ${f.factText}`)
+      .join("\n");
+    sections.push(`## Known Facts\n${factsText}`);
   }
 
   const content = sections.join("\n\n---\n\n");
@@ -102,14 +138,28 @@ export async function loadSystemFloor(
 // Foreground
 // ---------------------------------------------------------------------------
 
+/** Soft cap defaults when Hippocampus is enabled */
+export const FOREGROUND_SOFT_CAP_MESSAGES = 20;
+export const FOREGROUND_SOFT_CAP_TOKENS = 4000;
+
 /** Build foreground context from the trigger channel's session history */
 export function buildForeground(
   db: DatabaseSync,
   channel: ChannelId,
   budget: number,
+  opts?: { softCap?: boolean },
 ): { layer: ContextLayer; messages: SessionMessage[] } {
   // Get all messages from this channel, newest first for budget trimming
   const allMessages = getSessionHistory(db, { channel });
+
+  // When hippocampus soft cap is active, use the tighter of:
+  //   - FOREGROUND_SOFT_CAP_MESSAGES messages
+  //   - FOREGROUND_SOFT_CAP_TOKENS tokens
+  //   - the overall token budget
+  const effectiveBudget = opts?.softCap
+    ? Math.min(budget, FOREGROUND_SOFT_CAP_TOKENS)
+    : budget;
+  const maxMessages = opts?.softCap ? FOREGROUND_SOFT_CAP_MESSAGES : Infinity;
 
   // Build content from oldest to newest, respecting budget
   const lines: string[] = [];
@@ -118,10 +168,11 @@ export function buildForeground(
   // Start from the end (most recent) and work backward to find how many fit
   const messagesToInclude: typeof allMessages = [];
   for (let i = allMessages.length - 1; i >= 0; i--) {
+    if (messagesToInclude.length >= maxMessages) break;
     const msg = allMessages[i];
     const line = formatSessionMessage(msg);
     const lineTokens = estimateTokens(line);
-    if (totalTokens + lineTokens > budget) break;
+    if (totalTokens + lineTokens > effectiveBudget) break;
     totalTokens += lineTokens;
     messagesToInclude.unshift(msg);
   }
@@ -145,17 +196,29 @@ export function buildForeground(
 // Background
 // ---------------------------------------------------------------------------
 
+/** Max idle hours before a background channel is excluded (Hippocampus mode) */
+export const BACKGROUND_MAX_IDLE_HOURS = 24;
+
 /** Compress other channels into one-line summaries */
 export function buildBackground(
   db: DatabaseSync,
   excludeChannel: ChannelId,
+  opts?: { idleCutoff?: boolean },
 ): ContextLayer {
   const states = getChannelStates(db);
   const lines: string[] = [];
+  const now = Date.now();
 
   for (const state of states) {
     if (state.channel === excludeChannel) continue;
     if (state.layer === "archived") continue;
+
+    // When hippocampus idle cutoff is active, exclude channels idle >24h
+    if (opts?.idleCutoff) {
+      const lastMsg = new Date(state.lastMessageAt).getTime();
+      const idleMs = now - lastMsg;
+      if (idleMs > BACKGROUND_MAX_IDLE_HOURS * 60 * 60 * 1000) continue;
+    }
 
     const summary = state.summary ?? `${state.unreadCount} unread messages`;
     lines.push(`[${state.channel}] ${summary} (last: ${state.lastMessageAt})`);
@@ -182,21 +245,36 @@ export async function assembleContext(params: {
   triggerEnvelope: CortexEnvelope;
   workspaceDir: string;
   maxTokens: number;
+  hippocampusEnabled?: boolean;
 }): Promise<AssembledContext> {
-  const { db, triggerEnvelope, workspaceDir, maxTokens } = params;
+  const { db, triggerEnvelope, workspaceDir, maxTokens, hippocampusEnabled } = params;
 
   // Get pending ops for system floor
   const pendingOps = getPendingOps(db);
 
+  // Load hot facts when hippocampus is enabled
+  let hotFacts: HotFact[] | undefined;
+  if (hippocampusEnabled) {
+    const { getTopHotFacts } = await import("./hippocampus.js");
+    hotFacts = getTopHotFacts(db, 50);
+  }
+
   // 1. System floor — always loaded first
-  const systemFloor = await loadSystemFloor(workspaceDir, pendingOps);
+  const systemFloor = await loadSystemFloor(workspaceDir, pendingOps, hotFacts);
 
   // 2. Background summaries — small fixed cost
-  const background = buildBackground(db, triggerEnvelope.channel);
+  const background = buildBackground(db, triggerEnvelope.channel, {
+    idleCutoff: hippocampusEnabled === true,
+  });
 
   // 3. Foreground — gets remaining budget
   const remainingBudget = Math.max(0, maxTokens - systemFloor.tokens - background.tokens);
-  const { layer: foreground, messages: foregroundMessages } = buildForeground(db, triggerEnvelope.channel, remainingBudget);
+  const { layer: foreground, messages: foregroundMessages } = buildForeground(
+    db,
+    triggerEnvelope.channel,
+    remainingBudget,
+    { softCap: hippocampusEnabled === true },
+  );
 
   // 4. Archived — not in context (zero cost)
   const archived: ContextLayer = { name: "archived", tokens: 0, content: "" };
@@ -220,6 +298,7 @@ export async function assembleContext(params: {
     foregroundMessages,
     backgroundSummaries,
     pendingOps,
+    hippocampusEnabled: hippocampusEnabled === true,
   };
 }
 

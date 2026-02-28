@@ -31,6 +31,7 @@ vi.mock("./dispatcher.js", () => ({
 // ---------------------------------------------------------------------------
 
 import { startRouterLoop } from "./loop.js";
+import { routerEvents } from "./worker.js";
 import {
   initRouterDb,
   enqueue,
@@ -87,6 +88,7 @@ beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-loop-test-"));
   vi.clearAllMocks();
   vi.useFakeTimers();
+  routerEvents.removeAllListeners();
 
   // Default: evaluator returns weight 5 (sonnet)
   mockEvaluate.mockResolvedValue({ weight: 5, reasoning: "moderate complexity" });
@@ -520,6 +522,136 @@ describe("startRouterLoop", () => {
     const job = getJob(db, "retry-fail");
     expect(job!.status).toBe("failed");
     expect(job!.error).toBe("retry dispatch failed");
+
+    handle.stop();
+    db.close();
+  });
+
+  // -----------------------------------------------------------------------
+  // 13. job:failed event emitted on dispatch error
+  // -----------------------------------------------------------------------
+
+  it("emits job:failed event when dispatch throws", async () => {
+    const db = freshDb();
+    mockDispatch.mockImplementation(() => {
+      throw new Error("dispatch exploded");
+    });
+
+    const jobId = enqueue(
+      db,
+      "agent_run",
+      JSON.stringify({ message: "hello" }),
+      "session:test",
+    );
+
+    const failedEvents: { jobId: string; error: string }[] = [];
+    routerEvents.on("job:failed", (evt: { jobId: string; error: string }) => {
+      failedEvents.push(evt);
+    });
+
+    const handle = startRouterLoop(db, TEST_CONFIG);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0].jobId).toBe(jobId);
+    expect(failedEvents[0].error).toBe("dispatch exploded");
+
+    handle.stop();
+    db.close();
+  });
+
+  // -----------------------------------------------------------------------
+  // 14. job:failed event emitted on evaluator rejection
+  // -----------------------------------------------------------------------
+
+  it("emits job:failed event when evaluator throws", async () => {
+    const db = freshDb();
+    mockEvaluate.mockRejectedValue(new Error("evaluator crashed"));
+
+    const jobId = enqueue(
+      db,
+      "agent_run",
+      JSON.stringify({ message: "test" }),
+      "session:test",
+    );
+
+    const failedEvents: { jobId: string; error: string }[] = [];
+    routerEvents.on("job:failed", (evt: { jobId: string; error: string }) => {
+      failedEvents.push(evt);
+    });
+
+    const handle = startRouterLoop(db, TEST_CONFIG);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0].jobId).toBe(jobId);
+    expect(failedEvents[0].error).toBe("evaluator crashed");
+
+    handle.stop();
+    db.close();
+  });
+
+  // -----------------------------------------------------------------------
+  // 15. job:failed event emitted on retry dispatch error
+  // -----------------------------------------------------------------------
+
+  it("emits job:failed event when retry dispatch throws", async () => {
+    const db = freshDb();
+    mockDispatch.mockImplementation(() => {
+      throw new Error("retry boom");
+    });
+
+    db.prepare(
+      `INSERT INTO jobs (id, type, status, weight, tier, payload, issuer, created_at, updated_at, retry_count)
+       VALUES ('retry-emit', 'agent_run', 'pending', 5, 'sonnet', '{"message":"fail"}', 'session:x',
+               datetime('now', '-60 seconds'),
+               datetime('now', '-60 seconds'), 1)`,
+    ).run();
+
+    const failedEvents: { jobId: string; error: string }[] = [];
+    routerEvents.on("job:failed", (evt: { jobId: string; error: string }) => {
+      failedEvents.push(evt);
+    });
+
+    const handle = startRouterLoop(db, TEST_CONFIG);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0].jobId).toBe("retry-emit");
+    expect(failedEvents[0].error).toBe("retry boom");
+
+    handle.stop();
+    db.close();
+  });
+
+  // -----------------------------------------------------------------------
+  // 16. No job:failed event on successful dispatch
+  // -----------------------------------------------------------------------
+
+  it("does not emit job:failed on successful dispatch", async () => {
+    const db = freshDb();
+
+    // Explicitly reset mockDispatch to a no-op (clears any throwing impl from prior tests)
+    mockDispatch.mockReset();
+    mockDispatch.mockImplementation(() => {});
+
+    enqueue(
+      db,
+      "agent_run",
+      JSON.stringify({ message: "success" }),
+      "session:test",
+    );
+
+    const failedEvents: unknown[] = [];
+    routerEvents.on("job:failed", (evt: unknown) => {
+      failedEvents.push(evt);
+    });
+
+    const handle = startRouterLoop(db, TEST_CONFIG);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(failedEvents).toHaveLength(0);
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
 
     handle.stop();
     db.close();

@@ -15,6 +15,12 @@ import {
   addPendingOp,
   removePendingOp,
   getPendingOps,
+  completePendingOp,
+  failPendingOp,
+  getCompletedOps,
+  markOpsGardened,
+  archiveOldGardenedOps,
+  acknowledgeCompletedOps,
 } from "../session.js";
 import { createEnvelope, type CortexOutput, type PendingOperation } from "../types.js";
 
@@ -234,6 +240,7 @@ describe("addPendingOp / removePendingOp / getPendingOps", () => {
     description: "Analyze code complexity",
     dispatchedAt: "2026-02-26T15:00:00Z",
     expectedChannel: "router",
+    status: "pending",
   };
 
   const op2: PendingOperation = {
@@ -242,6 +249,7 @@ describe("addPendingOp / removePendingOp / getPendingOps", () => {
     description: "Research weather API",
     dispatchedAt: "2026-02-26T15:01:00Z",
     expectedChannel: "subagent",
+    status: "pending",
   };
 
   it("adds and retrieves pending operations", () => {
@@ -275,6 +283,103 @@ describe("addPendingOp / removePendingOp / getPendingOps", () => {
     const ops = getPendingOps(db);
     expect(ops).toHaveLength(1);
     expect(ops[0].description).toBe("Updated description");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// failPendingOp
+// ---------------------------------------------------------------------------
+
+describe("failPendingOp", () => {
+  const op1: PendingOperation = {
+    id: "job-fail-1",
+    type: "router_job",
+    description: "Failing task",
+    dispatchedAt: "2026-02-26T15:00:00Z",
+    expectedChannel: "router",
+    status: "pending",
+  };
+
+  it("marks a pending op as failed but keeps it visible in getPendingOps", () => {
+    addPendingOp(db, op1);
+    expect(getPendingOps(db)).toHaveLength(1);
+
+    failPendingOp(db, "job-fail-1", "dispatch exploded");
+
+    // Failed ops stay visible (unacknowledged) so the LLM can inform the user
+    const ops = getPendingOps(db);
+    expect(ops).toHaveLength(1);
+    expect(ops[0].status).toBe("failed");
+    expect(ops[0].result).toBe("Error: dispatch exploded");
+  });
+
+  it("sets status to failed with error result, no acknowledged_at", () => {
+    addPendingOp(db, op1);
+    failPendingOp(db, "job-fail-1", "config missing tiers");
+
+    const row = db.prepare(
+      `SELECT status, result, acknowledged_at, completed_at FROM cortex_pending_ops WHERE id = ?`,
+    ).get("job-fail-1") as { status: string; result: string; acknowledged_at: string | null; completed_at: string };
+
+    expect(row.status).toBe("failed");
+    expect(row.result).toBe("Error: config missing tiers");
+    expect(row.acknowledged_at).toBeNull(); // stays visible until LLM acknowledges
+    expect(row.completed_at).toBeTruthy();
+  });
+
+  it("failed ops drop from getPendingOps after acknowledgeCompletedOps", () => {
+    addPendingOp(db, op1);
+    failPendingOp(db, "job-fail-1", "boom");
+
+    // Visible before acknowledgment
+    expect(getPendingOps(db)).toHaveLength(1);
+
+    // Acknowledge — same as completed ops, the LLM has now "read" the failure
+    acknowledgeCompletedOps(db);
+
+    // Gone after acknowledgment
+    expect(getPendingOps(db)).toHaveLength(0);
+  });
+
+  it("only affects pending ops (does not overwrite completed ops)", () => {
+    addPendingOp(db, op1);
+    completePendingOp(db, "job-fail-1", "Real result");
+
+    // Try to fail an already-completed op — should be a no-op (WHERE status = 'pending')
+    failPendingOp(db, "job-fail-1", "should not overwrite");
+
+    const row = db.prepare(
+      `SELECT status, result FROM cortex_pending_ops WHERE id = ?`,
+    ).get("job-fail-1") as { status: string; result: string };
+
+    expect(row.status).toBe("completed");
+    expect(row.result).toBe("Real result");
+  });
+
+  it("is a no-op for non-existent ops", () => {
+    // Should not throw
+    failPendingOp(db, "non-existent", "some error");
+    expect(getPendingOps(db)).toHaveLength(0);
+  });
+
+  it("fails one op — both failed and pending ops stay visible", () => {
+    addPendingOp(db, op1);
+    addPendingOp(db, {
+      id: "job-ok",
+      type: "router_job",
+      description: "OK task",
+      dispatchedAt: "2026-02-26T15:01:00Z",
+      expectedChannel: "router",
+      status: "pending",
+    });
+
+    failPendingOp(db, "job-fail-1", "boom");
+
+    // Both visible: one failed, one still pending
+    const ops = getPendingOps(db);
+    expect(ops).toHaveLength(2);
+    expect(ops.find((o) => o.id === "job-fail-1")!.status).toBe("failed");
+    expect(ops.find((o) => o.id === "job-ok")!.status).toBe("pending");
   });
 });
 

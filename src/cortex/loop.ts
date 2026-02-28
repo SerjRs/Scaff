@@ -16,10 +16,11 @@ import {
   checkpoint,
 } from "./bus.js";
 import type { AdapterRegistry } from "./channel-adapter.js";
-import { assembleContext, type AssembledContext } from "./context.js";
+import { assembleContext, type AssembledContext, type ToolResultEntry } from "./context.js";
 import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
-import { appendToSession, appendResponse, updateChannelState, getChannelStates, getPendingOps, addPendingOp } from "./session.js";
+import { appendToSession, appendResponse, updateChannelState, getChannelStates, getPendingOps, addPendingOp, acknowledgeCompletedOps } from "./session.js";
+import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, type EmbedFunction } from "./tools.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +40,10 @@ export interface CortexLoopOptions {
   workspaceDir: string;
   maxContextTokens: number;
   pollIntervalMs: number;
+  /** Enable Hippocampus memory subsystem (hot memory injection, soft caps, idle cutoff) */
+  hippocampusEnabled?: boolean;
+  /** Embedding function for memory_query tool (default: Ollama nomic-embed-text) */
+  embedFn?: EmbedFunction;
   callLLM: (context: AssembledContext) => Promise<CortexLLMResult>;
   onError: (error: Error) => void;
   /** Called after every message completes (including silent/NO_REPLY) */
@@ -58,7 +63,7 @@ export interface CortexLoop {
 // ---------------------------------------------------------------------------
 
 export function startLoop(opts: CortexLoopOptions): CortexLoop {
-  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, callLLM, onError, onMessageComplete, onSpawn } = opts;
+  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, hippocampusEnabled, embedFn, callLLM, onError, onMessageComplete, onSpawn } = opts;
 
   let running = true;
   let processed = 0;
@@ -92,18 +97,55 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
 
       try {
         // 4. Assemble context
-        const context = await assembleContext({
+        let context = await assembleContext({
           db,
           triggerEnvelope: msg.envelope,
           workspaceDir,
           maxTokens: maxContextTokens,
+          hippocampusEnabled,
         });
 
-        // 5. Call LLM
-        const llmResult = await callLLM(context);
+        // 5. Call LLM (with sync tool round-trip loop)
+        const MAX_TOOL_ROUNDS = 5;
+        let llmResult = await callLLM(context);
+
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          // Check for sync tool calls
+          const syncCalls = llmResult.toolCalls.filter((tc) => SYNC_TOOL_NAMES.has(tc.name));
+          if (syncCalls.length === 0) break;
+
+          // Execute sync tools and collect results
+          const toolResults: ToolResultEntry[] = [];
+          for (const tc of syncCalls) {
+            let result: string;
+            try {
+              if (tc.name === "fetch_chat_history") {
+                result = executeFetchChatHistory(db, tc.arguments as any);
+              } else if (tc.name === "memory_query") {
+                result = await executeMemoryQuery(db, tc.arguments as any, embedFn);
+              } else {
+                result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
+              }
+            } catch (err) {
+              result = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+            }
+            toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
+          }
+
+          // Re-call LLM with tool results appended
+          context = {
+            ...context,
+            toolRoundTrip: {
+              previousContent: llmResult._rawContent ?? [],
+              toolResults,
+            },
+          };
+          llmResult = await callLLM(context);
+        }
+
         const llmResponse = llmResult.text;
 
-        // 5b. Handle tool calls (sessions_spawn → Router delegation)
+        // 5b. Handle async tool calls (sessions_spawn → Router delegation)
         for (const tc of llmResult.toolCalls) {
           if (tc.name === "sessions_spawn" && onSpawn) {
             const args = tc.arguments as { task?: string; priority?: string };
@@ -122,6 +164,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 description: task.slice(0, 200),
                 dispatchedAt: new Date().toISOString(),
                 expectedChannel: "router",
+                status: "pending",
               });
             }
           }
@@ -148,6 +191,10 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
 
         // 8. Record response in session
         appendResponse(db, output, msg.envelope.id);
+
+        // 8b. Acknowledge fresh results — marks completed ops as "read" so they
+        //     drop from the System Floor next turn (inbox read/unread pattern §6.4)
+        acknowledgeCompletedOps(db);
 
         // 9. Mark completed
         markCompleted(db, msg.envelope.id);

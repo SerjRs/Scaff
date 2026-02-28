@@ -32,7 +32,7 @@ const DEFAULT_DB_PATH = "~/.openclaw/cortex/bus.sqlite";
 // ---------------------------------------------------------------------------
 
 /** Initialize the Cortex bus database (creates file + tables if needed) */
-export function initBus(dbPath?: string): DatabaseSync {
+export function initBus(dbPath?: string, opts?: { allowExtensionLoading?: boolean }): DatabaseSync {
   const resolved = resolveUserPath(dbPath ?? DEFAULT_DB_PATH);
   const dir = path.dirname(resolved);
   if (!fs.existsSync(dir)) {
@@ -40,7 +40,9 @@ export function initBus(dbPath?: string): DatabaseSync {
   }
 
   const { DatabaseSync } = requireNodeSqlite();
-  const db = new DatabaseSync(resolved);
+  const db = new DatabaseSync(resolved, {
+    allowExtension: opts?.allowExtensionLoading === true,
+  } as any);
 
   db.exec("PRAGMA journal_mode = WAL");
 

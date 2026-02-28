@@ -104,6 +104,7 @@ describe("E2E: Sub-agent & Router Awareness", () => {
       description: "Analyze code",
       dispatchedAt: new Date().toISOString(),
       expectedChannel: "router",
+      status: "pending",
     });
     addPendingOp(instance.db, {
       id: "sa-1",
@@ -111,6 +112,7 @@ describe("E2E: Sub-agent & Router Awareness", () => {
       description: "Check weather",
       dispatchedAt: new Date().toISOString(),
       expectedChannel: "subagent",
+      status: "pending",
     });
 
     const ops = getPendingOps(instance.db);

@@ -91,7 +91,7 @@ describe("loadSystemFloor", () => {
   it("includes pending operations state", async () => {
     seedWorkspace();
     const ops = [
-      { id: "job-1", type: "router_job" as const, description: "Analyze code", dispatchedAt: "2026-02-26T15:00:00Z", expectedChannel: "router" },
+      { id: "job-1", type: "router_job" as const, description: "Analyze code", dispatchedAt: "2026-02-26T15:00:00Z", expectedChannel: "router", status: "pending" as const },
     ];
     const layer = await loadSystemFloor(workspaceDir, ops);
 
@@ -270,6 +270,7 @@ describe("assembleContext", () => {
       description: "Analyze complexity",
       dispatchedAt: "2026-02-26T15:00:00Z",
       expectedChannel: "router",
+      status: "pending",
     });
     const env = makeEnvelope("webchat", "test");
 
