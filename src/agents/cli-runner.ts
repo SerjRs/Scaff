@@ -1,4 +1,5 @@
 import type { ImageContent } from "@mariozechner/pi-ai";
+import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 import { resolveHeartbeatPrompt } from "../auto-reply/heartbeat.js";
 import type { ThinkLevel } from "../auto-reply/thinking.js";
 import type { OpenClawConfig } from "../config/config.js";
@@ -322,6 +323,15 @@ export async function runCliAgent(params: {
 
     const text = output.text?.trim();
     const payloads = text ? [{ text }] : undefined;
+
+    // Token monitor: record CLI runner usage.
+    if (output.usage) {
+      recordRunResultUsage({
+        usage: output.usage,
+        agentId: params.sessionKey ?? "cli",
+        model: modelId,
+      });
+    }
 
     return {
       payloads,

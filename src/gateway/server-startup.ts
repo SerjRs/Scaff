@@ -28,6 +28,7 @@ import {
   shouldWakeFromRestartSentinel,
 } from "./server-restart-sentinel.js";
 import { startGatewayMemoryBackend } from "./server-startup-memory.js";
+import { launchTokenMonitorWindow } from "../token-monitor/launcher.js";
 
 const SESSION_LOCK_STALE_MS = 30 * 60 * 1000;
 
@@ -188,6 +189,9 @@ export async function startGatewaySidecars(params: {
   void startGatewayMemoryBackend({ cfg: params.cfg, log: params.log }).catch((err) => {
     params.log.warn(`qmd memory startup initialization failed: ${String(err)}`);
   });
+
+  // Launch token monitor in a separate terminal window.
+  launchTokenMonitorWindow(params.log);
 
   if (shouldWakeFromRestartSentinel()) {
     setTimeout(() => {

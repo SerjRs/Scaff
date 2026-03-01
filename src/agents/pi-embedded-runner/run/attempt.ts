@@ -31,6 +31,7 @@ import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
 import { resolveOpenClawAgentDir } from "../../agent-paths.js";
 import { resolveSessionAgentIds } from "../../agent-scope.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
+import { createTokenLedgerHook } from "../../../token-monitor/stream-hook.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
 import { createCacheTrace } from "../../cache-trace.js";
 import {
@@ -823,6 +824,12 @@ export async function runEmbeddedAttempt(
         );
       }
 
+      // Token monitor: create hook for recording usage after the agent loop.
+      const tokenLedgerHook = createTokenLedgerHook({
+        agentId: sessionAgentId,
+        modelId: params.modelId,
+      });
+
       try {
         const prior = await sanitizeSessionHistory({
           messages: activeSession.messages,
@@ -1280,6 +1287,7 @@ export async function runEmbeddedAttempt(
               : undefined,
         });
         anthropicPayloadLogger?.recordUsage(messagesSnapshot, promptError);
+        tokenLedgerHook.recordUsage(messagesSnapshot);
 
         // Run agent_end hooks to allow plugins to analyze the conversation
         // This is fire-and-forget, so we don't await

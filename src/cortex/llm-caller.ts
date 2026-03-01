@@ -15,6 +15,7 @@
 
 import type { AssembledContext } from "./context.js";
 import { HIPPOCAMPUS_TOOLS } from "./tools.js";
+import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -320,6 +321,16 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           );
 
           params.onError(new Error(`[cortex-llm] DEBUG result: stopReason=${result.stopReason} errorMsg=${result.errorMessage ?? "none"} contentLen=${result.content?.length ?? 0}`));
+
+          // Token monitor: record Cortex LLM usage
+          const resultUsage = (result as any).usage;
+          if (resultUsage && typeof resultUsage === "object") {
+            recordRunResultUsage({
+              usage: resultUsage,
+              agentId: "cortex",
+              model: params.modelId,
+            });
+          }
 
           // Extract text blocks
           const textContent = result.content

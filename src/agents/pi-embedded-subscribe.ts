@@ -20,6 +20,8 @@ import { filterToolResultMediaUrls } from "./pi-embedded-subscribe.tools.js";
 import type { SubscribeEmbeddedPiSessionParams } from "./pi-embedded-subscribe.types.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
 import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
+import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
+import { resolveAgentIdFromSessionKey } from "../config/sessions.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
 const FINAL_TAG_SCAN_RE = /<\s*(\/?)\s*final\s*>/gi;
@@ -269,6 +271,16 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       usage.total ??
       (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
     usageTotals.total += usageTotal;
+
+    // Token monitor: record every LLM response into the in-memory ledger.
+    // This fires for ALL surfaces (webchat, TUI, channels).
+    const lastMsg = state.lastAssistant as { model?: string; provider?: string } | undefined;
+    const agentId = params.sessionKey ? resolveAgentIdFromSessionKey(params.sessionKey) : "unknown";
+    recordRunResultUsage({
+      usage: usageLike,
+      agentId,
+      model: lastMsg?.model ?? "unknown",
+    });
   };
   const getUsageTotals = () => {
     const hasUsage =
