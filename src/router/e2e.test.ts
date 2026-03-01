@@ -9,6 +9,7 @@
  * crash recovery, and archive queries.
  */
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -108,11 +109,13 @@ interface TestRouter {
     type: "agent_run",
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
   ) => string;
   enqueueAndWait: (
     type: "agent_run",
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
     timeoutMs?: number,
   ) => Promise<RouterJob>;
   stop: () => void;
@@ -139,17 +142,19 @@ function startTestRouter(
     type: "agent_run",
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
   ): string {
-    return dbEnqueue(db, type, JSON.stringify(payload), issuer);
+    return dbEnqueue(db, type, JSON.stringify(payload), issuer, taskId);
   }
 
   async function enqueueAndWait(
     type: "agent_run",
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
     timeoutMs?: number,
   ): Promise<RouterJob> {
-    const jobId = enqueue(type, payload, issuer);
+    const jobId = enqueue(type, payload, issuer, taskId);
     return waitForJob(db, jobId, timeoutMs);
   }
 
@@ -211,6 +216,7 @@ describe("Router E2E pipeline", () => {
       "agent_run",
       { message: "test task" },
       "test-issuer",
+      crypto.randomUUID(),
       10_000,
     );
 
@@ -244,6 +250,7 @@ describe("Router E2E pipeline", () => {
       "agent_run",
       { message: "test task" },
       "test-issuer",
+      crypto.randomUUID(),
     );
     expect(jobId).toBeTruthy();
 
@@ -274,6 +281,7 @@ describe("Router E2E pipeline", () => {
       "agent_run",
       { message: "what is 2+2" },
       "test-issuer",
+      crypto.randomUUID(),
       10_000,
     );
 
@@ -304,6 +312,7 @@ describe("Router E2E pipeline", () => {
       "agent_run",
       { message: "design a distributed system" },
       "test-issuer",
+      crypto.randomUUID(),
       10_000,
     );
 
@@ -336,6 +345,7 @@ describe("Router E2E pipeline", () => {
       "agent_run",
       { message: "test task" },
       "test-issuer",
+      crypto.randomUUID(),
       10_000,
     );
 
@@ -400,6 +410,7 @@ describe("Router E2E pipeline", () => {
       "agent_run",
       { message: "doomed task" },
       "test-issuer",
+      crypto.randomUUID(),
       10_000,
     );
 
@@ -640,6 +651,7 @@ describe("Router E2E pipeline", () => {
         "agent_run",
         JSON.stringify({ message: `archive-task-${i}` }),
         issuer,
+        crypto.randomUUID(),
       );
       const job = await waitForJob(db, jobId, 10_000);
       results.push(job);

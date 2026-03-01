@@ -12,6 +12,7 @@
  * @module
  */
 
+import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
 import type { CallGatewayOptions } from "../gateway/call.js";
@@ -386,7 +387,7 @@ async function logRouterDecision(
   },
 ): Promise<void> {
   try {
-    const jobId = instance.enqueue("agent_run", { message: decision.message }, decision.sessionKey ?? "unknown");
+    const jobId = instance.enqueue("agent_run", { message: decision.message }, decision.sessionKey ?? "unknown", crypto.randomUUID());
     // The Router loop would normally pick this up, but we've already handled it.
     // Mark as completed immediately and let the notifier archive it.
     // Import queue operations to update directly.

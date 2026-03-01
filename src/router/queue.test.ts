@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
@@ -160,9 +161,9 @@ describe("router queue operations", () => {
 
   describe("enqueue", () => {
     it("returns a unique job ID for each enqueue call", () => {
-      const id1 = enqueue(db, "agent_run", '{"msg":"a"}', "session:1");
-      const id2 = enqueue(db, "agent_run", '{"msg":"b"}', "session:1");
-      const id3 = enqueue(db, "agent_run", '{"msg":"c"}', "session:2");
+      const id1 = enqueue(db, "agent_run", '{"msg":"a"}', "session:1", crypto.randomUUID());
+      const id2 = enqueue(db, "agent_run", '{"msg":"b"}', "session:1", crypto.randomUUID());
+      const id3 = enqueue(db, "agent_run", '{"msg":"c"}', "session:2", crypto.randomUUID());
 
       expect(id1).toBeTruthy();
       expect(id2).toBeTruthy();
@@ -173,7 +174,7 @@ describe("router queue operations", () => {
     });
 
     it("inserts jobs with status in_queue", () => {
-      const id = enqueue(db, "agent_run", '{"msg":"hello"}', "session:x");
+      const id = enqueue(db, "agent_run", '{"msg":"hello"}', "session:x", crypto.randomUUID());
       const job = getJob(db, id);
       expect(job).not.toBeNull();
       expect(job!.status).toBe("in_queue");
@@ -183,7 +184,7 @@ describe("router queue operations", () => {
     });
 
     it("sets created_at and updated_at automatically", () => {
-      const id = enqueue(db, "agent_run", "{}", "s");
+      const id = enqueue(db, "agent_run", "{}", "s", crypto.randomUUID());
       const job = getJob(db, id)!;
       expect(job.created_at).toBeTruthy();
       expect(job.updated_at).toBeTruthy();
@@ -225,14 +226,14 @@ describe("router queue operations", () => {
     });
 
     it("sets status to evaluating", () => {
-      enqueue(db, "agent_run", "{}", "s");
+      enqueue(db, "agent_run", "{}", "s", crypto.randomUUID());
       const job = dequeue(db);
       expect(job).not.toBeNull();
       expect(job!.status).toBe("evaluating");
     });
 
     it("does not dequeue non-in_queue jobs", () => {
-      const id = enqueue(db, "agent_run", "{}", "s");
+      const id = enqueue(db, "agent_run", "{}", "s", crypto.randomUUID());
       updateJob(db, id, { status: "in_execution" });
 
       const result = dequeue(db);
@@ -244,7 +245,7 @@ describe("router queue operations", () => {
 
   describe("updateJob", () => {
     it("changes status and sets updated_at", () => {
-      const id = enqueue(db, "agent_run", "{}", "s");
+      const id = enqueue(db, "agent_run", "{}", "s", crypto.randomUUID());
       const before = getJob(db, id)!;
 
       updateJob(db, id, { status: "pending", weight: 5, tier: "sonnet" });
@@ -258,14 +259,14 @@ describe("router queue operations", () => {
     });
 
     it("can set error and result", () => {
-      const id = enqueue(db, "agent_run", "{}", "s");
+      const id = enqueue(db, "agent_run", "{}", "s", crypto.randomUUID());
       updateJob(db, id, { status: "completed", result: '{"answer":42}' });
       const job = getJob(db, id)!;
       expect(job.result).toBe('{"answer":42}');
     });
 
     it("does nothing when fields is empty", () => {
-      const id = enqueue(db, "agent_run", "{}", "s");
+      const id = enqueue(db, "agent_run", "{}", "s", crypto.randomUUID());
       const before = getJob(db, id)!;
       updateJob(db, id, {});
       const after = getJob(db, id)!;
@@ -277,7 +278,7 @@ describe("router queue operations", () => {
 
   describe("getJob", () => {
     it("returns the correct job by ID", () => {
-      const id = enqueue(db, "agent_run", '{"x":1}', "session:abc");
+      const id = enqueue(db, "agent_run", '{"x":1}', "session:abc", crypto.randomUUID());
       const job = getJob(db, id);
       expect(job).not.toBeNull();
       expect(job!.id).toBe(id);
@@ -295,7 +296,7 @@ describe("router queue operations", () => {
 
   describe("archiveJob", () => {
     it("moves job from jobs to jobs_archive", () => {
-      const id = enqueue(db, "agent_run", '{"task":"test"}', "session:a");
+      const id = enqueue(db, "agent_run", '{"task":"test"}', "session:a", crypto.randomUUID());
       updateJob(db, id, { status: "completed", result: '"done"' });
 
       archiveJob(db, id);
@@ -312,7 +313,7 @@ describe("router queue operations", () => {
     });
 
     it("preserves all data and adds archived_at", () => {
-      const id = enqueue(db, "agent_run", '{"data":"preserve"}', "session:b");
+      const id = enqueue(db, "agent_run", '{"data":"preserve"}', "session:b", crypto.randomUUID());
       updateJob(db, id, {
         status: "completed",
         weight: 7,
@@ -451,7 +452,7 @@ describe("router queue operations", () => {
     });
 
     it("returns empty array when no stuck jobs exist", () => {
-      enqueue(db, "agent_run", "{}", "s");
+      enqueue(db, "agent_run", "{}", "s", crypto.randomUUID());
       const stuck = getStuckJobs(db);
       expect(stuck.length).toBe(0); // in_queue is not stuck
     });
@@ -462,15 +463,15 @@ describe("router queue operations", () => {
   describe("queryArchive", () => {
     function seedArchive() {
       // Seed 3 archived jobs with different attributes
-      const id1 = enqueue(db, "agent_run", '{"a":1}', "session:alpha");
+      const id1 = enqueue(db, "agent_run", '{"a":1}', "session:alpha", crypto.randomUUID());
       updateJob(db, id1, { status: "completed", weight: 3, tier: "haiku" });
       archiveJob(db, id1);
 
-      const id2 = enqueue(db, "agent_run", '{"b":2}', "session:beta");
+      const id2 = enqueue(db, "agent_run", '{"b":2}', "session:beta", crypto.randomUUID());
       updateJob(db, id2, { status: "failed", weight: 7, tier: "sonnet" });
       archiveJob(db, id2);
 
-      const id3 = enqueue(db, "agent_run", '{"c":3}', "session:alpha");
+      const id3 = enqueue(db, "agent_run", '{"c":3}', "session:alpha", crypto.randomUUID());
       updateJob(db, id3, { status: "completed", weight: 9, tier: "opus" });
       archiveJob(db, id3);
 

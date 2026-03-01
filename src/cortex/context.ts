@@ -44,6 +44,8 @@ export interface AssembledContext {
   pendingOps: PendingOperation[];
   /** Whether Hippocampus memory subsystem is active */
   hippocampusEnabled?: boolean;
+  /** Whether this is an ops trigger turn — suppress sessions_spawn tool to prevent re-dispatch */
+  isOpsTrigger?: boolean;
   /** For sync tool round-trips: previous LLM response + tool results */
   toolRoundTrip?: {
     previousContent: unknown[];
@@ -98,24 +100,29 @@ export async function loadSystemFloor(
     }
   }
 
-  // Add pending operations state
-  // Only unacknowledged ops reach here (getPendingOps filters acknowledged ones out).
-  // Completed/failed ops are always fresh — mark them clearly so the LLM acts on them.
+  // Add pending operations state (structured format — single-path result delivery §6.4)
+  // Only active ops remain in cortex_pending_ops (completed/failed are copied to
+  // cortex_session and deleted by copyAndDeleteCompletedOps after each turn).
+  // Each op uses a consistent structured format so the LLM tracks tasks from dispatch to completion.
   if (pendingOps && pendingOps.length > 0) {
+    const hasResults = pendingOps.some((op) => op.status === "completed" || op.status === "failed");
+    const preamble = hasResults
+      ? "**ACTION REQUIRED:** One or more tasks below have completed or failed. Read the Result/Error, relay findings to the user on the appropriate channel, and acknowledge.\n\n"
+      : "";
+
     const opsText = pendingOps
       .map((op) => {
         if (op.status === "completed" && op.result) {
-          const truncatedResult = op.result.length > 200 ? op.result.slice(0, 200) + "..." : op.result;
-          return `- [NEW RESULT] [${op.type}] ${op.description} — Result: ${truncatedResult}`;
+          return `- [TASK_ID]=${op.id}, Message='${op.description}', Status=Completed, Channel=${op.replyChannel ?? op.expectedChannel}, Result='${op.result}', CompletedAt=${op.completedAt ?? "unknown"}`;
         }
         if (op.status === "failed") {
           const errorDetail = op.result ?? "Unknown error";
-          return `- [FAILED] [${op.type}] ${op.description} — ${errorDetail}. Inform the user that this task failed.`;
+          return `- [TASK_ID]=${op.id}, Message='${op.description}', Status=Failed, Channel=${op.replyChannel ?? op.expectedChannel}, Error='${errorDetail}', CompletedAt=${op.completedAt ?? "unknown"}`;
         }
-        return `- [PENDING] [${op.type}] ${op.description} (dispatched: ${op.dispatchedAt}) — awaiting result`;
+        return `- [TASK_ID]=${op.id}, Message='${op.description}', Status=Pending, Channel=${op.replyChannel ?? op.expectedChannel}, DispatchedAt=${op.dispatchedAt}`;
       })
       .join("\n");
-    sections.push(`## Active Operations\n${opsText}`);
+    sections.push(`## Active Operations\n${preamble}${opsText}`);
   }
 
   // Add hot memory facts (Hippocampus Layer 1)

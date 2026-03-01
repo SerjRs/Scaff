@@ -199,8 +199,8 @@ export interface ChannelState {
 /** Types of operations Cortex can have in flight */
 export type PendingOpType = "router_job" | "subagent" | "cron_task";
 
-/** Lifecycle status: pending → completed → gardened → archived */
-export type PendingOpStatus = "pending" | "completed" | "gardened" | "archived";
+/** Lifecycle status: pending → completed/failed → [LLM sees it] → copy to cortex_session + DELETE */
+export type PendingOpStatus = "pending" | "completed" | "failed";
 
 /** An operation Cortex dispatched and is awaiting */
 export interface PendingOperation {
@@ -215,10 +215,10 @@ export interface PendingOperation {
   completedAt?: string;
   /** Result content from Router/sub-agent */
   result?: string;
-  /** When the Gardener extracted facts from this op */
-  gardenedAt?: string;
-  /** When the issuer acknowledged seeing this result (read/unread inbox pattern) */
-  acknowledgedAt?: string;
+  /** Channel to route results back to (e.g. "webchat") — stored locally, not sent to Router */
+  replyChannel?: string;
+  /** Priority for the result envelope — stored locally, not sent to Router */
+  resultPriority?: "urgent" | "normal" | "background";
 }
 
 // ---------------------------------------------------------------------------

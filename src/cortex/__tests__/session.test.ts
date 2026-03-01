@@ -17,10 +17,7 @@ import {
   getPendingOps,
   completePendingOp,
   failPendingOp,
-  getCompletedOps,
-  markOpsGardened,
-  archiveOldGardenedOps,
-  acknowledgeCompletedOps,
+  copyAndDeleteCompletedOps,
 } from "../session.js";
 import { createEnvelope, type CortexOutput, type PendingOperation } from "../types.js";
 
@@ -313,32 +310,37 @@ describe("failPendingOp", () => {
     expect(ops[0].result).toBe("Error: dispatch exploded");
   });
 
-  it("sets status to failed with error result, no acknowledged_at", () => {
+  it("sets status to failed with error result", () => {
     addPendingOp(db, op1);
     failPendingOp(db, "job-fail-1", "config missing tiers");
 
     const row = db.prepare(
-      `SELECT status, result, acknowledged_at, completed_at FROM cortex_pending_ops WHERE id = ?`,
-    ).get("job-fail-1") as { status: string; result: string; acknowledged_at: string | null; completed_at: string };
+      `SELECT status, result, completed_at FROM cortex_pending_ops WHERE id = ?`,
+    ).get("job-fail-1") as { status: string; result: string; completed_at: string };
 
     expect(row.status).toBe("failed");
     expect(row.result).toBe("Error: config missing tiers");
-    expect(row.acknowledged_at).toBeNull(); // stays visible until LLM acknowledges
     expect(row.completed_at).toBeTruthy();
   });
 
-  it("failed ops drop from getPendingOps after acknowledgeCompletedOps", () => {
+  it("failed ops drop from getPendingOps after copyAndDeleteCompletedOps", () => {
     addPendingOp(db, op1);
     failPendingOp(db, "job-fail-1", "boom");
 
-    // Visible before acknowledgment
+    // Visible before copy+delete
     expect(getPendingOps(db)).toHaveLength(1);
 
-    // Acknowledge — same as completed ops, the LLM has now "read" the failure
-    acknowledgeCompletedOps(db);
+    // Copy to cortex_session and delete
+    copyAndDeleteCompletedOps(db);
 
-    // Gone after acknowledgment
+    // Gone after copy+delete
     expect(getPendingOps(db)).toHaveLength(0);
+
+    // Present in cortex_session
+    const session = getSessionHistory(db, { channel: "router" });
+    const opResults = session.filter((m) => m.senderId === "cortex:ops");
+    expect(opResults).toHaveLength(1);
+    expect(opResults[0].content).toContain("[TASK_FAILED]");
   });
 
   it("only affects pending ops (does not overwrite completed ops)", () => {

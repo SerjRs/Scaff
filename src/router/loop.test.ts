@@ -6,6 +6,7 @@ import {
   it,
   vi,
 } from "vitest";
+import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { RouterConfig, Tier, TierConfig } from "./types.js";
 import type { AgentExecutor } from "./worker.js";
@@ -118,6 +119,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "What is 2+2?", context: "math" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const handle = startRouterLoop(db, TEST_CONFIG);
@@ -188,6 +190,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "complex task" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const handle = startRouterLoop(db, TEST_CONFIG);
@@ -216,6 +219,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "hello" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const handle = startRouterLoop(db, TEST_CONFIG);
@@ -239,6 +243,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "hello" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const handle = startRouterLoop(db, TEST_CONFIG);
@@ -363,6 +368,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "too late" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     // Advance plenty of time
@@ -483,6 +489,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "just a message" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const handle = startRouterLoop(db, TEST_CONFIG);
@@ -542,6 +549,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "hello" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const failedEvents: { jobId: string; error: string }[] = [];
@@ -573,6 +581,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "test" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const failedEvents: { jobId: string; error: string }[] = [];
@@ -640,6 +649,7 @@ describe("startRouterLoop", () => {
       "agent_run",
       JSON.stringify({ message: "success" }),
       "session:test",
+      crypto.randomUUID(),
     );
 
     const failedEvents: unknown[] = [];

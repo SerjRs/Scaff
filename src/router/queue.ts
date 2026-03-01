@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { requireNodeSqlite } from "../memory/sqlite.js";
@@ -88,8 +87,9 @@ export function enqueue(
   type: JobType,
   payload: string,
   issuer: string,
+  taskId: string,
 ): string {
-  const id = crypto.randomUUID();
+  const id = taskId;
   db.prepare(
     `INSERT INTO jobs (id, type, status, payload, issuer) VALUES (?, ?, 'in_queue', ?, ?)`,
   ).run(id, type, payload, issuer);

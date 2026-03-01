@@ -1,8 +1,8 @@
 /**
  * E2E: Pending Op Lifecycle
  *
- * Tests the full lifecycle: pending → completed → gardened → archived.
- * Verifies System Floor visibility, fact extraction, and archival.
+ * Tests the simplified lifecycle: pending → completed/failed → [LLM sees it] → copy to cortex_session + DELETE.
+ * Verifies System Floor visibility, copy to session, and deletion.
  *
  * @see docs/hipocampus-architecture.md §6
  */
@@ -18,13 +18,10 @@ import {
   getPendingOps,
   completePendingOp,
   failPendingOp,
-  getCompletedOps,
-  markOpsGardened,
-  archiveOldGardenedOps,
-  acknowledgeCompletedOps,
+  copyAndDeleteCompletedOps,
+  getSessionHistory,
 } from "../session.js";
 import { getTopHotFacts } from "../hippocampus.js";
-import { runOpHarvester } from "../gardener.js";
 import type { EmbedFunction } from "../tools.js";
 
 // ---------------------------------------------------------------------------
@@ -69,7 +66,7 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe("pending op lifecycle", () => {
-  it("full lifecycle: pending → completed → gardened → archived", async () => {
+  it("full lifecycle: pending → completed → copy to cortex_session + DELETE", async () => {
     instance = await startCortex({
       agentId: "main",
       workspaceDir,
@@ -105,42 +102,24 @@ describe("pending op lifecycle", () => {
     expect(ops[0].result).toBe("The server runs on port 8080");
     expect(ops[0].completedAt).toBeDefined();
 
-    // 3. Garden — Op Harvester extracts facts
-    const harvestResult = await runOpHarvester({
-      db: instance.db,
-      extractLLM: async () => JSON.stringify(["Server runs on port 8080"]),
-    });
+    // 3. Copy + delete — replaces the old acknowledge+garden+archive flow
+    const copied = copyAndDeleteCompletedOps(instance.db);
+    expect(copied).toBe(1);
 
-    expect(harvestResult.processed).toBe(1);
-    expect(harvestResult.errors).toHaveLength(0);
-
-    // Op is now gardened — no longer in active ops
+    // Op is deleted from cortex_pending_ops
     ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(0);
 
-    // Fact extracted into hot memory
-    const hotFacts = getTopHotFacts(instance.db);
-    expect(hotFacts).toHaveLength(1);
-    expect(hotFacts[0].factText).toBe("Server runs on port 8080");
-
-    // 4. Archive — backdate gardened_at and archive
-    instance.db.prepare(
-      `UPDATE cortex_pending_ops SET gardened_at = ? WHERE id = ?`,
-    ).run(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), "job-100");
-
-    const archived = archiveOldGardenedOps(instance.db, 7);
-    expect(archived).toBe(1);
-
-    // Verify: archived op not visible, fact persists
-    ops = getPendingOps(instance.db);
-    expect(ops).toHaveLength(0);
-
-    const factsAfter = getTopHotFacts(instance.db);
-    expect(factsAfter).toHaveLength(1);
-    expect(factsAfter[0].factText).toBe("Server runs on port 8080");
+    // Result is now in cortex_session
+    const session = getSessionHistory(instance.db, { channel: "router" });
+    expect(session.length).toBeGreaterThanOrEqual(1);
+    const taskResult = session.find((m) => m.senderId === "cortex:ops");
+    expect(taskResult).toBeDefined();
+    expect(taskResult!.content).toContain("[TASK_RESULT]");
+    expect(taskResult!.content).toContain("The server runs on port 8080");
   });
 
-  it("System Floor visibility: pending and completed ops visible, gardened/archived not", async () => {
+  it("System Floor visibility: pending and completed ops visible, then gone after copy+delete", async () => {
     let capturedSystem = "";
 
     instance = await startCortex({
@@ -187,7 +166,7 @@ describe("pending op lifecycle", () => {
 
     // Pending op should be visible
     expect(capturedSystem).toContain("Research API design patterns");
-    expect(capturedSystem).toContain("PENDING");
+    expect(capturedSystem).toContain("Status=Pending");
 
     // Complete the op
     completePendingOp(instance.db, "job-200", "Use REST with OpenAPI spec");
@@ -201,13 +180,13 @@ describe("pending op lifecycle", () => {
     }));
     await wait(500);
 
-    // Completed op should be visible as NEW RESULT
+    // Completed op should be visible as Status=Completed
     expect(capturedSystem).toContain("Research API design patterns");
-    expect(capturedSystem).toContain("NEW RESULT");
+    expect(capturedSystem).toContain("Status=Completed");
     expect(capturedSystem).toContain("Use REST with OpenAPI spec");
 
-    // After the LLM turn, acknowledgeCompletedOps() was called by the loop (step 8b).
-    // Trigger another context assembly — acknowledged op should NOT be visible.
+    // After the LLM turn, copyAndDeleteCompletedOps() was called by the loop (step 8b).
+    // Trigger another context assembly — deleted op should NOT be visible.
     capturedSystem = "";
     instance.enqueue(createEnvelope({
       channel: "webchat",
@@ -216,55 +195,8 @@ describe("pending op lifecycle", () => {
     }));
     await wait(500);
 
-    // Acknowledged op should NOT be visible in System Floor (inbox "read" pattern)
+    // Deleted op should NOT be visible in System Floor
     expect(capturedSystem).not.toContain("Research API design patterns");
-  });
-
-  it("fact persistence: extracted facts survive op archival", async () => {
-    instance = await startCortex({
-      agentId: "main",
-      workspaceDir,
-      dbPath: path.join(tmpDir, "bus.sqlite"),
-      maxContextTokens: 10000,
-      hippocampusEnabled: true,
-      embedFn: mockEmbedFn,
-      gardenerSummarizeLLM: async () => "summary",
-      gardenerExtractLLM: async () => "[]",
-      callLLM: async () => ({ text: "ok", toolCalls: [] }),
-    });
-
-    // Add and complete an op
-    addPendingOp(instance.db, {
-      id: "job-300",
-      type: "router_job",
-      description: "Find the database password",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-    });
-    completePendingOp(instance.db, "job-300", "DB password is stored in vault at /secrets/db");
-
-    // Harvest facts
-    await runOpHarvester({
-      db: instance.db,
-      extractLLM: async () => JSON.stringify(["DB password is stored in vault at /secrets/db"]),
-    });
-
-    // Backdate and archive
-    instance.db.prepare(
-      `UPDATE cortex_pending_ops SET gardened_at = ? WHERE id = ?`,
-    ).run(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), "job-300");
-    archiveOldGardenedOps(instance.db, 7);
-
-    // Op is archived but fact persists independently
-    const archivedOp = instance.db.prepare(
-      `SELECT status FROM cortex_pending_ops WHERE id = ?`,
-    ).get("job-300") as { status: string };
-    expect(archivedOp.status).toBe("archived");
-
-    const facts = getTopHotFacts(instance.db);
-    expect(facts).toHaveLength(1);
-    expect(facts[0].factText).toBe("DB password is stored in vault at /secrets/db");
   });
 
   it("multiple concurrent ops: results arrive in different order, all correctly processed", async () => {
@@ -308,76 +240,26 @@ describe("pending op lifecycle", () => {
     // Complete the last one
     completePendingOp(instance.db, "job-2", "Result 2");
 
-    // All 3 completed
-    const completed = getCompletedOps(instance.db);
-    expect(completed).toHaveLength(3);
+    // All 3 completed — still in table
+    ops = getPendingOps(instance.db);
+    expect(ops).toHaveLength(3);
+    expect(ops.every((o) => o.status === "completed")).toBe(true);
 
-    // Harvest all
-    let callCount = 0;
-    const harvestResult = await runOpHarvester({
-      db: instance.db,
-      extractLLM: async () => {
-        callCount++;
-        return JSON.stringify([`Fact from task ${callCount}`]);
-      },
-    });
+    // Copy + delete all
+    const copied = copyAndDeleteCompletedOps(instance.db);
+    expect(copied).toBe(3);
 
-    expect(harvestResult.processed).toBe(3);
-    expect(getTopHotFacts(instance.db)).toHaveLength(3);
-
-    // All gardened — no longer in active ops
+    // All deleted from cortex_pending_ops
     ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(0);
+
+    // All copied to cortex_session
+    const session = getSessionHistory(instance.db, { channel: "router" });
+    const opResults = session.filter((m) => m.senderId === "cortex:ops");
+    expect(opResults).toHaveLength(3);
   });
 
-  it("Op Harvester: LLM error on one op does not block others", async () => {
-    instance = await startCortex({
-      agentId: "main",
-      workspaceDir,
-      dbPath: path.join(tmpDir, "bus.sqlite"),
-      maxContextTokens: 10000,
-      hippocampusEnabled: true,
-      embedFn: mockEmbedFn,
-      gardenerSummarizeLLM: async () => "summary",
-      gardenerExtractLLM: async () => "[]",
-      callLLM: async () => ({ text: "ok", toolCalls: [] }),
-    });
-
-    // Add 3 completed ops
-    for (let i = 1; i <= 3; i++) {
-      addPendingOp(instance.db, {
-        id: `job-${i}`,
-        type: "router_job",
-        description: `Task ${i}`,
-        dispatchedAt: new Date().toISOString(),
-        expectedChannel: "router",
-        status: "pending",
-      });
-      completePendingOp(instance.db, `job-${i}`, `Result ${i}`);
-    }
-
-    let callIdx = 0;
-    const harvestResult = await runOpHarvester({
-      db: instance.db,
-      extractLLM: async () => {
-        callIdx++;
-        if (callIdx === 2) throw new Error("LLM timeout");
-        return JSON.stringify([`Fact ${callIdx}`]);
-      },
-    });
-
-    // 2 processed successfully, 1 error
-    expect(harvestResult.processed).toBe(2);
-    expect(harvestResult.errors).toHaveLength(1);
-    expect(harvestResult.errors[0]).toContain("LLM timeout");
-
-    // 2 gardened, 1 still completed (the failed one)
-    const remaining = getCompletedOps(instance.db);
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0].id).toBe("job-2");
-  });
-
-  it("acknowledgeCompletedOps: fresh results visible until acknowledged, then gone", async () => {
+  it("copyAndDeleteCompletedOps: completed ops copied to session then deleted", async () => {
     instance = await startCortex({
       agentId: "main",
       workspaceDir,
@@ -411,25 +293,27 @@ describe("pending op lifecycle", () => {
     completePendingOp(instance.db, "job-ack-1", "Result A");
     completePendingOp(instance.db, "job-ack-2", "Result B");
 
-    // Both should be visible (completed but unacknowledged)
+    // Both should be visible (completed, still in table)
     let ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(2);
     expect(ops.every((o) => o.status === "completed")).toBe(true);
-    expect(ops.every((o) => o.acknowledgedAt === undefined)).toBe(true);
 
-    // Acknowledge — marks as "read"
-    const acked = acknowledgeCompletedOps(instance.db);
-    expect(acked).toBe(2);
+    // Copy + delete
+    const count = copyAndDeleteCompletedOps(instance.db);
+    expect(count).toBe(2);
 
-    // Now both should be gone from getPendingOps (acknowledged)
+    // Now both should be gone from getPendingOps
     ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(0);
 
-    // But they're still in the DB as completed (for Op Harvester)
-    const completed = getCompletedOps(instance.db);
-    expect(completed).toHaveLength(2);
+    // Results exist in cortex_session
+    const session = getSessionHistory(instance.db, { channel: "router" });
+    const opResults = session.filter((m) => m.senderId === "cortex:ops");
+    expect(opResults).toHaveLength(2);
+    expect(opResults.some((m) => m.content.includes("Result A"))).toBe(true);
+    expect(opResults.some((m) => m.content.includes("Result B"))).toBe(true);
 
-    // A new op that completes AFTER acknowledgment is still visible
+    // A new op that completes AFTER copy+delete is still visible
     addPendingOp(instance.db, {
       id: "job-ack-3",
       type: "router_job",
@@ -443,10 +327,9 @@ describe("pending op lifecycle", () => {
     ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(1);
     expect(ops[0].id).toBe("job-ack-3");
-    expect(ops[0].acknowledgedAt).toBeUndefined();
   });
 
-  it("failPendingOp: failed ops stay visible until acknowledged", async () => {
+  it("failPendingOp: failed ops stay visible until copy+delete", async () => {
     let capturedSystem = "";
 
     instance = await startCortex({
@@ -501,7 +384,7 @@ describe("pending op lifecycle", () => {
 
     expect(capturedSystem).toContain("Doomed task");
     expect(capturedSystem).toContain("Good task");
-    expect(capturedSystem).toContain("PENDING");
+    expect(capturedSystem).toContain("Status=Pending");
 
     // Fail one op (simulating Router job:failed event)
     failPendingOp(instance.db, "job-will-fail", "config missing tiers");
@@ -521,14 +404,14 @@ describe("pending op lifecycle", () => {
     }));
     await wait(500);
 
-    // Failed op should have been visible in the System Floor with FAILED tag
+    // Failed op should have been visible in the System Floor with Status=Failed tag
     expect(capturedSystem).toContain("Doomed task");
-    expect(capturedSystem).toContain("FAILED");
+    expect(capturedSystem).toContain("Status=Failed");
     expect(capturedSystem).toContain("config missing tiers");
     expect(capturedSystem).toContain("Good task");
 
-    // After the LLM turn, acknowledgeCompletedOps() was called by the loop,
-    // so the failed op is now acknowledged. Trigger another context assembly.
+    // After the LLM turn, copyAndDeleteCompletedOps() was called by the loop,
+    // so the failed op is now deleted. Trigger another context assembly.
     capturedSystem = "";
     instance.enqueue(createEnvelope({
       channel: "webchat",
@@ -537,12 +420,12 @@ describe("pending op lifecycle", () => {
     }));
     await wait(500);
 
-    // Failed op should be gone after acknowledgment, pending op still visible
+    // Failed op should be gone after copy+delete, pending op still visible
     expect(capturedSystem).not.toContain("Doomed task");
     expect(capturedSystem).toContain("Good task");
   });
 
-  it("startup cleanup: orphaned pending ops are marked failed but stay visible until acknowledged", async () => {
+  it("startup cleanup: orphaned pending ops are marked failed but stay visible until copy+delete", async () => {
     const dbPath = path.join(tmpDir, "bus.sqlite");
 
     // Start Cortex, add orphaned pending ops, then stop
@@ -580,23 +463,28 @@ describe("pending op lifecycle", () => {
       failPendingOp(instance.db, op.id, "orphaned from prior session (startup cleanup)");
     }
 
-    // Orphaned ops should STILL be visible (failed but unacknowledged)
+    // Orphaned ops should STILL be visible (failed but not yet copy+deleted)
     let ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(2);
     expect(ops.every((o) => o.status === "failed")).toBe(true);
 
     // Verify they're in DB as failed with error details
     const row = instance.db.prepare(
-      `SELECT status, result, acknowledged_at FROM cortex_pending_ops WHERE id = ?`,
-    ).get("orphan-1") as { status: string; result: string; acknowledged_at: string | null };
+      `SELECT status, result FROM cortex_pending_ops WHERE id = ?`,
+    ).get("orphan-1") as { status: string; result: string };
     expect(row.status).toBe("failed");
     expect(row.result).toContain("orphaned from prior session");
-    expect(row.acknowledged_at).toBeNull();
 
-    // After the LLM acknowledges, they disappear
-    acknowledgeCompletedOps(instance.db);
+    // After copy+delete, they disappear from pending_ops and appear in session
+    copyAndDeleteCompletedOps(instance.db);
     ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(0);
+
+    // Verify copied to cortex_session
+    const session = getSessionHistory(instance.db, { channel: "router" });
+    const opResults = session.filter((m) => m.senderId === "cortex:ops");
+    expect(opResults).toHaveLength(2);
+    expect(opResults.some((m) => m.content.includes("[TASK_FAILED]"))).toBe(true);
   });
 
   it("failed ops don't interfere with new ops completing normally", async () => {
@@ -634,13 +522,13 @@ describe("pending op lifecycle", () => {
     failPendingOp(instance.db, "old-fail-1", "config broken");
     failPendingOp(instance.db, "old-fail-2", "config broken");
 
-    // Failed ops are still visible (unacknowledged)
+    // Failed ops are still visible
     let ops = getPendingOps(instance.db);
     expect(ops).toHaveLength(2);
     expect(ops.every((o) => o.status === "failed")).toBe(true);
 
-    // Acknowledge the failed ops (LLM has seen them)
-    acknowledgeCompletedOps(instance.db);
+    // Copy+delete the failed ops (LLM has seen them)
+    copyAndDeleteCompletedOps(instance.db);
     expect(getPendingOps(instance.db)).toHaveLength(0);
 
     // Add a new op and complete it normally
@@ -660,59 +548,14 @@ describe("pending op lifecycle", () => {
     expect(ops[0].id).toBe("new-success");
     expect(ops[0].status).toBe("completed");
 
-    // Gardener can harvest the new op normally
-    const harvestResult = await runOpHarvester({
-      db: instance.db,
-      extractLLM: async () => JSON.stringify(["Port is 3000"]),
-    });
-    expect(harvestResult.processed).toBe(1);
-    expect(harvestResult.errors).toHaveLength(0);
-  });
+    // Copy+delete the new op
+    const count = copyAndDeleteCompletedOps(instance.db);
+    expect(count).toBe(1);
+    expect(getPendingOps(instance.db)).toHaveLength(0);
 
-  it("archiveOldGardenedOps: only archives ops older than threshold", async () => {
-    instance = await startCortex({
-      agentId: "main",
-      workspaceDir,
-      dbPath: path.join(tmpDir, "bus.sqlite"),
-      maxContextTokens: 10000,
-      hippocampusEnabled: true,
-      embedFn: mockEmbedFn,
-      gardenerSummarizeLLM: async () => "summary",
-      gardenerExtractLLM: async () => "[]",
-      callLLM: async () => ({ text: "ok", toolCalls: [] }),
-    });
-
-    // Add 2 ops, garden both
-    for (let i = 1; i <= 2; i++) {
-      addPendingOp(instance.db, {
-        id: `job-${i}`,
-        type: "router_job",
-        description: `Task ${i}`,
-        dispatchedAt: new Date().toISOString(),
-        expectedChannel: "router",
-        status: "pending",
-      });
-      completePendingOp(instance.db, `job-${i}`, `Result ${i}`);
-    }
-    markOpsGardened(instance.db, ["job-1", "job-2"]);
-
-    // Backdate job-1 to 10 days ago, leave job-2 as recent
-    instance.db.prepare(
-      `UPDATE cortex_pending_ops SET gardened_at = ? WHERE id = ?`,
-    ).run(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), "job-1");
-
-    const archived = archiveOldGardenedOps(instance.db, 7);
-    expect(archived).toBe(1);
-
-    // job-1 archived, job-2 still gardened
-    const row1 = instance.db.prepare(
-      `SELECT status FROM cortex_pending_ops WHERE id = ?`,
-    ).get("job-1") as { status: string };
-    expect(row1.status).toBe("archived");
-
-    const row2 = instance.db.prepare(
-      `SELECT status FROM cortex_pending_ops WHERE id = ?`,
-    ).get("job-2") as { status: string };
-    expect(row2.status).toBe("gardened");
+    // Result is in cortex_session
+    const session = getSessionHistory(instance.db, { channel: "router" });
+    const opResults = session.filter((m) => m.senderId === "cortex:ops" && m.content.includes("port 3000"));
+    expect(opResults).toHaveLength(1);
   });
 });

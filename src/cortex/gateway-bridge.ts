@@ -151,7 +151,7 @@ export async function initGatewayCortex(params: {
       }
     },
     // Fire-and-forget delegation to the Router when Cortex calls sessions_spawn
-    onSpawn: ({ task, replyChannel, resultPriority }) => {
+    onSpawn: ({ task, replyChannel, resultPriority, taskId }) => {
       try {
         const router = getGatewayRouter();
         if (!router) {
@@ -168,6 +168,7 @@ export async function initGatewayCortex(params: {
             context: JSON.stringify({ replyChannel, resultPriority, source: "cortex" }),
           },
           issuer,
+          taskId,
         );
 
         params.log.warn(`[cortex] Spawned Router job ${jobId}: ${task.slice(0, 80)}`);
@@ -244,35 +245,27 @@ export async function initGatewayCortex(params: {
       if (job.issuer !== cortexIssuer) return; // Not a Cortex-issued job
 
       try {
-        // Parse routing metadata from payload.context
-        const payload = JSON.parse(job.payload);
-        const meta = payload.context ? JSON.parse(payload.context) : {};
-        const resultPriority = meta.resultPriority ?? "normal";
-        const replyChannel = meta.replyChannel ?? null;
-
-        // Build result content with task provenance so the LLM knows
-        // this is the answer to a task IT previously dispatched via sessions_spawn
-        const originalTask = payload.message ?? "(unknown task)";
-        const resultBody = job.status === "completed"
+        // Store raw result in the pending op (System Floor will format it)
+        const rawResult = job.status === "completed"
           ? (job.result ?? "Task completed.")
           : `Error: ${job.error ?? "Unknown error"}`;
-        const content = `[Router Result — job ${jobId}]\nTask you requested: "${originalTask.slice(0, 300)}"\nStatus: ${job.status}\n\n${resultBody}`;
 
-        // Feed result into Cortex bus with the priority set at dispatch time
-        const envelope = createEnvelope({
+        // Mark pending op as completed with the raw result (lifecycle: pending → completed)
+        // The System Floor in context.ts renders it as [TASK_ID]=..., Status=Completed, Result='...'
+        completePendingOp(instance.db, jobId, rawResult);
+
+        // Send a lightweight ops trigger to wake the Cortex loop.
+        // NO result content in the envelope — result lives exclusively in the
+        // System Floor via cortex_pending_ops (single-path delivery §6.4).
+        const trigger = createEnvelope({
           channel: "router",
-          sender: { id: `router:${jobId}`, name: "Router", relationship: "internal" as const },
-          content,
-          priority: resultPriority,
-          replyContext: { channel: replyChannel ?? "router" },
+          sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
+          content: "",
+          metadata: { ops_trigger: true },
         });
+        instance.enqueue(trigger);
 
-        instance.enqueue(envelope);
-
-        // Mark pending op as completed with the result (lifecycle: pending → completed)
-        completePendingOp(instance.db, jobId, content);
-
-        params.log.warn(`[cortex] Router result ingested: job=${jobId} status=${job.status} priority=${resultPriority}`);
+        params.log.warn(`[cortex] Router result ingested: job=${jobId} status=${job.status}`);
       } catch (err) {
         params.log.warn(`[cortex] Failed to ingest Router result: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -282,7 +275,17 @@ export async function initGatewayCortex(params: {
     const onJobFailed = ({ jobId, error }: { jobId: string; error: string }) => {
       try {
         failPendingOp(instance.db, jobId, error);
-        params.log.warn(`[cortex] Pending op cleaned up for failed Router job ${jobId}: ${error}`);
+
+        // Send ops trigger so the loop picks up the failure from System Floor
+        const trigger = createEnvelope({
+          channel: "router",
+          sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
+          content: "",
+          metadata: { ops_trigger: true },
+        });
+        instance.enqueue(trigger);
+
+        params.log.warn(`[cortex] Pending op failed for Router job ${jobId}: ${error}`);
       } catch {
         // Best-effort — don't block the Router
       }

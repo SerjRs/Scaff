@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
@@ -59,7 +60,7 @@ describe("recovery", () => {
     status: string,
     fields?: Partial<Pick<RouterJob, "retry_count" | "result" | "error" | "finished_at" | "delivered_at" | "tier" | "weight">>,
   ): string {
-    const id = enqueue(db, "agent_run", '{"task":"test"}', "session:issuer");
+    const id = enqueue(db, "agent_run", '{"task":"test"}', "session:issuer", crypto.randomUUID());
     updateJob(db, id, { status: status as RouterJob["status"], ...fields });
     return id;
   }

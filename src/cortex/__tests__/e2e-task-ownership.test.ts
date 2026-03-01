@@ -9,6 +9,7 @@
  * - Router enqueue without taskId still works (backwards compat)
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -154,15 +155,14 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     instance.enqueue(makeEnvelope("Try something"));
     await wait(300);
 
-    // Pending op was created and marked as failed.
-    // Note: the loop calls acknowledgeCompletedOps() after the turn,
-    // so the failed op is already acknowledged. Check the DB directly.
+    // Pending op was created, marked as failed, then copyAndDeleteCompletedOps()
+    // moved it to cortex_session and deleted it from pending_ops. Check cortex_session.
     const rows = instance.db.prepare(
-      `SELECT * FROM cortex_pending_ops WHERE status = 'failed'`,
+      `SELECT * FROM cortex_session WHERE sender_id = 'cortex:ops'`,
     ).all() as Record<string, unknown>[];
     expect(rows).toHaveLength(1);
-    expect(rows[0].result).toBe("Error: Router spawn failed");
-    expect(rows[0].reply_channel).toBe("webchat");
+    expect(rows[0].content).toContain("Error: Router spawn failed");
+    expect(rows[0].channel).toBe("webchat");
   });
 
   it("foreground correctness: result on webchat channel → buildForeground uses webchat history", async () => {
@@ -218,16 +218,17 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     expect(lastTriggerChannel).toBe("webchat");
   });
 
-  it("backwards compat: Router enqueue without taskId still generates UUID", () => {
+  it("Router enqueue uses caller-provided taskId as job ID", () => {
     const dbPath = path.join(tmpDir, "router-compat.sqlite");
     const db = initRouterDb(dbPath);
 
-    // Enqueue without taskId — should auto-generate
-    const id = routerEnqueue(db, "agent_run", '{"message":"test"}', "session:x");
-    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
+    const taskId = crypto.randomUUID();
+    const id = routerEnqueue(db, "agent_run", '{"message":"test"}', "session:x", taskId);
+    expect(id).toBe(taskId);
 
     const job = getJob(db, id);
     expect(job).not.toBeNull();
+    expect(job!.id).toBe(taskId);
     expect(job!.status).toBe("in_queue");
 
     db.close();

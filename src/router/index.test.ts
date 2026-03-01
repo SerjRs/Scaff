@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
@@ -162,11 +163,11 @@ describe("router service entry (index.ts)", () => {
     const seedDb = initDb(dbPath);
 
     // Create a job stuck in 'evaluating'
-    const stuckId = rawEnqueue(seedDb, "agent_run", '{"message":"stuck"}', "test-issuer");
+    const stuckId = rawEnqueue(seedDb, "agent_run", '{"message":"stuck"}', "test-issuer", crypto.randomUUID());
     rawUpdate(seedDb, stuckId, { status: "evaluating" });
 
     // Create a job stuck in 'in_execution'
-    const execId = rawEnqueue(seedDb, "agent_run", '{"message":"exec-stuck"}', "test-issuer");
+    const execId = rawEnqueue(seedDb, "agent_run", '{"message":"exec-stuck"}', "test-issuer", crypto.randomUUID());
     rawUpdate(seedDb, execId, { status: "in_execution" });
 
     seedDb.close();
@@ -195,7 +196,7 @@ describe("router service entry (index.ts)", () => {
     const { startRouter: start } = await import("./index.js");
     router = start(makeConfig(), instantExecutor);
 
-    const jobId = router.enqueue("agent_run", { message: "test task" }, "test-issuer");
+    const jobId = router.enqueue("agent_run", { message: "test task" }, "test-issuer", crypto.randomUUID());
     expect(jobId).toBeTruthy();
     expect(typeof jobId).toBe("string");
     // UUID format check
@@ -217,6 +218,7 @@ describe("router service entry (index.ts)", () => {
       "agent_run",
       { message: "quick task" },
       "test-issuer",
+      crypto.randomUUID(),
       10_000,
     );
 
@@ -240,6 +242,7 @@ describe("router service entry (index.ts)", () => {
         "agent_run",
         { message: "hanging task" },
         "test-issuer",
+        crypto.randomUUID(),
         500, // 500ms timeout
       ),
     ).rejects.toThrow(/timed out/);
@@ -262,6 +265,7 @@ describe("router service entry (index.ts)", () => {
       "agent_run",
       { message: "count test" },
       "test-issuer",
+      crypto.randomUUID(),
       10_000,
     );
 
@@ -285,7 +289,7 @@ describe("router service entry (index.ts)", () => {
     // Enqueue after stop — the job goes into DB but should NOT be processed
     // (loop is stopped). This will throw because DB is closed.
     expect(() =>
-      router!.enqueue("agent_run", { message: "after stop" }, "test-issuer"),
+      router!.enqueue("agent_run", { message: "after stop" }, "test-issuer", crypto.randomUUID()),
     ).toThrow();
 
     // Calling stop again should be idempotent (no throw)
@@ -311,6 +315,7 @@ describe("router service entry (index.ts)", () => {
       "agent_run",
       { message: "full pipeline test", context: "test-context" },
       "pipeline-issuer",
+      crypto.randomUUID(),
       15_000,
     );
 

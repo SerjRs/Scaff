@@ -24,6 +24,7 @@ export interface RouterInstance {
     type: JobType,
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
   ) => string;
 
   /** Enqueue a job and wait for the result (sync-style). */
@@ -31,6 +32,7 @@ export interface RouterInstance {
     type: JobType,
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
     timeoutMs?: number,
   ) => Promise<RouterJob>;
 
@@ -96,17 +98,19 @@ export function startRouter(
     type: JobType,
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
   ): string {
-    return dbEnqueue(db, type, JSON.stringify(payload), issuer);
+    return dbEnqueue(db, type, JSON.stringify(payload), issuer, taskId);
   }
 
   async function enqueueAndWait(
     type: JobType,
     payload: { message: string; context?: string },
     issuer: string,
+    taskId: string,
     timeoutMs?: number,
   ): Promise<RouterJob> {
-    const jobId = enqueue(type, payload, issuer);
+    const jobId = enqueue(type, payload, issuer, taskId);
     return waitForJob(db, jobId, timeoutMs);
   }
 

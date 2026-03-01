@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
@@ -57,7 +58,7 @@ describe("notifier", () => {
   // -----------------------------------------------------------------------
 
   function createCompletedJob(): string {
-    const id = enqueue(db, "agent_run", '{"task":"test"}', "session:issuer");
+    const id = enqueue(db, "agent_run", '{"task":"test"}', "session:issuer", crypto.randomUUID());
     updateJob(db, id, {
       status: "completed",
       result: '{"answer":42}',
@@ -67,7 +68,7 @@ describe("notifier", () => {
   }
 
   function createFailedJob(): string {
-    const id = enqueue(db, "agent_run", '{"task":"test"}', "session:issuer");
+    const id = enqueue(db, "agent_run", '{"task":"test"}', "session:issuer", crypto.randomUUID());
     updateJob(db, id, {
       status: "failed",
       error: "something broke",
@@ -198,7 +199,7 @@ describe("notifier", () => {
     });
 
     it("ignores non-terminal status jobs", () => {
-      const id = enqueue(db, "agent_run", '{}', "session:x");
+      const id = enqueue(db, "agent_run", '{}', "session:x", crypto.randomUUID());
       updateJob(db, id, { status: "in_execution" });
 
       const events: unknown[] = [];

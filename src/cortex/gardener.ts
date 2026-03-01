@@ -23,9 +23,6 @@ import {
   getChannelStates,
   getSessionHistory,
   updateChannelState,
-  getCompletedOps,
-  markOpsGardened,
-  archiveOldGardenedOps,
 } from "./session.js";
 import type { EmbedFunction } from "./tools.js";
 import type { ChannelId } from "./types.js";
@@ -234,75 +231,6 @@ export async function runVectorEvictor(params: {
 }
 
 // ---------------------------------------------------------------------------
-// Task 4.4: Op Harvester
-// ---------------------------------------------------------------------------
-
-/**
- * Extract facts from completed pending ops into hot memory,
- * then mark them as gardened. Ensures long-running task results
- * are durably captured as facts.
- */
-export async function runOpHarvester(params: {
-  db: DatabaseSync;
-  extractLLM: FactExtractorLLM;
-}): Promise<GardenerRunResult> {
-  const { db, extractLLM } = params;
-  const result: GardenerRunResult = { task: "op_harvester", processed: 0, errors: [] };
-
-  const completedOps = getCompletedOps(db);
-  if (completedOps.length === 0) return result;
-
-  const gardenedIds: string[] = [];
-
-  for (const op of completedOps) {
-    try {
-      const prompt = `Extract any persistent, reusable facts from this task and its result. \
-Facts are things like technical details, decisions, outcomes, URLs, configuration values, \
-or anything worth remembering long-term. Return ONLY a JSON array of strings, \
-one fact per entry. If no facts are found, return an empty array [].
-
-Task: ${op.description}
-
-Result: ${op.result ?? "(no result)"}`;
-
-      const response = await extractLLM(prompt);
-
-      let facts: string[];
-      try {
-        facts = JSON.parse(response);
-        if (!Array.isArray(facts)) facts = [];
-      } catch {
-        const match = response.match(/\[[\s\S]*?\]/);
-        facts = match ? JSON.parse(match[0]) : [];
-      }
-
-      for (const factText of facts) {
-        if (typeof factText === "string" && factText.trim().length > 0) {
-          const existing = db.prepare(
-            `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
-          ).get(factText.trim()) as { id: string } | undefined;
-
-          if (!existing) {
-            insertHotFact(db, { factText: factText.trim() });
-          }
-        }
-      }
-
-      gardenedIds.push(op.id);
-      result.processed++;
-    } catch (err) {
-      result.errors.push(`${op.id}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
-  if (gardenedIds.length > 0) {
-    markOpsGardened(db, gardenedIds);
-  }
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
 // Gardener Scheduler
 // ---------------------------------------------------------------------------
 
@@ -359,16 +287,6 @@ export function startGardener(params: {
   const runEvictor = async () => {
     try {
       await runVectorEvictor({ db, embedFn });
-      // Archive old gardened ops (same weekly cadence)
-      archiveOldGardenedOps(db, 7);
-    } catch (err) {
-      onError(err instanceof Error ? err : new Error(String(err)));
-    }
-  };
-
-  const runHarvester = async () => {
-    try {
-      await runOpHarvester({ db, extractLLM });
     } catch (err) {
       onError(err instanceof Error ? err : new Error(String(err)));
     }
@@ -377,7 +295,6 @@ export function startGardener(params: {
   timers.push(setInterval(runCompactor, compactorIntervalMs));
   timers.push(setInterval(runExtractor, extractorIntervalMs));
   timers.push(setInterval(runEvictor, evictorIntervalMs));
-  timers.push(setInterval(runHarvester, extractorIntervalMs)); // Same cadence as fact extractor (6h)
 
   return {
     stop() {
@@ -388,7 +305,6 @@ export function startGardener(params: {
       const results: GardenerRunResult[] = [];
       results.push(await runChannelCompactor({ db, summarize }));
       results.push(await runFactExtractor({ db, extractLLM }));
-      results.push(await runOpHarvester({ db, extractLLM }));
       results.push(await runVectorEvictor({ db, embedFn }));
       return results;
     },

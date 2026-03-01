@@ -19,7 +19,8 @@ import type { AdapterRegistry } from "./channel-adapter.js";
 import { assembleContext, type AssembledContext, type ToolResultEntry } from "./context.js";
 import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
-import { appendToSession, appendResponse, updateChannelState, getChannelStates, getPendingOps, addPendingOp, acknowledgeCompletedOps } from "./session.js";
+import crypto from "node:crypto";
+import { appendToSession, appendResponse, updateChannelState, getChannelStates, getPendingOps, addPendingOp, failPendingOp, copyAndDeleteCompletedOps, appendDispatchEvidence } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, type EmbedFunction } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,8 @@ export interface SpawnParams {
   replyChannel: string | null;
   resultPriority: "urgent" | "normal" | "background";
   envelopeId: string;
+  /** Pre-generated task ID — Cortex owns the UUID, Router stores it as-is */
+  taskId: string;
 }
 
 export interface CortexLoopOptions {
@@ -86,14 +89,30 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
       // 1. Mark as processing
       markProcessing(db, msg.envelope.id);
 
-      // 2. Append to unified session
-      appendToSession(db, msg.envelope);
+      // Detect ops triggers — lightweight wake-up envelopes that carry no content.
+      // They must NOT be stored in cortex_session (they are not conversation messages).
+      const isOpsTrigger = msg.envelope.metadata?.ops_trigger === true;
 
-      // 3. Update channel state to foreground
-      updateChannelState(db, msg.envelope.channel, {
-        lastMessageAt: msg.envelope.timestamp,
-        layer: "foreground",
-      });
+      // 2. Append to unified session
+      if (isOpsTrigger) {
+        // Ops triggers are not real messages — store a brief system notification
+        // so the foreground ends with a user-role message (API requirement).
+        appendToSession(db, {
+          ...msg.envelope,
+          content: "[Task update available]",
+          sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
+        });
+      } else {
+        appendToSession(db, msg.envelope);
+      }
+
+      // 3. Update channel state to foreground (skip for ops triggers)
+      if (!isOpsTrigger) {
+        updateChannelState(db, msg.envelope.channel, {
+          lastMessageAt: msg.envelope.timestamp,
+          layer: "foreground",
+        });
+      }
 
       try {
         // 4. Assemble context
@@ -104,6 +123,12 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           maxTokens: maxContextTokens,
           hippocampusEnabled,
         });
+
+        // For ops triggers: suppress sessions_spawn tool to prevent re-dispatch.
+        // The LLM should ONLY relay completed results, not dispatch new work.
+        if (isOpsTrigger) {
+          context = { ...context, isOpsTrigger: true };
+        }
 
         // 5. Call LLM (with sync tool round-trip loop)
         const MAX_TOOL_ROUNDS = 5;
@@ -146,7 +171,9 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         const llmResponse = llmResult.text;
 
         // 5b. Handle async tool calls (sessions_spawn → Router delegation)
-        for (const tc of llmResult.toolCalls) {
+        // Skip for ops triggers — the LLM should only relay results, not dispatch.
+        // Even if the LLM sneaks a tool call through, we ignore it on trigger turns.
+        for (const tc of isOpsTrigger ? [] : llmResult.toolCalls) {
           if (tc.name === "sessions_spawn" && onSpawn) {
             const args = tc.arguments as { task?: string; priority?: string };
             const task = args.task ?? "";
@@ -156,38 +183,63 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               ? msg.envelope.channel
               : null;
 
-            const jobId = onSpawn({ task, replyChannel, resultPriority, envelopeId: msg.envelope.id });
-            if (jobId) {
-              addPendingOp(db, {
-                id: jobId,
-                type: "router_job",
-                description: task.slice(0, 200),
-                dispatchedAt: new Date().toISOString(),
-                expectedChannel: "router",
-                status: "pending",
-              });
+            // Cortex owns the UUID — write pending op BEFORE touching the Router
+            const taskId = crypto.randomUUID();
+            const dispatchedAt = new Date().toISOString();
+            const effectiveChannel = replyChannel ?? msg.envelope.channel;
+            addPendingOp(db, {
+              id: taskId,
+              type: "router_job",
+              description: task.slice(0, 200),
+              dispatchedAt,
+              expectedChannel: "router",
+              status: "pending",
+              replyChannel: replyChannel ?? undefined,
+              resultPriority,
+            });
 
-              // Store dispatch evidence so the LLM knows it dispatched this task.
-              // Without this, the LLM's tool_use blocks are lost and it treats
-              // returning results as "stale" / "not mine".
-              const dispatchEvidence = db.prepare(`
-                INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata)
-                VALUES (?, 'assistant', ?, 'cortex', ?, ?, NULL)
-              `);
-              dispatchEvidence.run(
-                msg.envelope.id,
-                msg.envelope.channel,
-                `[DISPATCHED THROUGH sessions_spawn] job=${jobId} — "${task.slice(0, 200)}" (priority: ${resultPriority}, reply_channel: ${replyChannel ?? "none"}, awaiting result)`,
-                new Date().toISOString(),
-              );
+            // Store dispatch evidence in session — without this, the LLM has no
+            // memory of having called sessions_spawn on subsequent turns (§6.4)
+            appendDispatchEvidence(db, {
+              envelopeId: msg.envelope.id,
+              channel: effectiveChannel,
+              taskId,
+              description: task.slice(0, 200),
+              dispatchedAt,
+            });
+
+            // THEN fire spawn with the pre-generated taskId
+            const jobId = onSpawn({ task, replyChannel, resultPriority, envelopeId: msg.envelope.id, taskId });
+
+            // If spawn failed, mark the pending op as failed
+            if (!jobId) {
+              failPendingOp(db, taskId, "Router spawn failed");
             }
           }
         }
 
         // 6. Parse response
+        // For ops triggers: resolve the reply channel from the completed pending op
+        // so the LLM's response routes to the correct channel (e.g., webchat) instead
+        // of defaulting to the trigger's channel ("router"). The Router doesn't know
+        // about channels — Cortex owns the routing.
+        let effectiveEnvelope = msg.envelope;
+        if (isOpsTrigger) {
+          const completedOps = getPendingOps(db).filter(
+            (op) => op.status === "completed" || op.status === "failed",
+          );
+          const replyChannel = completedOps[0]?.replyChannel ?? completedOps[0]?.expectedChannel;
+          if (replyChannel) {
+            effectiveEnvelope = {
+              ...msg.envelope,
+              replyContext: { ...msg.envelope.replyContext, channel: replyChannel },
+            };
+          }
+        }
+
         const output = parseResponse({
           llmResponse,
-          triggerEnvelope: msg.envelope,
+          triggerEnvelope: effectiveEnvelope,
         });
 
         // 7. Route output
@@ -206,9 +258,9 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // 8. Record response in session
         appendResponse(db, output, msg.envelope.id);
 
-        // 8b. Acknowledge fresh results — marks completed ops as "read" so they
-        //     drop from the System Floor next turn (inbox read/unread pattern §6.4)
-        acknowledgeCompletedOps(db);
+        // 8b. Copy completed/failed ops to cortex_session, then delete them
+        //     from cortex_pending_ops so they drop from the System Floor next turn.
+        copyAndDeleteCompletedOps(db);
 
         // 9. Mark completed
         markCompleted(db, msg.envelope.id);

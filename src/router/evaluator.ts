@@ -187,7 +187,9 @@ export async function evaluate(
     const timeoutMs = (config.timeout ?? 10) * 1000;
 
     // 2. Stage 1: Ollama (local)
-    const ollamaText = await callOllama(userMessage, timeoutMs);
+    // Give Ollama 2x the configured timeout — cold model loads can take 4-5s
+    // before inference even starts, and concurrent requests queue behind loading.
+    const ollamaText = await callOllama(userMessage, timeoutMs * 2);
     const ollamaResult = parseEvaluatorResponse(ollamaText, config.fallback_weight);
 
     console.log(`[router/evaluator] ollama scored: w=${ollamaResult.weight} (${ollamaResult.reasoning})`);
