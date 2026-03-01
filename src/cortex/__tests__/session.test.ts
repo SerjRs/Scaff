@@ -340,7 +340,7 @@ describe("failPendingOp", () => {
     const session = getSessionHistory(db, { channel: "router" });
     const opResults = session.filter((m) => m.senderId === "cortex:ops");
     expect(opResults).toHaveLength(1);
-    expect(opResults[0].content).toContain("[TASK_FAILED]");
+    expect(opResults[0].content).toContain("Status=Failed");
   });
 
   it("only affects pending ops (does not overwrite completed ops)", () => {
@@ -410,5 +410,162 @@ describe("session round-trip", () => {
     expect(history[1].channel).toBe("whatsapp");
     expect(history[2].content).toBe("reply to webchat");
     expect(history[2].role).toBe("assistant");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issuer filtering
+// ---------------------------------------------------------------------------
+
+describe("issuer filtering", () => {
+  it("appendToSession writes issuer, getSessionHistory filters by it", () => {
+    appendToSession(db, makeEnvelope("webchat", "msg A"), "agent:main:cortex");
+    appendToSession(db, makeEnvelope("webchat", "msg B"), "agent:other:cortex");
+
+    const all = getSessionHistory(db);
+    expect(all).toHaveLength(2);
+
+    const mainOnly = getSessionHistory(db, { issuer: "agent:main:cortex" });
+    expect(mainOnly).toHaveLength(1);
+    expect(mainOnly[0].content).toBe("msg A");
+    expect(mainOnly[0].issuer).toBe("agent:main:cortex");
+
+    const otherOnly = getSessionHistory(db, { issuer: "agent:other:cortex" });
+    expect(otherOnly).toHaveLength(1);
+    expect(otherOnly[0].content).toBe("msg B");
+  });
+
+  it("getPendingOps filters by issuer", () => {
+    addPendingOp(db, {
+      id: "op-main",
+      type: "router_job",
+      description: "Main op",
+      dispatchedAt: new Date().toISOString(),
+      expectedChannel: "router",
+      status: "pending",
+      issuer: "agent:main:cortex",
+    });
+    addPendingOp(db, {
+      id: "op-other",
+      type: "router_job",
+      description: "Other op",
+      dispatchedAt: new Date().toISOString(),
+      expectedChannel: "router",
+      status: "pending",
+      issuer: "agent:other:cortex",
+    });
+
+    expect(getPendingOps(db)).toHaveLength(2);
+    expect(getPendingOps(db, "agent:main:cortex")).toHaveLength(1);
+    expect(getPendingOps(db, "agent:main:cortex")[0].id).toBe("op-main");
+    expect(getPendingOps(db, "agent:other:cortex")).toHaveLength(1);
+    expect(getPendingOps(db, "agent:other:cortex")[0].id).toBe("op-other");
+  });
+
+  it("copyAndDeleteCompletedOps filters by issuer and writes issuer to session", () => {
+    addPendingOp(db, {
+      id: "op-A",
+      type: "router_job",
+      description: "Task A",
+      dispatchedAt: new Date().toISOString(),
+      expectedChannel: "router",
+      status: "pending",
+      issuer: "agent:main:cortex",
+    });
+    addPendingOp(db, {
+      id: "op-B",
+      type: "router_job",
+      description: "Task B",
+      dispatchedAt: new Date().toISOString(),
+      expectedChannel: "router",
+      status: "pending",
+      issuer: "agent:other:cortex",
+    });
+
+    completePendingOp(db, "op-A", "Result A");
+    completePendingOp(db, "op-B", "Result B");
+
+    // Only copy main's ops
+    const count = copyAndDeleteCompletedOps(db, "agent:main:cortex");
+    expect(count).toBe(1);
+
+    // op-A deleted, op-B still in pending_ops
+    expect(getPendingOps(db, "agent:main:cortex")).toHaveLength(0);
+    expect(getPendingOps(db, "agent:other:cortex")).toHaveLength(1);
+
+    // Session row has issuer
+    const session = getSessionHistory(db, { issuer: "agent:main:cortex" });
+    const opResults = session.filter((m) => m.senderId === "cortex:ops");
+    expect(opResults).toHaveLength(1);
+    expect(opResults[0].issuer).toBe("agent:main:cortex");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Migration: existing DB without issuer column
+// ---------------------------------------------------------------------------
+
+describe("migration: existing DB without issuer", () => {
+  it("initSessionTables succeeds on a DB with pre-existing tables lacking issuer", () => {
+    // Create a SECOND database with OLD schema (no issuer column)
+    const tmpDir2 = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-migrate-test-"));
+    const db2 = initBus(path.join(tmpDir2, "migrate.sqlite"));
+
+    // Manually create old-schema tables (no issuer)
+    db2.exec(`
+      CREATE TABLE cortex_session (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        envelope_id TEXT NOT NULL,
+        role        TEXT NOT NULL,
+        channel     TEXT NOT NULL,
+        sender_id   TEXT NOT NULL,
+        content     TEXT NOT NULL,
+        timestamp   TEXT NOT NULL,
+        metadata    TEXT
+      )
+    `);
+    db2.exec(`
+      CREATE TABLE cortex_pending_ops (
+        id               TEXT PRIMARY KEY,
+        type             TEXT NOT NULL,
+        description      TEXT NOT NULL,
+        dispatched_at    TEXT NOT NULL,
+        expected_channel TEXT NOT NULL,
+        status           TEXT NOT NULL DEFAULT 'pending',
+        completed_at     TEXT,
+        result           TEXT,
+        reply_channel    TEXT,
+        result_priority  TEXT
+      )
+    `);
+
+    // Insert a row in the old schema
+    db2.prepare(`
+      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp)
+      VALUES ('env-1', 'user', 'webchat', 'serj', 'old message', '2026-01-01T00:00:00Z')
+    `).run();
+    db2.prepare(`
+      INSERT INTO cortex_pending_ops (id, type, description, dispatched_at, expected_channel, status)
+      VALUES ('old-op', 'router_job', 'old task', '2026-01-01T00:00:00Z', 'router', 'pending')
+    `).run();
+
+    // NOW run initSessionTables — this must NOT crash
+    initSessionTables(db2);
+
+    // Old rows should have the default issuer
+    const history = getSessionHistory(db2);
+    expect(history).toHaveLength(1);
+    expect(history[0].issuer).toBe("agent:main:cortex");
+
+    const ops = getPendingOps(db2, "agent:main:cortex");
+    expect(ops).toHaveLength(1);
+    expect(ops[0].issuer).toBe("agent:main:cortex");
+
+    // New rows work with explicit issuer
+    appendToSession(db2, makeEnvelope("webchat", "new msg"), "agent:main:cortex");
+    expect(getSessionHistory(db2, { issuer: "agent:main:cortex" })).toHaveLength(2);
+
+    db2.close();
+    fs.rmSync(tmpDir2, { recursive: true, force: true });
   });
 });

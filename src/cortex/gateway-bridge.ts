@@ -55,6 +55,7 @@ function loadCortexConfig(): CortexModeConfig | null {
       defaultMode: raw.defaultMode ?? "off",
       channels: raw.channels ?? {},
       hippocampus: { enabled: raw.hippocampus?.enabled === true },
+      debugContext: raw.debugContext === true,
     };
   } catch {
     return null;
@@ -101,6 +102,7 @@ export async function initGatewayCortex(params: {
     onError: (err) => {
       params.log.warn(`[cortex-llm] ${err.message}`);
     },
+    debugContext: config.debugContext,
   });
 
   params.log.warn(`[cortex] LLM: live (anthropic/${cortexModel})`);
@@ -227,7 +229,7 @@ export async function initGatewayCortex(params: {
   // Startup cleanup: fail any orphaned pending ops from prior crashes/restarts.
   // These would pollute the System Floor indefinitely since no job:failed event will fire.
   try {
-    const orphaned = getPendingOps(instance.db).filter((op) => op.status === "pending");
+    const orphaned = getPendingOps(instance.db, cortexIssuer).filter((op) => op.status === "pending");
     for (const op of orphaned) {
       failPendingOp(instance.db, op.id, "orphaned from prior session (startup cleanup)");
     }

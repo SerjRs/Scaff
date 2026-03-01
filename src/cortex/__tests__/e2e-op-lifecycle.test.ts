@@ -115,7 +115,7 @@ describe("pending op lifecycle", () => {
     expect(session.length).toBeGreaterThanOrEqual(1);
     const taskResult = session.find((m) => m.senderId === "cortex:ops");
     expect(taskResult).toBeDefined();
-    expect(taskResult!.content).toContain("[TASK_RESULT]");
+    expect(taskResult!.content).toContain("Status=Completed");
     expect(taskResult!.content).toContain("The server runs on port 8080");
   });
 
@@ -484,7 +484,7 @@ describe("pending op lifecycle", () => {
     const session = getSessionHistory(instance.db, { channel: "router" });
     const opResults = session.filter((m) => m.senderId === "cortex:ops");
     expect(opResults).toHaveLength(2);
-    expect(opResults.some((m) => m.content.includes("[TASK_FAILED]"))).toBe(true);
+    expect(opResults.some((m) => m.content.includes("Status=Failed"))).toBe(true);
   });
 
   it("failed ops don't interfere with new ops completing normally", async () => {

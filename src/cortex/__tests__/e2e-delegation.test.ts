@@ -139,14 +139,13 @@ describe("E2E: Delegation Flow", () => {
     const taskId = spawns[0].taskId;
     expect(getPendingOps(instance.db)[0].id).toBe(taskId);
 
-    // Dispatch evidence stored in session so LLM knows it dispatched this task
+    // No dispatch evidence in session — pending ops are tracked in cortex_pending_ops
+    // (System Floor) only. Session receives the result after completion via copyAndDeleteCompletedOps.
     const historyAfterDispatch = getSessionHistory(instance.db);
     const dispatchEvidence = historyAfterDispatch.find((m) =>
       m.role === "assistant" && m.content.includes("[DISPATCHED]"),
     );
-    expect(dispatchEvidence).toBeDefined();
-    expect(dispatchEvidence!.content).toContain(`[TASK_ID]=${taskId}`);
-    expect(dispatchEvidence!.content).toContain("Research the weather in Bucharest");
+    expect(dispatchEvidence).toBeUndefined();
 
     // Step 2: Simulate Router result via single-path delivery (§6.4):
     // Mark pending op as completed, then send lightweight ops trigger
@@ -246,12 +245,10 @@ describe("E2E: Delegation Flow", () => {
     // Spawn had correct priority
     expect(spawns[0].resultPriority).toBe("background");
 
-    // Dispatch evidence includes task ID and description
+    // No dispatch evidence in session — pending ops tracked in cortex_pending_ops only
     const history = getSessionHistory(instance.db);
     const evidence = history.find((m) => m.content.includes("[DISPATCHED]"));
-    expect(evidence).toBeDefined();
-    expect(evidence!.content).toContain(`[TASK_ID]=${taskId}`);
-    expect(evidence!.content).toContain("Analyze the codebase structure");
+    expect(evidence).toBeUndefined();
   });
 
   it("result delivered to correct channel: webchat user gets answer on webchat", async () => {

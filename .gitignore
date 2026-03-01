@@ -112,6 +112,14 @@ Swabble/build/
 dist/protocol.schema.json
 .ant-colony/
 
+# Local runtime artifacts
+/gateway/tls/
+/log.txt
+/openclaw-back.json
+openclaw.json.bak.*
+/sandbox/
+/sandboxes/
+
 # Scaff runtime data (NEVER COMMIT — sensitive auth, queues, local config)
 /credentials/
 /agents/

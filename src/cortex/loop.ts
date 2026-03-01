@@ -20,7 +20,7 @@ import { assembleContext, type AssembledContext, type ToolResultEntry } from "./
 import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
-import { appendToSession, appendResponse, updateChannelState, getChannelStates, getPendingOps, addPendingOp, failPendingOp, copyAndDeleteCompletedOps, appendDispatchEvidence } from "./session.js";
+import { appendToSession, appendResponse, appendToolCall, updateChannelState, getChannelStates, getPendingOps, addPendingOp, failPendingOp, copyAndDeleteCompletedOps } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, type EmbedFunction } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +47,8 @@ export interface CortexLoopOptions {
   hippocampusEnabled?: boolean;
   /** Embedding function for memory_query tool (default: Ollama nomic-embed-text) */
   embedFn?: EmbedFunction;
+  /** Cognitive owner — filters foreground + pending ops by issuer instead of channel */
+  issuer?: string;
   callLLM: (context: AssembledContext) => Promise<CortexLLMResult>;
   onError: (error: Error) => void;
   /** Called after every message completes (including silent/NO_REPLY) */
@@ -66,7 +68,7 @@ export interface CortexLoop {
 // ---------------------------------------------------------------------------
 
 export function startLoop(opts: CortexLoopOptions): CortexLoop {
-  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, hippocampusEnabled, embedFn, callLLM, onError, onMessageComplete, onSpawn } = opts;
+  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, hippocampusEnabled, embedFn, issuer, callLLM, onError, onMessageComplete, onSpawn } = opts;
 
   let running = true;
   let processed = 0;
@@ -101,9 +103,9 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           ...msg.envelope,
           content: "[Task update available]",
           sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
-        });
+        }, issuer);
       } else {
-        appendToSession(db, msg.envelope);
+        appendToSession(db, msg.envelope, issuer);
       }
 
       // 3. Update channel state to foreground (skip for ops triggers)
@@ -122,6 +124,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           workspaceDir,
           maxTokens: maxContextTokens,
           hippocampusEnabled,
+          issuer,
         });
 
         // For ops triggers: suppress sessions_spawn tool to prevent re-dispatch.
@@ -145,9 +148,15 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             let result: string;
             try {
               if (tc.name === "fetch_chat_history") {
-                result = executeFetchChatHistory(db, tc.arguments as any);
+                const args = tc.arguments as Record<string, unknown>;
+                const detail = Object.entries(args).map(([k, v]) => `${k}=${v}`).join(", ");
+                appendToolCall(db, msg.envelope.id, tc.name, detail, issuer);
+                result = executeFetchChatHistory(db, args as any);
               } else if (tc.name === "memory_query") {
-                result = await executeMemoryQuery(db, tc.arguments as any, embedFn);
+                const args = tc.arguments as Record<string, unknown>;
+                const detail = `'${String(args.query ?? "").slice(0, 120)}'`;
+                appendToolCall(db, msg.envelope.id, tc.name, detail, issuer);
+                result = await executeMemoryQuery(db, args as any, embedFn);
               } else {
                 result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
               }
@@ -196,16 +205,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               status: "pending",
               replyChannel: replyChannel ?? undefined,
               resultPriority,
-            });
-
-            // Store dispatch evidence in session — without this, the LLM has no
-            // memory of having called sessions_spawn on subsequent turns (§6.4)
-            appendDispatchEvidence(db, {
-              envelopeId: msg.envelope.id,
-              channel: effectiveChannel,
-              taskId,
-              description: task.slice(0, 200),
-              dispatchedAt,
+              issuer,
             });
 
             // THEN fire spawn with the pre-generated taskId
@@ -214,6 +214,9 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             // If spawn failed, mark the pending op as failed
             if (!jobId) {
               failPendingOp(db, taskId, "Router spawn failed");
+              appendToolCall(db, msg.envelope.id, "sessions_spawn", `'${task.slice(0, 120)}', priority=${resultPriority} → FAILED`, issuer);
+            } else {
+              appendToolCall(db, msg.envelope.id, "sessions_spawn", `'${task.slice(0, 120)}', priority=${resultPriority} → taskId=${taskId}`, issuer);
             }
           }
         }
@@ -225,7 +228,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // about channels — Cortex owns the routing.
         let effectiveEnvelope = msg.envelope;
         if (isOpsTrigger) {
-          const completedOps = getPendingOps(db).filter(
+          const completedOps = getPendingOps(db, issuer).filter(
             (op) => op.status === "completed" || op.status === "failed",
           );
           const replyChannel = completedOps[0]?.replyChannel ?? completedOps[0]?.expectedChannel;
@@ -256,11 +259,11 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         onMessageComplete?.(msg.envelope.id, msg.envelope.replyContext, output.targets.length === 0);
 
         // 8. Record response in session
-        appendResponse(db, output, msg.envelope.id);
+        appendResponse(db, output, msg.envelope.id, issuer);
 
         // 8b. Copy completed/failed ops to cortex_session, then delete them
         //     from cortex_pending_ops so they drop from the System Floor next turn.
-        copyAndDeleteCompletedOps(db);
+        copyAndDeleteCompletedOps(db, issuer);
 
         // 9. Mark completed
         markCompleted(db, msg.envelope.id);
@@ -270,7 +273,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           createdAt: new Date().toISOString(),
           sessionSnapshot: `Processed: ${msg.envelope.content.slice(0, 100)}`,
           channelStates: getChannelStates(db),
-          pendingOps: getPendingOps(db),
+          pendingOps: getPendingOps(db, issuer),
         });
 
         processed++;

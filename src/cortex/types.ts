@@ -219,6 +219,8 @@ export interface PendingOperation {
   replyChannel?: string;
   /** Priority for the result envelope — stored locally, not sent to Router */
   resultPriority?: "urgent" | "normal" | "background";
+  /** Cognitive owner — which agent session owns this operation */
+  issuer?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +257,8 @@ export interface CortexModeConfig {
   defaultMode: CortexMode;
   channels: Partial<Record<string, CortexMode>>;
   hippocampus?: HippocampusConfig;
+  /** Dump the full LLM context (system + messages + tools) to gateway stdout */
+  debugContext?: boolean;
 }
 
 // ---------------------------------------------------------------------------

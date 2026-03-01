@@ -46,6 +46,8 @@ export interface LLMCallerParams {
   config: any; // OpenClawConfig — avoid tight coupling
   maxResponseTokens: number;
   onError: (err: Error) => void;
+  /** Dump the full LLM context (system + messages + tools) to stdout via onError. Default: false */
+  debugContext?: boolean;
 }
 
 /** Anthropic Messages API format (content may be string or structured blocks for tool use) */
@@ -211,6 +213,11 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
   return async (context: AssembledContext): Promise<CortexLLMResult> => {
     try {
       const { system, messages } = contextToMessages(context);
+
+      // DEBUG: dump full LLM context when enabled
+      if (params.debugContext) {
+        params.onError(new Error(`[cortex-llm] DEBUG CONTEXT ─── system prompt ───\n${system}\n─── messages (${messages.length}) ───\n${messages.map((m, i) => `[${i}] role=${m.role} content=${typeof m.content === "string" ? m.content.substring(0, 500) : JSON.stringify(m.content).substring(0, 500)}`).join("\n")}\n─── end context ───`));
+      }
 
       // Resolve model through the same path as the main agent
       const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");

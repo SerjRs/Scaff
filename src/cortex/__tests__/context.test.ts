@@ -119,17 +119,31 @@ describe("loadSystemFloor", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildForeground", () => {
-  it("returns messages from trigger channel only", () => {
+  const DEFAULT_ISSUER = "agent:main:cortex";
+
+  it("returns messages from trigger channel only (legacy channel filter)", () => {
     appendToSession(db, makeEnvelope("webchat", "webchat msg"));
     appendToSession(db, makeEnvelope("whatsapp", "whatsapp msg"));
     appendToSession(db, makeEnvelope("webchat", "webchat msg 2"));
 
-    const { layer, messages } = buildForeground(db, "webchat", 10000);
+    const { layer, messages } = buildForeground(db, "webchat", 10000, { filterByChannel: true });
     expect(layer.content).toContain("webchat msg");
     expect(layer.content).toContain("webchat msg 2");
     expect(layer.content).not.toContain("whatsapp msg");
     expect(messages).toHaveLength(2);
     expect(messages.every((m) => m.channel === "webchat")).toBe(true);
+  });
+
+  it("returns messages from ALL channels when filtering by issuer", () => {
+    appendToSession(db, makeEnvelope("webchat", "webchat msg"), DEFAULT_ISSUER);
+    appendToSession(db, makeEnvelope("whatsapp", "whatsapp msg"), DEFAULT_ISSUER);
+    appendToSession(db, makeEnvelope("webchat", "webchat msg 2"), DEFAULT_ISSUER);
+
+    const { layer, messages } = buildForeground(db, DEFAULT_ISSUER, 10000);
+    expect(layer.content).toContain("webchat msg");
+    expect(layer.content).toContain("webchat msg 2");
+    expect(layer.content).toContain("whatsapp msg");
+    expect(messages).toHaveLength(3);
   });
 
   it("respects token budget (truncates oldest when over)", () => {
@@ -139,14 +153,14 @@ describe("buildForeground", () => {
     }
 
     const smallBudget = 50; // Very small — should only fit a few messages
-    const { layer } = buildForeground(db, "webchat", smallBudget);
+    const { layer } = buildForeground(db, DEFAULT_ISSUER, smallBudget);
     expect(layer.tokens).toBeLessThanOrEqual(smallBudget);
     // Should contain the most recent messages, not the oldest
     expect(layer.content).toContain("message number 99");
   });
 
-  it("returns empty for channel with no messages", () => {
-    const { layer, messages } = buildForeground(db, "webchat", 10000);
+  it("returns empty for issuer with no messages", () => {
+    const { layer, messages } = buildForeground(db, "agent:other:cortex", 10000);
     expect(layer.content).toBe("");
     expect(layer.tokens).toBe(0);
     expect(messages).toHaveLength(0);

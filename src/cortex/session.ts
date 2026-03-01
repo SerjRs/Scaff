@@ -24,6 +24,7 @@ import type {
 
 /** Initialize session tables in the bus database */
 export function initSessionTables(db: DatabaseSync): void {
+  // --- Create tables (IF NOT EXISTS = no-op on existing DB) ---
   db.exec(`
     CREATE TABLE IF NOT EXISTS cortex_session (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,18 +34,9 @@ export function initSessionTables(db: DatabaseSync): void {
       sender_id   TEXT NOT NULL,
       content     TEXT NOT NULL,
       timestamp   TEXT NOT NULL,
-      metadata    TEXT
+      metadata    TEXT,
+      issuer      TEXT NOT NULL DEFAULT 'agent:main:cortex'
     )
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_session_channel
-    ON cortex_session(channel, timestamp)
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_session_timestamp
-    ON cortex_session(timestamp)
   `);
 
   db.exec(`
@@ -68,16 +60,40 @@ export function initSessionTables(db: DatabaseSync): void {
       completed_at     TEXT,
       result           TEXT,
       reply_channel    TEXT,
-      result_priority  TEXT
+      result_priority  TEXT,
+      issuer           TEXT NOT NULL DEFAULT 'agent:main:cortex'
     )
   `);
 
-  // Migration MUST run before index creation — existing tables may lack the status column
-  _migratePendingOps(db);
+  // --- Migration MUST run BEFORE index creation ---
+  // Existing tables may lack columns (issuer, status, etc.).
+  // ALTER TABLE adds them so subsequent CREATE INDEX succeeds.
+  _migrateSchema(db);
+
+  // --- Indexes (safe now — all columns exist) ---
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_session_channel
+    ON cortex_session(channel, timestamp)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_session_timestamp
+    ON cortex_session(timestamp)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_session_issuer
+    ON cortex_session(issuer, timestamp)
+  `);
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_pending_ops_status
     ON cortex_pending_ops(status)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pending_ops_issuer
+    ON cortex_pending_ops(issuer, status)
   `);
 }
 
@@ -104,13 +120,15 @@ export interface SessionMessage {
   content: string;
   timestamp: string;
   metadata?: Record<string, unknown>;
+  /** Cognitive owner — which agent session owns this message */
+  issuer?: string;
 }
 
 /** Append an inbound message to the unified session */
-export function appendToSession(db: DatabaseSync, envelope: CortexEnvelope): void {
+export function appendToSession(db: DatabaseSync, envelope: CortexEnvelope, issuer = "agent:main:cortex"): void {
   const stmt = db.prepare(`
-    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata)
-    VALUES (?, 'user', ?, ?, ?, ?, ?)
+    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+    VALUES (?, 'user', ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     envelope.id,
@@ -119,7 +137,23 @@ export function appendToSession(db: DatabaseSync, envelope: CortexEnvelope): voi
     envelope.content,
     envelope.timestamp,
     envelope.metadata ? JSON.stringify(envelope.metadata) : null,
+    issuer,
   );
+}
+
+/** Record a tool call in the session so the LLM can see its own actions in future turns */
+export function appendToolCall(
+  db: DatabaseSync,
+  envelopeId: string,
+  toolName: string,
+  detail: string,
+  issuer = "agent:main:cortex",
+): void {
+  const content = `[Tool] ${toolName}: ${detail}`;
+  db.prepare(`
+    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+    VALUES (?, 'assistant', 'internal', 'cortex', ?, ?, NULL, ?)
+  `).run(envelopeId, content, new Date().toISOString(), issuer);
 }
 
 /** Append Cortex's response to the unified session */
@@ -127,12 +161,13 @@ export function appendResponse(
   db: DatabaseSync,
   output: CortexOutput,
   inResponseTo: string,
+  issuer = "agent:main:cortex",
 ): void {
   // Store the response for each output target
   for (const target of output.targets) {
     const stmt = db.prepare(`
-      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata)
-      VALUES (?, 'assistant', ?, 'cortex', ?, ?, ?)
+      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+      VALUES (?, 'assistant', ?, 'cortex', ?, ?, ?, ?)
     `);
     stmt.run(
       inResponseTo,
@@ -140,33 +175,43 @@ export function appendResponse(
       target.content,
       new Date().toISOString(),
       null,
+      issuer,
     );
   }
 
   // If silence (no targets), still record it
   if (output.targets.length === 0) {
     const stmt = db.prepare(`
-      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata)
-      VALUES (?, 'assistant', 'internal', 'cortex', '[silence]', ?, NULL)
+      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+      VALUES (?, 'assistant', 'internal', 'cortex', '[silence]', ?, NULL, ?)
     `);
-    stmt.run(inResponseTo, new Date().toISOString());
+    stmt.run(inResponseTo, new Date().toISOString(), issuer);
   }
 }
 
-/** Get session history, optionally filtered by channel */
+/** Get session history, optionally filtered by channel and/or issuer */
 export function getSessionHistory(
   db: DatabaseSync,
-  opts?: { channel?: ChannelId; limit?: number },
+  opts?: { channel?: ChannelId; issuer?: string; limit?: number },
 ): SessionMessage[] {
   let sql = `
-    SELECT id, envelope_id, role, channel, sender_id, content, timestamp, metadata
+    SELECT id, envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer
     FROM cortex_session
   `;
   const params: import("node:sqlite").SQLInputValue[] = [];
+  const conditions: string[] = [];
 
   if (opts?.channel) {
-    sql += ` WHERE channel = ?`;
+    conditions.push("channel = ?");
     params.push(opts.channel);
+  }
+  if (opts?.issuer) {
+    conditions.push("issuer = ?");
+    params.push(opts.issuer);
+  }
+
+  if (conditions.length > 0) {
+    sql += ` WHERE ${conditions.join(" AND ")}`;
   }
 
   sql += ` ORDER BY timestamp ASC, id ASC`;
@@ -188,6 +233,7 @@ export function getSessionHistory(
     content: row.content as string,
     timestamp: row.timestamp as string,
     metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
+    issuer: (row.issuer as string) ?? undefined,
   }));
 }
 
@@ -263,9 +309,9 @@ export function getChannelStates(db: DatabaseSync): ChannelState[] {
 /** Add a pending operation */
 export function addPendingOp(db: DatabaseSync, op: PendingOperation): void {
   db.prepare(`
-    INSERT OR REPLACE INTO cortex_pending_ops (id, type, description, dispatched_at, expected_channel, status, reply_channel, result_priority)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(op.id, op.type, op.description, op.dispatchedAt, op.expectedChannel, op.status ?? "pending", op.replyChannel ?? null, op.resultPriority ?? null);
+    INSERT OR REPLACE INTO cortex_pending_ops (id, type, description, dispatched_at, expected_channel, status, reply_channel, result_priority, issuer)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(op.id, op.type, op.description, op.dispatchedAt, op.expectedChannel, op.status ?? "pending", op.replyChannel ?? null, op.resultPriority ?? null, op.issuer ?? "agent:main:cortex");
 }
 
 /**
@@ -303,12 +349,20 @@ export function getPendingOpById(db: DatabaseSync, id: string): PendingOperation
 }
 
 /**
- * Get all pending operations for System Floor injection.
+ * Get pending operations for System Floor injection.
  *
  * Only `pending` ops remain in the table — completed/failed ops are
  * copied to cortex_session and deleted by copyAndDeleteCompletedOps().
+ *
+ * @param issuer — optional filter by cognitive owner
  */
-export function getPendingOps(db: DatabaseSync): PendingOperation[] {
+export function getPendingOps(db: DatabaseSync, issuer?: string): PendingOperation[] {
+  if (issuer) {
+    const rows = db.prepare(
+      `SELECT * FROM cortex_pending_ops WHERE issuer = ? ORDER BY dispatched_at ASC`,
+    ).all(issuer) as Record<string, unknown>[];
+    return rows.map(rowToPendingOp);
+  }
   const rows = db.prepare(
     `SELECT * FROM cortex_pending_ops ORDER BY dispatched_at ASC`,
   ).all() as Record<string, unknown>[];
@@ -322,60 +376,44 @@ export function getPendingOps(db: DatabaseSync): PendingOperation[] {
  * (where the Fact Extractor will find it), and the op is removed from
  * cortex_pending_ops so it no longer appears in the System Floor.
  *
+ * @param issuer — optional filter by cognitive owner (also written to cortex_session)
  * @returns Number of ops copied and deleted
  */
-export function copyAndDeleteCompletedOps(db: DatabaseSync): number {
-  const rows = db.prepare(
-    `SELECT * FROM cortex_pending_ops WHERE status = 'completed' OR status = 'failed'`,
-  ).all() as Record<string, unknown>[];
+export function copyAndDeleteCompletedOps(db: DatabaseSync, issuer?: string): number {
+  let sql = `SELECT * FROM cortex_pending_ops WHERE (status = 'completed' OR status = 'failed')`;
+  const sqlParams: import("node:sqlite").SQLInputValue[] = [];
+  if (issuer) {
+    sql += ` AND issuer = ?`;
+    sqlParams.push(issuer);
+  }
+
+  const rows = db.prepare(sql).all(...sqlParams) as Record<string, unknown>[];
 
   if (rows.length === 0) return 0;
 
   const insertStmt = db.prepare(`
-    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata)
-    VALUES (?, 'user', ?, 'cortex:ops', ?, ?, NULL)
+    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+    VALUES (?, 'user', ?, 'cortex:ops', ?, ?, NULL, ?)
   `);
   const deleteStmt = db.prepare(`DELETE FROM cortex_pending_ops WHERE id = ?`);
 
   for (const row of rows) {
     const op = rowToPendingOp(row);
     const channel = op.replyChannel ?? op.expectedChannel;
-    const prefix = op.status === "completed" ? "[TASK_RESULT]" : "[TASK_FAILED]";
-    const content = `${prefix} [${op.type}] ${op.description} — ${op.result ?? "(no result)"}`;
-    insertStmt.run(op.id, channel, content, op.completedAt ?? new Date().toISOString());
+    const opIssuer = op.issuer ?? issuer ?? "agent:main:cortex";
+    // Same structured format as context.ts System Floor rendering — only Status differs
+    let content: string;
+    if (op.status === "completed") {
+      content = `[TASK_ID]=${op.id}, Message='${op.description}', Status=Completed, Channel=${channel}, Result='${op.result ?? "(no result)"}', CompletedAt=${op.completedAt ?? "unknown"}`;
+    } else {
+      const errorDetail = op.result ?? "Unknown error";
+      content = `[TASK_ID]=${op.id}, Message='${op.description}', Status=Failed, Channel=${channel}, Error='${errorDetail}', CompletedAt=${op.completedAt ?? "unknown"}`;
+    }
+    insertStmt.run(op.id, channel, content, op.completedAt ?? new Date().toISOString(), opIssuer);
     deleteStmt.run(op.id);
   }
 
   return rows.length;
-}
-
-// ---------------------------------------------------------------------------
-// Dispatch evidence (tool provenance §6.4)
-// ---------------------------------------------------------------------------
-
-/**
- * Store dispatch evidence in the session so the LLM sees its own action
- * in the foreground on subsequent turns. Without this, the LLM has no
- * memory of having called sessions_spawn and cannot correlate results.
- */
-export function appendDispatchEvidence(db: DatabaseSync, params: {
-  envelopeId: string;
-  channel: string;
-  taskId: string;
-  description: string;
-  dispatchedAt: string;
-}): void {
-  const content = `[DISPATCHED] [TASK_ID]=${params.taskId}, Message='${params.description}', Status=Pending, Channel=${params.channel}, DispatchedAt=${params.dispatchedAt}`;
-
-  db.prepare(`
-    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata)
-    VALUES (?, 'assistant', ?, 'cortex', ?, ?, NULL)
-  `).run(
-    params.envelopeId,
-    params.channel,
-    content,
-    params.dispatchedAt,
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -394,13 +432,14 @@ function rowToPendingOp(row: Record<string, unknown>): PendingOperation {
     result: (row.result as string) ?? undefined,
     replyChannel: (row.reply_channel as string) ?? undefined,
     resultPriority: (row.result_priority as PendingOperation["resultPriority"]) ?? undefined,
+    issuer: (row.issuer as string) ?? undefined,
   };
 }
 
-/** Migration: add lifecycle columns to existing cortex_pending_ops tables */
-function _migratePendingOps(db: DatabaseSync): void {
+/** Migration: add lifecycle + issuer columns to existing tables */
+function _migrateSchema(db: DatabaseSync): void {
+  // --- cortex_pending_ops ---
   try {
-    // Check if status column exists by querying table info
     const columns = db.prepare(`PRAGMA table_info(cortex_pending_ops)`).all() as { name: string }[];
     const colNames = new Set(columns.map((c) => c.name));
 
@@ -418,6 +457,21 @@ function _migratePendingOps(db: DatabaseSync): void {
     }
     if (!colNames.has("result_priority")) {
       db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN result_priority TEXT`);
+    }
+    if (!colNames.has("issuer")) {
+      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN issuer TEXT NOT NULL DEFAULT 'agent:main:cortex'`);
+    }
+  } catch {
+    // Table doesn't exist yet or migration already done — no-op
+  }
+
+  // --- cortex_session ---
+  try {
+    const columns = db.prepare(`PRAGMA table_info(cortex_session)`).all() as { name: string }[];
+    const colNames = new Set(columns.map((c) => c.name));
+
+    if (!colNames.has("issuer")) {
+      db.exec(`ALTER TABLE cortex_session ADD COLUMN issuer TEXT NOT NULL DEFAULT 'agent:main:cortex'`);
     }
   } catch {
     // Table doesn't exist yet or migration already done — no-op

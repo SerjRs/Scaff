@@ -23,8 +23,6 @@ import {
   buildForeground,
   buildBackground,
   assembleContext,
-  FOREGROUND_SOFT_CAP_MESSAGES,
-  FOREGROUND_SOFT_CAP_TOKENS,
   BACKGROUND_MAX_IDLE_HOURS,
 } from "../context.js";
 import { createEnvelope } from "../types.js";
@@ -138,38 +136,27 @@ describe("Layer 1: System Floor with hot facts", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Layer 2: Foreground Soft Cap
+// Layer 2: Foreground (budget-based, no soft cap)
 // ---------------------------------------------------------------------------
 
-describe("Layer 2: Foreground soft cap", () => {
-  it("truncates to FOREGROUND_SOFT_CAP_MESSAGES when softCap enabled", () => {
-    // Insert 50 messages
+describe("Layer 2: Foreground budget", () => {
+  it("includes all messages when budget is large", () => {
     for (let i = 0; i < 50; i++) {
       appendToSession(db, makeEnvelope("webchat", `msg ${i}`));
     }
 
-    const { messages } = buildForeground(db, "webchat", 100000, { softCap: true });
-    expect(messages.length).toBeLessThanOrEqual(FOREGROUND_SOFT_CAP_MESSAGES);
-  });
-
-  it("does NOT apply message cap when softCap disabled", () => {
-    // Insert 50 short messages that fit in a large budget
-    for (let i = 0; i < 50; i++) {
-      appendToSession(db, makeEnvelope("webchat", `msg ${i}`));
-    }
-
-    const { messages } = buildForeground(db, "webchat", 100000);
+    const { messages } = buildForeground(db, "webchat", 100000, { filterByChannel: true });
     expect(messages.length).toBe(50);
   });
 
-  it("respects token cap of FOREGROUND_SOFT_CAP_TOKENS", () => {
-    // Insert messages with enough text to exceed 4000 tokens
+  it("truncates to fit within token budget", () => {
+    // Insert messages with enough text to exceed a small budget
     for (let i = 0; i < 10; i++) {
       appendToSession(db, makeEnvelope("webchat", "x".repeat(2000))); // ~500 tokens each
     }
 
-    const { layer } = buildForeground(db, "webchat", 100000, { softCap: true });
-    expect(layer.tokens).toBeLessThanOrEqual(FOREGROUND_SOFT_CAP_TOKENS);
+    const { layer } = buildForeground(db, "webchat", 2000, { filterByChannel: true });
+    expect(layer.tokens).toBeLessThanOrEqual(2000);
   });
 
   it("keeps most recent messages when truncating", () => {
@@ -177,7 +164,7 @@ describe("Layer 2: Foreground soft cap", () => {
       appendToSession(db, makeEnvelope("webchat", `message ${i}`));
     }
 
-    const { messages } = buildForeground(db, "webchat", 100000, { softCap: true });
+    const { messages } = buildForeground(db, "webchat", 1000, { filterByChannel: true });
     // Should contain the most recent messages (highest indices)
     const lastMsg = messages[messages.length - 1];
     expect(lastMsg.content).toBe("message 49");
@@ -320,10 +307,10 @@ describe("Phase 2 E2E: context assembly with hippocampus", () => {
     expect(floor.content).toContain("Serj uses Neovim"); // hot fact
     expect(floor.content).toContain("Known Facts"); // section header
 
-    // Layer 2: Foreground — soft-capped to ≤20 messages
+    // Layer 2: Foreground — all 30 messages fit in 200k budget
     const fg = ctx.layers[1];
     expect(fg.name).toBe("foreground");
-    expect(ctx.foregroundMessages.length).toBeLessThanOrEqual(FOREGROUND_SOFT_CAP_MESSAGES);
+    expect(ctx.foregroundMessages.length).toBe(30);
     // Should include the most recent messages
     expect(fg.content).toContain("conversation message 29");
 

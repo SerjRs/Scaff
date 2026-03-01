@@ -17,7 +17,7 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { startLoop, type CortexLoop, type SpawnParams } from "./loop.js";
 import type { EmbedFunction } from "./tools.js";
 import { repairBusState } from "./recovery.js";
-import { initSessionTables, getChannelStates, getPendingOps } from "./session.js";
+import { initSessionTables, getCortexSessionKey, getChannelStates, getPendingOps } from "./session.js";
 import type { ChannelId, CortexEnvelope, ChannelState, PendingOperation } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -108,6 +108,9 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
   // 4. Start processing loop
   let loop: CortexLoop | null = null;
 
+  // Compute cognitive owner for this agent
+  const issuer = getCortexSessionKey(config.agentId);
+
   // Defer loop start until at least one adapter is registered
   // (or start immediately if called with startLoop)
   function ensureLoop(): CortexLoop {
@@ -120,6 +123,7 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
         pollIntervalMs: config.pollIntervalMs ?? 500,
         hippocampusEnabled: config.hippocampusEnabled,
         embedFn: config.embedFn,
+        issuer,
         callLLM: config.callLLM,
         onError,
         onMessageComplete: config.onMessageComplete,
@@ -174,7 +178,7 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
         processedCount: loop?.processedCount() ?? 0,
         pendingCount: countPending(db),
         activeChannels: getChannelStates(db),
-        pendingOps: getPendingOps(db),
+        pendingOps: getPendingOps(db, issuer),
         uptimeMs: Date.now() - startTime,
       };
     },

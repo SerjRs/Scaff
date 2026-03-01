@@ -145,28 +145,17 @@ export async function loadSystemFloor(
 // Foreground
 // ---------------------------------------------------------------------------
 
-/** Soft cap defaults when Hippocampus is enabled */
-export const FOREGROUND_SOFT_CAP_MESSAGES = 20;
-export const FOREGROUND_SOFT_CAP_TOKENS = 4000;
-
-/** Build foreground context from the trigger channel's session history */
+/** Build foreground context from the issuer's session history (cross-channel) */
 export function buildForeground(
   db: DatabaseSync,
-  channel: ChannelId,
+  issuer: string,
   budget: number,
-  opts?: { softCap?: boolean },
+  opts?: { filterByChannel?: boolean },
 ): { layer: ContextLayer; messages: SessionMessage[] } {
-  // Get all messages from this channel, newest first for budget trimming
-  const allMessages = getSessionHistory(db, { channel });
-
-  // When hippocampus soft cap is active, use the tighter of:
-  //   - FOREGROUND_SOFT_CAP_MESSAGES messages
-  //   - FOREGROUND_SOFT_CAP_TOKENS tokens
-  //   - the overall token budget
-  const effectiveBudget = opts?.softCap
-    ? Math.min(budget, FOREGROUND_SOFT_CAP_TOKENS)
-    : budget;
-  const maxMessages = opts?.softCap ? FOREGROUND_SOFT_CAP_MESSAGES : Infinity;
+  // When filterByChannel is set, use channel filter (legacy/fallback). Otherwise filter by issuer.
+  const allMessages = opts?.filterByChannel
+    ? getSessionHistory(db, { channel: issuer as ChannelId })
+    : getSessionHistory(db, { issuer });
 
   // Build content from oldest to newest, respecting budget
   const lines: string[] = [];
@@ -175,11 +164,10 @@ export function buildForeground(
   // Start from the end (most recent) and work backward to find how many fit
   const messagesToInclude: typeof allMessages = [];
   for (let i = allMessages.length - 1; i >= 0; i--) {
-    if (messagesToInclude.length >= maxMessages) break;
     const msg = allMessages[i];
     const line = formatSessionMessage(msg);
     const lineTokens = estimateTokens(line);
-    if (totalTokens + lineTokens > effectiveBudget) break;
+    if (totalTokens + lineTokens > budget) break;
     totalTokens += lineTokens;
     messagesToInclude.unshift(msg);
   }
@@ -253,11 +241,13 @@ export async function assembleContext(params: {
   workspaceDir: string;
   maxTokens: number;
   hippocampusEnabled?: boolean;
+  /** Cognitive owner — filters foreground + pending ops by issuer instead of channel */
+  issuer?: string;
 }): Promise<AssembledContext> {
-  const { db, triggerEnvelope, workspaceDir, maxTokens, hippocampusEnabled } = params;
+  const { db, triggerEnvelope, workspaceDir, maxTokens, hippocampusEnabled, issuer } = params;
 
-  // Get pending ops for system floor
-  const pendingOps = getPendingOps(db);
+  // Get pending ops for system floor (filtered by issuer when provided)
+  const pendingOps = getPendingOps(db, issuer);
 
   // Load hot facts when hippocampus is enabled
   let hotFacts: HotFact[] | undefined;
@@ -275,13 +265,11 @@ export async function assembleContext(params: {
   });
 
   // 3. Foreground — gets remaining budget
+  //    When issuer is provided, filter by issuer (cross-channel) instead of channel
   const remainingBudget = Math.max(0, maxTokens - systemFloor.tokens - background.tokens);
-  const { layer: foreground, messages: foregroundMessages } = buildForeground(
-    db,
-    triggerEnvelope.channel,
-    remainingBudget,
-    { softCap: hippocampusEnabled === true },
-  );
+  const { layer: foreground, messages: foregroundMessages } = issuer
+    ? buildForeground(db, issuer, remainingBudget)
+    : buildForeground(db, triggerEnvelope.channel, remainingBudget, { filterByChannel: true });
 
   // 4. Archived — not in context (zero cost)
   const archived: ContextLayer = { name: "archived", tokens: 0, content: "" };
