@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { initBus } from "../bus.js";
-import { initSessionTables, addPendingOp } from "../session.js";
+import { initSessionTables } from "../session.js";
 import {
   initHotMemoryTable,
   initColdStorage,
@@ -291,30 +291,18 @@ describe("e2e", () => {
     expect(hotFacts).toHaveLength(1);
     expect(hotFacts[0].id).toBe(hotId);
 
-    // 2. Insert a pending operation (existing session infrastructure)
-    addPendingOp(db, {
-      id: "op-1",
-      type: "router_job",
-      description: "e2e test op",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "webchat",
-      status: "pending",
-    });
-    const ops = db.prepare(`SELECT * FROM cortex_pending_ops WHERE id = 'op-1'`).get() as Record<string, unknown> | undefined;
-    expect(ops).toBeDefined();
-
-    // 3. Write a mock embedding to cold storage
+    // 2. Write a mock embedding to cold storage
     const emb = new Float32Array(768);
     for (let i = 0; i < 768; i++) emb[i] = Math.sin(i);
     const coldRowid = insertColdFact(db, "e2e cold fact", emb);
     expect(coldRowid).toBeGreaterThan(0);
 
-    // 4. Assert all data readable
+    // 3. Assert all data readable
     const coldResults = searchColdFacts(db, emb, 5);
     expect(coldResults).toHaveLength(1);
     expect(coldResults[0].factText).toBe("e2e cold fact");
 
-    // 5. Cross-table: hot + cold both accessible in same db
+    // 4. Cross-table: hot + cold both accessible in same db
     expect(getTopHotFacts(db)).toHaveLength(1);
     expect(coldResults).toHaveLength(1);
   });

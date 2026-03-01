@@ -12,14 +12,8 @@ import {
   getSessionHistory,
   updateChannelState,
   getChannelStates,
-  addPendingOp,
-  removePendingOp,
-  getPendingOps,
-  completePendingOp,
-  failPendingOp,
-  copyAndDeleteCompletedOps,
 } from "../session.js";
-import { createEnvelope, type CortexOutput, type PendingOperation } from "../types.js";
+import { createEnvelope, type CortexOutput } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -226,164 +220,6 @@ describe("updateChannelState / getChannelStates", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Pending Operations
-// ---------------------------------------------------------------------------
-
-describe("addPendingOp / removePendingOp / getPendingOps", () => {
-  const op1: PendingOperation = {
-    id: "job-1",
-    type: "router_job",
-    description: "Analyze code complexity",
-    dispatchedAt: "2026-02-26T15:00:00Z",
-    expectedChannel: "router",
-    status: "pending",
-  };
-
-  const op2: PendingOperation = {
-    id: "sa-1",
-    type: "subagent",
-    description: "Research weather API",
-    dispatchedAt: "2026-02-26T15:01:00Z",
-    expectedChannel: "subagent",
-    status: "pending",
-  };
-
-  it("adds and retrieves pending operations", () => {
-    addPendingOp(db, op1);
-    addPendingOp(db, op2);
-
-    const ops = getPendingOps(db);
-    expect(ops).toHaveLength(2);
-    expect(ops[0].id).toBe("job-1");
-    expect(ops[1].id).toBe("sa-1");
-  });
-
-  it("removes a pending operation", () => {
-    addPendingOp(db, op1);
-    addPendingOp(db, op2);
-    removePendingOp(db, "job-1");
-
-    const ops = getPendingOps(db);
-    expect(ops).toHaveLength(1);
-    expect(ops[0].id).toBe("sa-1");
-  });
-
-  it("returns empty array when no pending ops", () => {
-    expect(getPendingOps(db)).toEqual([]);
-  });
-
-  it("upserts on duplicate id", () => {
-    addPendingOp(db, op1);
-    addPendingOp(db, { ...op1, description: "Updated description" });
-
-    const ops = getPendingOps(db);
-    expect(ops).toHaveLength(1);
-    expect(ops[0].description).toBe("Updated description");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// failPendingOp
-// ---------------------------------------------------------------------------
-
-describe("failPendingOp", () => {
-  const op1: PendingOperation = {
-    id: "job-fail-1",
-    type: "router_job",
-    description: "Failing task",
-    dispatchedAt: "2026-02-26T15:00:00Z",
-    expectedChannel: "router",
-    status: "pending",
-  };
-
-  it("marks a pending op as failed but keeps it visible in getPendingOps", () => {
-    addPendingOp(db, op1);
-    expect(getPendingOps(db)).toHaveLength(1);
-
-    failPendingOp(db, "job-fail-1", "dispatch exploded");
-
-    // Failed ops stay visible (unacknowledged) so the LLM can inform the user
-    const ops = getPendingOps(db);
-    expect(ops).toHaveLength(1);
-    expect(ops[0].status).toBe("failed");
-    expect(ops[0].result).toBe("Error: dispatch exploded");
-  });
-
-  it("sets status to failed with error result", () => {
-    addPendingOp(db, op1);
-    failPendingOp(db, "job-fail-1", "config missing tiers");
-
-    const row = db.prepare(
-      `SELECT status, result, completed_at FROM cortex_pending_ops WHERE id = ?`,
-    ).get("job-fail-1") as { status: string; result: string; completed_at: string };
-
-    expect(row.status).toBe("failed");
-    expect(row.result).toBe("Error: config missing tiers");
-    expect(row.completed_at).toBeTruthy();
-  });
-
-  it("failed ops drop from getPendingOps after copyAndDeleteCompletedOps", () => {
-    addPendingOp(db, op1);
-    failPendingOp(db, "job-fail-1", "boom");
-
-    // Visible before copy+delete
-    expect(getPendingOps(db)).toHaveLength(1);
-
-    // Copy to cortex_session and delete
-    copyAndDeleteCompletedOps(db);
-
-    // Gone after copy+delete
-    expect(getPendingOps(db)).toHaveLength(0);
-
-    // Present in cortex_session
-    const session = getSessionHistory(db, { channel: "router" });
-    const opResults = session.filter((m) => m.senderId === "cortex:ops");
-    expect(opResults).toHaveLength(1);
-    expect(opResults[0].content).toContain("Status=Failed");
-  });
-
-  it("only affects pending ops (does not overwrite completed ops)", () => {
-    addPendingOp(db, op1);
-    completePendingOp(db, "job-fail-1", "Real result");
-
-    // Try to fail an already-completed op — should be a no-op (WHERE status = 'pending')
-    failPendingOp(db, "job-fail-1", "should not overwrite");
-
-    const row = db.prepare(
-      `SELECT status, result FROM cortex_pending_ops WHERE id = ?`,
-    ).get("job-fail-1") as { status: string; result: string };
-
-    expect(row.status).toBe("completed");
-    expect(row.result).toBe("Real result");
-  });
-
-  it("is a no-op for non-existent ops", () => {
-    // Should not throw
-    failPendingOp(db, "non-existent", "some error");
-    expect(getPendingOps(db)).toHaveLength(0);
-  });
-
-  it("fails one op — both failed and pending ops stay visible", () => {
-    addPendingOp(db, op1);
-    addPendingOp(db, {
-      id: "job-ok",
-      type: "router_job",
-      description: "OK task",
-      dispatchedAt: "2026-02-26T15:01:00Z",
-      expectedChannel: "router",
-      status: "pending",
-    });
-
-    failPendingOp(db, "job-fail-1", "boom");
-
-    // Both visible: one failed, one still pending
-    const ops = getPendingOps(db);
-    expect(ops).toHaveLength(2);
-    expect(ops.find((o) => o.id === "job-fail-1")!.status).toBe("failed");
-    expect(ops.find((o) => o.id === "job-ok")!.status).toBe("pending");
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Session history round-trip
@@ -435,70 +271,6 @@ describe("issuer filtering", () => {
     expect(otherOnly[0].content).toBe("msg B");
   });
 
-  it("getPendingOps filters by issuer", () => {
-    addPendingOp(db, {
-      id: "op-main",
-      type: "router_job",
-      description: "Main op",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-      issuer: "agent:main:cortex",
-    });
-    addPendingOp(db, {
-      id: "op-other",
-      type: "router_job",
-      description: "Other op",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-      issuer: "agent:other:cortex",
-    });
-
-    expect(getPendingOps(db)).toHaveLength(2);
-    expect(getPendingOps(db, "agent:main:cortex")).toHaveLength(1);
-    expect(getPendingOps(db, "agent:main:cortex")[0].id).toBe("op-main");
-    expect(getPendingOps(db, "agent:other:cortex")).toHaveLength(1);
-    expect(getPendingOps(db, "agent:other:cortex")[0].id).toBe("op-other");
-  });
-
-  it("copyAndDeleteCompletedOps filters by issuer and writes issuer to session", () => {
-    addPendingOp(db, {
-      id: "op-A",
-      type: "router_job",
-      description: "Task A",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-      issuer: "agent:main:cortex",
-    });
-    addPendingOp(db, {
-      id: "op-B",
-      type: "router_job",
-      description: "Task B",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-      issuer: "agent:other:cortex",
-    });
-
-    completePendingOp(db, "op-A", "Result A");
-    completePendingOp(db, "op-B", "Result B");
-
-    // Only copy main's ops
-    const count = copyAndDeleteCompletedOps(db, "agent:main:cortex");
-    expect(count).toBe(1);
-
-    // op-A deleted, op-B still in pending_ops
-    expect(getPendingOps(db, "agent:main:cortex")).toHaveLength(0);
-    expect(getPendingOps(db, "agent:other:cortex")).toHaveLength(1);
-
-    // Session row has issuer
-    const session = getSessionHistory(db, { issuer: "agent:main:cortex" });
-    const opResults = session.filter((m) => m.senderId === "cortex:ops");
-    expect(opResults).toHaveLength(1);
-    expect(opResults[0].issuer).toBe("agent:main:cortex");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -524,29 +296,11 @@ describe("migration: existing DB without issuer", () => {
         metadata    TEXT
       )
     `);
-    db2.exec(`
-      CREATE TABLE cortex_pending_ops (
-        id               TEXT PRIMARY KEY,
-        type             TEXT NOT NULL,
-        description      TEXT NOT NULL,
-        dispatched_at    TEXT NOT NULL,
-        expected_channel TEXT NOT NULL,
-        status           TEXT NOT NULL DEFAULT 'pending',
-        completed_at     TEXT,
-        result           TEXT,
-        reply_channel    TEXT,
-        result_priority  TEXT
-      )
-    `);
 
     // Insert a row in the old schema
     db2.prepare(`
       INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp)
       VALUES ('env-1', 'user', 'webchat', 'serj', 'old message', '2026-01-01T00:00:00Z')
-    `).run();
-    db2.prepare(`
-      INSERT INTO cortex_pending_ops (id, type, description, dispatched_at, expected_channel, status)
-      VALUES ('old-op', 'router_job', 'old task', '2026-01-01T00:00:00Z', 'router', 'pending')
     `).run();
 
     // NOW run initSessionTables — this must NOT crash
@@ -556,10 +310,6 @@ describe("migration: existing DB without issuer", () => {
     const history = getSessionHistory(db2);
     expect(history).toHaveLength(1);
     expect(history[0].issuer).toBe("agent:main:cortex");
-
-    const ops = getPendingOps(db2, "agent:main:cortex");
-    expect(ops).toHaveLength(1);
-    expect(ops[0].issuer).toBe("agent:main:cortex");
 
     // New rows work with explicit issuer
     appendToSession(db2, makeEnvelope("webchat", "new msg"), "agent:main:cortex");

@@ -17,8 +17,8 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { startLoop, type CortexLoop, type SpawnParams } from "./loop.js";
 import type { EmbedFunction } from "./tools.js";
 import { repairBusState } from "./recovery.js";
-import { initSessionTables, getCortexSessionKey, getChannelStates, getPendingOps } from "./session.js";
-import type { ChannelId, CortexEnvelope, ChannelState, PendingOperation } from "./types.js";
+import { initSessionTables, getCortexSessionKey, getChannelStates } from "./session.js";
+import type { ChannelId, CortexEnvelope, ChannelState } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,7 +61,6 @@ export interface CortexStats {
   processedCount: number;
   pendingCount: number;
   activeChannels: ChannelState[];
-  pendingOps: PendingOperation[];
   uptimeMs: number;
 }
 
@@ -178,7 +177,6 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
         processedCount: loop?.processedCount() ?? 0,
         pendingCount: countPending(db),
         activeChannels: getChannelStates(db),
-        pendingOps: getPendingOps(db, issuer),
         uptimeMs: Date.now() - startTime,
       };
     },

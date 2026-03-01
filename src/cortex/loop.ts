@@ -20,7 +20,7 @@ import { assembleContext, type AssembledContext, type ToolResultEntry } from "./
 import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
-import { appendToSession, appendResponse, appendToolCall, updateChannelState, getChannelStates, getPendingOps, addPendingOp, failPendingOp, copyAndDeleteCompletedOps } from "./session.js";
+import { appendToSession, appendResponse, appendToolCall, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, type EmbedFunction } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ export interface CortexLoopOptions {
   hippocampusEnabled?: boolean;
   /** Embedding function for memory_query tool (default: Ollama nomic-embed-text) */
   embedFn?: EmbedFunction;
-  /** Cognitive owner — filters foreground + pending ops by issuer instead of channel */
+  /** Cognitive owner — filters foreground by issuer instead of channel */
   issuer?: string;
   callLLM: (context: AssembledContext) => Promise<CortexLLMResult>;
   onError: (error: Error) => void;
@@ -192,28 +192,23 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               ? msg.envelope.channel
               : null;
 
-            // Cortex owns the UUID — write pending op BEFORE touching the Router
+            // Cortex owns the UUID — Router stores it as-is
             const taskId = crypto.randomUUID();
-            const dispatchedAt = new Date().toISOString();
-            const effectiveChannel = replyChannel ?? msg.envelope.channel;
-            addPendingOp(db, {
-              id: taskId,
-              type: "router_job",
-              description: task.slice(0, 200),
-              dispatchedAt,
-              expectedChannel: "router",
-              status: "pending",
-              replyChannel: replyChannel ?? undefined,
-              resultPriority,
-              issuer,
-            });
 
-            // THEN fire spawn with the pre-generated taskId
+            // Fire spawn — Router result will arrive via gateway-bridge → appendTaskResult
             const jobId = onSpawn({ task, replyChannel, resultPriority, envelopeId: msg.envelope.id, taskId });
 
-            // If spawn failed, mark the pending op as failed
             if (!jobId) {
-              failPendingOp(db, taskId, "Router spawn failed");
+              // Spawn failed — write failure directly to session as foreground message
+              appendTaskResult(db, {
+                taskId,
+                description: task.slice(0, 200),
+                status: "failed",
+                channel: replyChannel ?? msg.envelope.channel,
+                error: "Router spawn failed",
+                completedAt: new Date().toISOString(),
+                issuer,
+              });
               appendToolCall(db, msg.envelope.id, "sessions_spawn", `'${task.slice(0, 120)}', priority=${resultPriority} → FAILED`, issuer);
             } else {
               appendToolCall(db, msg.envelope.id, "sessions_spawn", `'${task.slice(0, 120)}', priority=${resultPriority} → taskId=${taskId}`, issuer);
@@ -222,16 +217,12 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         }
 
         // 6. Parse response
-        // For ops triggers: resolve the reply channel from the completed pending op
+        // For ops triggers: resolve the reply channel from the trigger metadata
         // so the LLM's response routes to the correct channel (e.g., webchat) instead
-        // of defaulting to the trigger's channel ("router"). The Router doesn't know
-        // about channels — Cortex owns the routing.
+        // of defaulting to the trigger's channel ("router").
         let effectiveEnvelope = msg.envelope;
         if (isOpsTrigger) {
-          const completedOps = getPendingOps(db, issuer).filter(
-            (op) => op.status === "completed" || op.status === "failed",
-          );
-          const replyChannel = completedOps[0]?.replyChannel ?? completedOps[0]?.expectedChannel;
+          const replyChannel = msg.envelope.metadata?.replyChannel as string | undefined;
           if (replyChannel) {
             effectiveEnvelope = {
               ...msg.envelope,
@@ -261,10 +252,6 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // 8. Record response in session
         appendResponse(db, output, msg.envelope.id, issuer);
 
-        // 8b. Copy completed/failed ops to cortex_session, then delete them
-        //     from cortex_pending_ops so they drop from the System Floor next turn.
-        copyAndDeleteCompletedOps(db, issuer);
-
         // 9. Mark completed
         markCompleted(db, msg.envelope.id);
 
@@ -273,7 +260,6 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           createdAt: new Date().toISOString(),
           sessionSnapshot: `Processed: ${msg.envelope.content.slice(0, 100)}`,
           channelStates: getChannelStates(db),
-          pendingOps: getPendingOps(db, issuer),
         });
 
         processed++;

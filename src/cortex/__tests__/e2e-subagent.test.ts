@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import { startCortex, _resetSingleton, type CortexInstance } from "../index.js";
 import { createEnvelope } from "../types.js";
-import { getSessionHistory, addPendingOp, getPendingOps } from "../session.js";
+import { getSessionHistory } from "../session.js";
 
 let tmpDir: string;
 let instance: CortexInstance | null = null;
@@ -86,39 +86,6 @@ describe("E2E: Sub-agent & Router Awareness", () => {
 
     const history = getSessionHistory(instance.db);
     expect(history.some((m) => m.content.includes("22°C"))).toBe(true);
-  });
-
-  it("pending operations tracked across messages", async () => {
-    instance = await startCortex({
-      agentId: "main",
-      workspaceDir: path.join(tmpDir, "workspace"),
-      dbPath: path.join(tmpDir, "bus.sqlite"),
-      maxContextTokens: 10000,
-      callLLM: async () => ({ text: "NO_REPLY", toolCalls: [] }),
-    });
-
-    // Add pending ops
-    addPendingOp(instance.db, {
-      id: "job-1",
-      type: "router_job",
-      description: "Analyze code",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-    });
-    addPendingOp(instance.db, {
-      id: "sa-1",
-      type: "subagent",
-      description: "Check weather",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "subagent",
-      status: "pending",
-    });
-
-    const ops = getPendingOps(instance.db);
-    expect(ops).toHaveLength(2);
-    expect(ops.map((o) => o.id)).toContain("job-1");
-    expect(ops.map((o) => o.id)).toContain("sa-1");
   });
 
   it("sub-agent failure arrives as envelope and is handled", async () => {

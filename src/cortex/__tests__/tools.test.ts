@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { initBus } from "../bus.js";
-import { initSessionTables, appendToSession, addPendingOp } from "../session.js";
+import { initSessionTables, appendToSession } from "../session.js";
 import {
   initHotMemoryTable,
   initColdStorage,

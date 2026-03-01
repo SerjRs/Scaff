@@ -224,21 +224,7 @@ export async function initGatewayCortex(params: {
   // The Router Notifier (§3.7) handles delivery for non-Cortex issuers via callGateway.
   const cortexIssuer = getCortexSessionKey("main");
   const { createEnvelope } = await import("./types.js");
-  const { completePendingOp, failPendingOp, getPendingOps } = await import("./session.js");
-
-  // Startup cleanup: fail any orphaned pending ops from prior crashes/restarts.
-  // These would pollute the System Floor indefinitely since no job:failed event will fire.
-  try {
-    const orphaned = getPendingOps(instance.db, cortexIssuer).filter((op) => op.status === "pending");
-    for (const op of orphaned) {
-      failPendingOp(instance.db, op.id, "orphaned from prior session (startup cleanup)");
-    }
-    if (orphaned.length > 0) {
-      params.log.warn(`[cortex] Startup: cleaned up ${orphaned.length} orphaned pending op(s)`);
-    }
-  } catch {
-    // Best-effort
-  }
+  const { appendTaskResult } = await import("./session.js");
 
   try {
     const { routerEvents } = await import("../router/worker.js");
@@ -247,23 +233,49 @@ export async function initGatewayCortex(params: {
       if (job.issuer !== cortexIssuer) return; // Not a Cortex-issued job
 
       try {
-        // Store raw result in the pending op (System Floor will format it)
-        const rawResult = job.status === "completed"
-          ? (job.result ?? "Task completed.")
-          : `Error: ${job.error ?? "Unknown error"}`;
+        // Extract replyChannel from the job context (stored at dispatch time)
+        let replyChannel = "webchat";
+        let taskDescription = "";
+        try {
+          const payload = JSON.parse(job.payload ?? "{}");
+          taskDescription = payload.message ?? "";
+          const ctx = JSON.parse(payload.context ?? "{}");
+          replyChannel = ctx.replyChannel ?? "webchat";
+        } catch { /* best-effort parse */ }
 
-        // Mark pending op as completed with the raw result (lifecycle: pending → completed)
-        // The System Floor in context.ts renders it as [TASK_ID]=..., Status=Completed, Result='...'
-        completePendingOp(instance.db, jobId, rawResult);
+        const completedAt = new Date().toISOString();
 
-        // Send a lightweight ops trigger to wake the Cortex loop.
-        // NO result content in the envelope — result lives exclusively in the
-        // System Floor via cortex_pending_ops (single-path delivery §6.4).
+        if (job.status === "completed") {
+          const result = job.result ?? "Task completed.";
+          // Write result directly to session as a foreground message
+          appendTaskResult(instance.db, {
+            taskId: jobId,
+            description: taskDescription,
+            status: "completed",
+            channel: replyChannel,
+            result,
+            completedAt,
+            issuer: cortexIssuer,
+          });
+        } else {
+          const error = job.error ?? "Unknown error";
+          appendTaskResult(instance.db, {
+            taskId: jobId,
+            description: taskDescription,
+            status: "failed",
+            channel: replyChannel,
+            error,
+            completedAt,
+            issuer: cortexIssuer,
+          });
+        }
+
+        // Send ops trigger to wake the Cortex loop — result is already in foreground
         const trigger = createEnvelope({
           channel: "router",
           sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
           content: "",
-          metadata: { ops_trigger: true },
+          metadata: { ops_trigger: true, replyChannel },
         });
         instance.enqueue(trigger);
 
@@ -273,31 +285,9 @@ export async function initGatewayCortex(params: {
       }
     };
 
-    // Clean up Cortex pending ops when Router jobs fail (eval/dispatch crash, worker error)
-    const onJobFailed = ({ jobId, error }: { jobId: string; error: string }) => {
-      try {
-        failPendingOp(instance.db, jobId, error);
-
-        // Send ops trigger so the loop picks up the failure from System Floor
-        const trigger = createEnvelope({
-          channel: "router",
-          sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
-          content: "",
-          metadata: { ops_trigger: true },
-        });
-        instance.enqueue(trigger);
-
-        params.log.warn(`[cortex] Pending op failed for Router job ${jobId}: ${error}`);
-      } catch {
-        // Best-effort — don't block the Router
-      }
-    };
-
     routerEvents.on("job:delivered", onJobDelivered);
-    routerEvents.on("job:failed", onJobFailed);
     routerListenerCleanup = () => {
       routerEvents.removeListener("job:delivered", onJobDelivered);
-      routerEvents.removeListener("job:failed", onJobFailed);
     };
     params.log.warn("[cortex] Subscribed to Router job:delivered events");
   } catch {

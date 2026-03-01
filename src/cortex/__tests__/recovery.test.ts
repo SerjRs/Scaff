@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { initBus, enqueue, markProcessing, markCompleted, checkpoint } from "../bus.js";
-import { initSessionTables, addPendingOp, updateChannelState } from "../session.js";
+import { initSessionTables, updateChannelState } from "../session.js";
 import { recoverState, resetStalledMessages, repairBusState } from "../recovery.js";
 import { createEnvelope } from "../types.js";
 
@@ -44,7 +44,6 @@ describe("recoverState", () => {
       createdAt: "2026-02-26T15:00:00Z",
       sessionSnapshot: "latest state",
       channelStates: [],
-      pendingOps: [],
     });
 
     const result = recoverState(db);
@@ -82,18 +81,6 @@ describe("recoverState", () => {
     expect(result.channelStates[0].channel).toBe("webchat");
   });
 
-  it("includes pending operations", () => {
-    addPendingOp(db, {
-      id: "job-1",
-      type: "router_job",
-      description: "test job",
-      dispatchedAt: "2026-02-26T15:00:00Z",
-      expectedChannel: "router",
-      status: "pending",
-    });
-    const result = recoverState(db);
-    expect(result.pendingOps).toHaveLength(1);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -196,7 +183,6 @@ describe("full recovery cycle", () => {
     expect(result.unprocessedMessages).toHaveLength(0);
     expect(result.stalledMessages).toHaveLength(0);
     expect(result.channelStates).toHaveLength(0);
-    expect(result.pendingOps).toHaveLength(0);
   });
 
   it("checkpoint ordering: returns most recent", () => {
@@ -204,13 +190,11 @@ describe("full recovery cycle", () => {
       createdAt: "2026-02-26T14:00:00Z",
       sessionSnapshot: "old",
       channelStates: [],
-      pendingOps: [],
     });
     checkpoint(db, {
       createdAt: "2026-02-26T15:00:00Z",
       sessionSnapshot: "new",
       channelStates: [],
-      pendingOps: [],
     });
 
     const result = recoverState(db);

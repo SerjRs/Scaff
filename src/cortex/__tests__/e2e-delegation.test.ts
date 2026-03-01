@@ -10,7 +10,7 @@ import path from "node:path";
 import os from "node:os";
 import { startCortex, _resetSingleton, type CortexInstance } from "../index.js";
 import { createEnvelope, type OutputTarget } from "../types.js";
-import { getSessionHistory, getPendingOps, completePendingOp, failPendingOp } from "../session.js";
+import { getSessionHistory, appendTaskResult } from "../session.js";
 import type { CortexLLMResult } from "../llm-caller.js";
 import type { SpawnParams } from "../loop.js";
 import type { ChannelAdapter } from "../channel-adapter.js";
@@ -84,7 +84,6 @@ describe("E2E: Delegation Flow", () => {
     expect(adapter.sent).toHaveLength(1);
     expect(adapter.sent[0].content).toBe("Berlin is the capital of Germany.");
     expect(spawns).toHaveLength(0);
-    expect(getPendingOps(instance.db)).toHaveLength(0);
   });
 
   it("delegation happy path: ack delivered, spawn fired, result processed", async () => {
@@ -134,22 +133,25 @@ describe("E2E: Delegation Flow", () => {
     expect(spawns[0].resultPriority).toBe("normal");
     expect(spawns[0].replyChannel).toBe("webchat");
 
-    // Pending op was logged (ID is Cortex-generated UUID, passed to onSpawn as taskId)
-    expect(getPendingOps(instance.db)).toHaveLength(1);
+    // taskId is the Cortex-generated UUID, passed to onSpawn
     const taskId = spawns[0].taskId;
-    expect(getPendingOps(instance.db)[0].id).toBe(taskId);
 
-    // No dispatch evidence in session — pending ops are tracked in cortex_pending_ops
-    // (System Floor) only. Session receives the result after completion via copyAndDeleteCompletedOps.
+    // No dispatch evidence in session — task results are written directly via appendTaskResult.
     const historyAfterDispatch = getSessionHistory(instance.db);
     const dispatchEvidence = historyAfterDispatch.find((m) =>
       m.role === "assistant" && m.content.includes("[DISPATCHED]"),
     );
     expect(dispatchEvidence).toBeUndefined();
 
-    // Step 2: Simulate Router result via single-path delivery (§6.4):
-    // Mark pending op as completed, then send lightweight ops trigger
-    completePendingOp(instance.db, taskId, "Weather data: 22°C, sunny, humidity 45%");
+    // Step 2: Simulate Router result via appendTaskResult + ops trigger
+    appendTaskResult(instance.db, {
+      taskId,
+      description: "Research the weather in Bucharest",
+      status: "completed",
+      channel: "webchat",
+      result: "Weather data: 22°C, sunny, humidity 45%",
+      completedAt: new Date().toISOString(),
+    });
     instance.enqueue(createEnvelope({
       channel: "router",
       sender: { id: "cortex:ops", name: "System", relationship: "system" },
@@ -209,7 +211,7 @@ describe("E2E: Delegation Flow", () => {
     expect(adapter.sent[0].content).toBe("Working on it.");
   });
 
-  it("pending op visible in session state while task is in flight", async () => {
+  it("spawn params contain correct task details", async () => {
     const spawns: SpawnParams[] = [];
 
     instance = await startCortex({
@@ -233,28 +235,19 @@ describe("E2E: Delegation Flow", () => {
     instance.enqueue(makeEnvelope("Analyze the codebase"));
     await wait(300);
 
-    // Pending op tracked (ID is Cortex-generated UUID, passed to onSpawn as taskId)
-    const ops = getPendingOps(instance.db);
-    expect(ops).toHaveLength(1);
-    const taskId = spawns[0].taskId;
-    expect(ops[0].id).toBe(taskId);
-    expect(ops[0].type).toBe("router_job");
-    expect(ops[0].description).toBe("Analyze the codebase structure");
-    expect(ops[0].expectedChannel).toBe("router");
-
-    // Spawn had correct priority
+    // Spawn received correct params
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0].task).toBe("Analyze the codebase structure");
     expect(spawns[0].resultPriority).toBe("background");
-
-    // No dispatch evidence in session — pending ops tracked in cortex_pending_ops only
-    const history = getSessionHistory(instance.db);
-    const evidence = history.find((m) => m.content.includes("[DISPATCHED]"));
-    expect(evidence).toBeUndefined();
+    expect(spawns[0].replyChannel).toBe("webchat");
+    expect(spawns[0].taskId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/); // UUID format
   });
 
   it("result delivered to correct channel: webchat user gets answer on webchat", async () => {
     const webchatAdapter = makeMockAdapter("webchat");
     const routerAdapter = makeMockAdapter("router");
     let callCount = 0;
+    const spawns: SpawnParams[] = [];
 
     instance = await startCortex({
       agentId: "main",
@@ -277,7 +270,7 @@ describe("E2E: Delegation Flow", () => {
         // Result arrives from router — respond normally (routes back to trigger channel)
         return { text: "Here's what I found.", toolCalls: [] };
       },
-      onSpawn: () => "job-abc",
+      onSpawn: (p) => { spawns.push(p); return "job-abc"; },
     });
     instance.registerAdapter(webchatAdapter);
     instance.registerAdapter(routerAdapter);
@@ -289,11 +282,16 @@ describe("E2E: Delegation Flow", () => {
     expect(webchatAdapter.sent).toHaveLength(1);
     expect(webchatAdapter.sent[0].content).toBe("Checking...");
 
-    // Router result arrives via single-path delivery (§6.4):
-    // Mark pending op completed, then send ops trigger to wake the loop
-    const ops = getPendingOps(instance.db);
-    const taskId = ops[0].id;
-    completePendingOp(instance.db, taskId, "Result data here");
+    // Router result arrives via appendTaskResult + ops trigger
+    const taskId = spawns[0].taskId;
+    appendTaskResult(instance.db, {
+      taskId,
+      description: "Look up the answer",
+      status: "completed",
+      channel: "webchat",
+      result: "Result data here",
+      completedAt: new Date().toISOString(),
+    });
     instance.enqueue(createEnvelope({
       channel: "router",
       sender: { id: "cortex:ops", name: "System", relationship: "system" },
@@ -314,6 +312,7 @@ describe("E2E: Delegation Flow", () => {
     const routerAdapter = makeMockAdapter("router");
     let callCount = 0;
     const errors: Error[] = [];
+    const spawns: SpawnParams[] = [];
 
     instance = await startCortex({
       agentId: "main",
@@ -337,7 +336,7 @@ describe("E2E: Delegation Flow", () => {
         return { text: "I wasn't able to complete that task.", toolCalls: [] };
       },
       onError: (err) => { errors.push(err); },
-      onSpawn: () => "job-fail",
+      onSpawn: (p) => { spawns.push(p); return "job-fail"; },
     });
     instance.registerAdapter(adapter);
     instance.registerAdapter(routerAdapter);
@@ -349,10 +348,16 @@ describe("E2E: Delegation Flow", () => {
     expect(adapter.sent).toHaveLength(1);
     expect(adapter.sent[0].content).toBe("Let me check.");
 
-    // Simulate failed Router result via single-path delivery (§6.4)
-    const ops = getPendingOps(instance.db);
-    const taskId = ops[0].id;
-    failPendingOp(instance.db, taskId, "timeout after 30s — executor crashed");
+    // Simulate failed Router result via appendTaskResult + ops trigger
+    const taskId = spawns[0].taskId;
+    appendTaskResult(instance.db, {
+      taskId,
+      description: "Run failing operation",
+      status: "failed",
+      channel: "webchat",
+      error: "timeout after 30s — executor crashed",
+      completedAt: new Date().toISOString(),
+    });
     instance.enqueue(createEnvelope({
       channel: "router",
       sender: { id: "cortex:ops", name: "System", relationship: "system" },

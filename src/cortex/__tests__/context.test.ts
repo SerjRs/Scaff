@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { initBus } from "../bus.js";
-import { initSessionTables, appendToSession, updateChannelState, addPendingOp } from "../session.js";
+import { initSessionTables, appendToSession, updateChannelState } from "../session.js";
 import {
   estimateTokens,
   loadSystemFloor,
@@ -86,17 +86,6 @@ describe("loadSystemFloor", () => {
     expect(layer.content).toContain("USER.md");
     expect(layer.content).toContain("MEMORY.md");
     expect(layer.tokens).toBeGreaterThan(0);
-  });
-
-  it("includes pending operations state", async () => {
-    seedWorkspace();
-    const ops = [
-      { id: "job-1", type: "router_job" as const, description: "Analyze code", dispatchedAt: "2026-02-26T15:00:00Z", expectedChannel: "router", status: "pending" as const },
-    ];
-    const layer = await loadSystemFloor(workspaceDir, ops);
-
-    expect(layer.content).toContain("Active Operations");
-    expect(layer.content).toContain("Analyze code");
   });
 
   it("handles missing workspace files gracefully", async () => {
@@ -274,29 +263,6 @@ describe("assembleContext", () => {
     // Foreground + background should respect budget (system floor may exceed)
     const nonFloorTokens = ctx.layers[1].tokens + ctx.layers[2].tokens;
     expect(nonFloorTokens).toBeLessThanOrEqual(200);
-  });
-
-  it("includes pending ops in system floor", async () => {
-    seedWorkspace();
-    addPendingOp(db, {
-      id: "job-1",
-      type: "router_job",
-      description: "Analyze complexity",
-      dispatchedAt: "2026-02-26T15:00:00Z",
-      expectedChannel: "router",
-      status: "pending",
-    });
-    const env = makeEnvelope("webchat", "test");
-
-    const ctx = await assembleContext({
-      db,
-      triggerEnvelope: env,
-      workspaceDir,
-      maxTokens: 100000,
-    });
-
-    expect(ctx.layers[0].content).toContain("Analyze complexity");
-    expect(ctx.pendingOps).toHaveLength(1);
   });
 
   it("empty session (first message): system floor + trigger only", async () => {

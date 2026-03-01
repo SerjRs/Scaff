@@ -89,7 +89,6 @@ describe("contextToMessages", () => {
         { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user", content: "hello", timestamp: "2026-02-27T10:00:00Z" },
       ],
       backgroundSummaries: new Map(),
-      pendingOps: [],
     };
 
     const result = contextToMessages(context);
@@ -112,7 +111,6 @@ describe("contextToMessages", () => {
         { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user", content: "hi", timestamp: "2026-02-27T10:00:00Z" },
       ],
       backgroundSummaries: new Map([["whatsapp", "3 unread"]]),
-      pendingOps: [],
     };
 
     const result = contextToMessages(context);
@@ -138,7 +136,6 @@ describe("contextToMessages", () => {
         { id: 4, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "I'm doing well.", timestamp: "2026-02-27T10:00:03Z" },
       ],
       backgroundSummaries: new Map(),
-      pendingOps: [],
     };
 
     const result = contextToMessages(context);
@@ -166,7 +163,6 @@ describe("contextToMessages", () => {
         { id: 3, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "Hi!", timestamp: "2026-02-27T10:00:02Z" },
       ],
       backgroundSummaries: new Map(),
-      pendingOps: [],
     };
 
     const result = contextToMessages(context);
@@ -188,7 +184,6 @@ describe("contextToMessages", () => {
       foregroundChannel: "webchat",
       foregroundMessages: [],
       backgroundSummaries: new Map(),
-      pendingOps: [],
     };
 
     const result = contextToMessages(context);
@@ -213,7 +208,6 @@ describe("contextToMessages", () => {
         { id: 3, envelopeId: "e2", role: "user", channel: "webchat", senderId: "user", content: "thanks", timestamp: "2026-02-27T10:00:02Z" },
       ],
       backgroundSummaries: new Map(),
-      pendingOps: [],
     };
 
     const result = contextToMessages(context);

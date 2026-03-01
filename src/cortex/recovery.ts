@@ -9,8 +9,8 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { loadLatestCheckpoint, peekPending } from "./bus.js";
-import { getChannelStates, getPendingOps } from "./session.js";
-import type { BusMessage, ChannelState, CheckpointData, PendingOperation } from "./types.js";
+import { getChannelStates } from "./session.js";
+import type { BusMessage, ChannelState, CheckpointData } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,7 +21,6 @@ export interface RecoveryResult {
   unprocessedMessages: BusMessage[];
   stalledMessages: BusMessage[];
   channelStates: ChannelState[];
-  pendingOps: PendingOperation[];
 }
 
 export interface RepairReport {
@@ -53,14 +52,12 @@ export function recoverState(db: DatabaseSync): RecoveryResult {
 
   // Get current state
   const channelStates = getChannelStates(db);
-  const pendingOps = getPendingOps(db);
 
   return {
     checkpoint: cp,
     unprocessedMessages,
     stalledMessages,
     channelStates,
-    pendingOps,
   };
 }
 

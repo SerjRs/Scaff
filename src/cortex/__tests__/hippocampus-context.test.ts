@@ -15,7 +15,6 @@ import {
   initSessionTables,
   appendToSession,
   updateChannelState,
-  addPendingOp,
 } from "../session.js";
 import { initHotMemoryTable, insertHotFact, touchHotFact } from "../hippocampus.js";
 import {
@@ -76,7 +75,7 @@ describe("Layer 1: System Floor with hot facts", () => {
     const { getTopHotFacts } = await import("../hippocampus.js");
     const hotFacts = getTopHotFacts(db, 50);
 
-    const layer = await loadSystemFloor(workspaceDir, [], hotFacts);
+    const layer = await loadSystemFloor(workspaceDir, hotFacts);
     expect(layer.content).toContain("Known Facts");
     expect(layer.content).toContain("Serj prefers dark mode");
     expect(layer.content).toContain("Serj's timezone is PST");
@@ -94,7 +93,7 @@ describe("Layer 1: System Floor with hot facts", () => {
 
     expect(hotFacts).toHaveLength(50);
 
-    const layer = await loadSystemFloor(workspaceDir, [], hotFacts);
+    const layer = await loadSystemFloor(workspaceDir, hotFacts);
     expect(layer.content).toContain("Known Facts");
     // Count bullet points
     const bulletCount = (layer.content.match(/^- /gm) || []).length;
@@ -115,7 +114,7 @@ describe("Layer 1: System Floor with hot facts", () => {
     expect(hotFacts[0].factText).toBe("high priority fact");
     expect(hotFacts[1].factText).toBe("low priority fact");
 
-    const layer = await loadSystemFloor(workspaceDir, [], hotFacts);
+    const layer = await loadSystemFloor(workspaceDir, hotFacts);
     // High priority should appear before low priority in the content
     const highIdx = layer.content.indexOf("high priority fact");
     const lowIdx = layer.content.indexOf("low priority fact");
@@ -124,13 +123,13 @@ describe("Layer 1: System Floor with hot facts", () => {
 
   it("omits Known Facts section when no hot facts", async () => {
     seedWorkspace();
-    const layer = await loadSystemFloor(workspaceDir, [], []);
+    const layer = await loadSystemFloor(workspaceDir, []);
     expect(layer.content).not.toContain("Known Facts");
   });
 
   it("omits Known Facts section when hotFacts param is undefined", async () => {
     seedWorkspace();
-    const layer = await loadSystemFloor(workspaceDir, []);
+    const layer = await loadSystemFloor(workspaceDir);
     expect(layer.content).not.toContain("Known Facts");
   });
 });
@@ -261,16 +260,6 @@ describe("Phase 2 E2E: context assembly with hippocampus", () => {
     touchHotFact(db, factId); // bump hit count
     insertHotFact(db, { factText: "Serj uses Neovim" });
 
-    // Seed a pending operation
-    addPendingOp(db, {
-      id: "job-42",
-      type: "router_job",
-      description: "Analyze codebase",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-    });
-
     // Seed a long foreground conversation (30 messages)
     for (let i = 0; i < 30; i++) {
       appendToSession(db, makeEnvelope("webchat", `conversation message ${i}`));
@@ -298,11 +287,10 @@ describe("Phase 2 E2E: context assembly with hippocampus", () => {
       hippocampusEnabled: true,
     });
 
-    // Layer 1: System Floor — identity + pending ops + hot facts
+    // Layer 1: System Floor — identity + hot facts
     const floor = ctx.layers[0];
     expect(floor.name).toBe("system_floor");
     expect(floor.content).toContain("Scaff"); // SOUL.md
-    expect(floor.content).toContain("Analyze codebase"); // pending op
     expect(floor.content).toContain("Serj likes TypeScript"); // hot fact
     expect(floor.content).toContain("Serj uses Neovim"); // hot fact
     expect(floor.content).toContain("Known Facts"); // section header
@@ -321,10 +309,6 @@ describe("Phase 2 E2E: context assembly with hippocampus", () => {
     expect(bg.content).toContain("dinner plans");
     expect(bg.content).not.toContain("[telegram]");
     expect(bg.content).not.toContain("Old group banter");
-
-    // Pending ops in context
-    expect(ctx.pendingOps).toHaveLength(1);
-    expect(ctx.pendingOps[0].id).toBe("job-42");
   });
 
   it("falls back to pre-hippocampus behavior when disabled", async () => {

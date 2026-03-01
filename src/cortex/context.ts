@@ -14,8 +14,8 @@ import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import type { HotFact } from "./hippocampus.js";
-import { getChannelStates, getSessionHistory, getPendingOps, type SessionMessage } from "./session.js";
-import type { ChannelId, CortexEnvelope, PendingOperation } from "./types.js";
+import { getChannelStates, getSessionHistory, type SessionMessage } from "./session.js";
+import type { ChannelId, CortexEnvelope } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,7 +41,6 @@ export interface AssembledContext {
   /** Structured foreground messages — used by contextToMessages() to avoid lossy text round-trip */
   foregroundMessages: SessionMessage[];
   backgroundSummaries: Map<ChannelId, string>;
-  pendingOps: PendingOperation[];
   /** Whether Hippocampus memory subsystem is active */
   hippocampusEnabled?: boolean;
   /** Whether this is an ops trigger turn — suppress sessions_spawn tool to prevent re-dispatch */
@@ -77,10 +76,9 @@ const SYSTEM_FLOOR_FILES = [
   "MEMORY.md",
 ];
 
-/** Load system floor: identity + memory + workspace context + pending ops + hot facts */
+/** Load system floor: identity + memory + workspace context + hot facts */
 export async function loadSystemFloor(
   workspaceDir: string,
-  pendingOps?: PendingOperation[],
   hotFacts?: HotFact[],
 ): Promise<ContextLayer> {
   const sections: string[] = [];
@@ -98,31 +96,6 @@ export async function loadSystemFloor(
     } catch {
       // Skip unreadable files
     }
-  }
-
-  // Add pending operations state (structured format — single-path result delivery §6.4)
-  // Only active ops remain in cortex_pending_ops (completed/failed are copied to
-  // cortex_session and deleted by copyAndDeleteCompletedOps after each turn).
-  // Each op uses a consistent structured format so the LLM tracks tasks from dispatch to completion.
-  if (pendingOps && pendingOps.length > 0) {
-    const hasResults = pendingOps.some((op) => op.status === "completed" || op.status === "failed");
-    const preamble = hasResults
-      ? "**ACTION REQUIRED:** One or more tasks below have completed or failed. Read the Result/Error, relay findings to the user on the appropriate channel, and acknowledge.\n\n"
-      : "";
-
-    const opsText = pendingOps
-      .map((op) => {
-        if (op.status === "completed" && op.result) {
-          return `- [TASK_ID]=${op.id}, Message='${op.description}', Status=Completed, Channel=${op.replyChannel ?? op.expectedChannel}, Result='${op.result}', CompletedAt=${op.completedAt ?? "unknown"}`;
-        }
-        if (op.status === "failed") {
-          const errorDetail = op.result ?? "Unknown error";
-          return `- [TASK_ID]=${op.id}, Message='${op.description}', Status=Failed, Channel=${op.replyChannel ?? op.expectedChannel}, Error='${errorDetail}', CompletedAt=${op.completedAt ?? "unknown"}`;
-        }
-        return `- [TASK_ID]=${op.id}, Message='${op.description}', Status=Pending, Channel=${op.replyChannel ?? op.expectedChannel}, DispatchedAt=${op.dispatchedAt}`;
-      })
-      .join("\n");
-    sections.push(`## Active Operations\n${preamble}${opsText}`);
   }
 
   // Add hot memory facts (Hippocampus Layer 1)
@@ -246,9 +219,6 @@ export async function assembleContext(params: {
 }): Promise<AssembledContext> {
   const { db, triggerEnvelope, workspaceDir, maxTokens, hippocampusEnabled, issuer } = params;
 
-  // Get pending ops for system floor (filtered by issuer when provided)
-  const pendingOps = getPendingOps(db, issuer);
-
   // Load hot facts when hippocampus is enabled
   let hotFacts: HotFact[] | undefined;
   if (hippocampusEnabled) {
@@ -257,7 +227,7 @@ export async function assembleContext(params: {
   }
 
   // 1. System floor — always loaded first
-  const systemFloor = await loadSystemFloor(workspaceDir, pendingOps, hotFacts);
+  const systemFloor = await loadSystemFloor(workspaceDir, hotFacts);
 
   // 2. Background summaries — small fixed cost
   const background = buildBackground(db, triggerEnvelope.channel, {
@@ -292,7 +262,6 @@ export async function assembleContext(params: {
     foregroundChannel: triggerEnvelope.channel,
     foregroundMessages,
     backgroundSummaries,
-    pendingOps,
     hippocampusEnabled: hippocampusEnabled === true,
   };
 }

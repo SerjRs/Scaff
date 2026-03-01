@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import { startCortex, _resetSingleton, type CortexInstance } from "../index.js";
 import { initBus, enqueue as busEnqueue, markProcessing, countPending, checkpoint } from "../bus.js";
-import { initSessionTables, updateChannelState, addPendingOp, getChannelStates, getPendingOps } from "../session.js";
+import { initSessionTables, updateChannelState, getChannelStates } from "../session.js";
 import { recoverState } from "../recovery.js";
 import { createEnvelope } from "../types.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -126,7 +126,6 @@ describe("E2E: Crash Recovery", () => {
       createdAt: new Date().toISOString(),
       sessionSnapshot: "pre-crash state",
       channelStates: getChannelStates(db),
-      pendingOps: [],
     });
     db.close();
 
@@ -138,29 +137,6 @@ describe("E2E: Crash Recovery", () => {
     expect(result.checkpoint!.sessionSnapshot).toBe("pre-crash state");
     expect(result.channelStates).toHaveLength(1);
     expect(result.channelStates[0].channel).toBe("webchat");
-    db.close();
-  });
-
-  it("pending ops survive crash", async () => {
-    const dbPath = path.join(tmpDir, "bus.sqlite");
-
-    let db = initBus(dbPath);
-    initSessionTables(db);
-    addPendingOp(db, {
-      id: "job-1",
-      type: "router_job",
-      description: "In-flight job",
-      dispatchedAt: new Date().toISOString(),
-      expectedChannel: "router",
-      status: "pending",
-    });
-    db.close();
-
-    db = initBus(dbPath);
-    initSessionTables(db);
-    const result = recoverState(db);
-    expect(result.pendingOps).toHaveLength(1);
-    expect(result.pendingOps[0].id).toBe("job-1");
     db.close();
   });
 

@@ -193,37 +193,6 @@ export interface ChannelState {
 }
 
 // ---------------------------------------------------------------------------
-// Pending Operations
-// ---------------------------------------------------------------------------
-
-/** Types of operations Cortex can have in flight */
-export type PendingOpType = "router_job" | "subagent" | "cron_task";
-
-/** Lifecycle status: pending → completed/failed → [LLM sees it] → copy to cortex_session + DELETE */
-export type PendingOpStatus = "pending" | "completed" | "failed";
-
-/** An operation Cortex dispatched and is awaiting */
-export interface PendingOperation {
-  id: string;
-  type: PendingOpType;
-  description: string;
-  dispatchedAt: string;
-  expectedChannel: ChannelId;
-  /** Lifecycle status (default: "pending") */
-  status: PendingOpStatus;
-  /** When the result arrived */
-  completedAt?: string;
-  /** Result content from Router/sub-agent */
-  result?: string;
-  /** Channel to route results back to (e.g. "webchat") — stored locally, not sent to Router */
-  replyChannel?: string;
-  /** Priority for the result envelope — stored locally, not sent to Router */
-  resultPriority?: "urgent" | "normal" | "background";
-  /** Cognitive owner — which agent session owns this operation */
-  issuer?: string;
-}
-
-// ---------------------------------------------------------------------------
 // Checkpoint
 // ---------------------------------------------------------------------------
 
@@ -235,8 +204,6 @@ export interface CheckpointData {
   sessionSnapshot: string;
   /** All channel states */
   channelStates: ChannelState[];
-  /** Operations in flight */
-  pendingOps: PendingOperation[];
 }
 
 // ---------------------------------------------------------------------------

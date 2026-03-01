@@ -130,7 +130,6 @@ describe("startCortex", () => {
     expect(stats.processedCount).toBe(0);
     expect(stats.pendingCount).toBe(0);
     expect(stats.activeChannels).toEqual([]);
-    expect(stats.pendingOps).toEqual([]);
     expect(stats.uptimeMs).toBeGreaterThanOrEqual(0);
   });
 

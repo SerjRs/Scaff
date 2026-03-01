@@ -187,7 +187,7 @@ export function checkpoint(db: DatabaseSync, data: CheckpointData): number {
     data.createdAt,
     data.sessionSnapshot,
     JSON.stringify(data.channelStates),
-    JSON.stringify(data.pendingOps),
+    "[]",
   );
 
   const idRow = db.prepare(`SELECT last_insert_rowid() as id`).get() as { id: number };
@@ -210,7 +210,6 @@ export function loadLatestCheckpoint(db: DatabaseSync): CheckpointData | null {
     createdAt: row.created_at as string,
     sessionSnapshot: row.session_snapshot as string,
     channelStates: JSON.parse(row.channel_states as string),
-    pendingOps: JSON.parse(row.pending_ops as string),
   };
 }
 

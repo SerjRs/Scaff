@@ -15,7 +15,6 @@ import path from "node:path";
 import os from "node:os";
 import { startCortex, _resetSingleton, type CortexInstance } from "../index.js";
 import { createEnvelope, type OutputTarget } from "../types.js";
-import { getPendingOps, getPendingOpById } from "../session.js";
 import type { CortexLLMResult } from "../llm-caller.js";
 import type { SpawnParams } from "../loop.js";
 import type { ChannelAdapter } from "../channel-adapter.js";
@@ -107,13 +106,6 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     const taskId = spawns[0].taskId;
     expect(taskId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/); // UUID format
 
-    // Pending op written BEFORE spawn, with replyChannel metadata
-    const op = getPendingOpById(instance.db, taskId);
-    expect(op).not.toBeNull();
-    expect(op!.replyChannel).toBe("webchat");
-    expect(op!.resultPriority).toBe("urgent");
-    expect(op!.status).toBe("pending");
-
     // Result arrives on webchat channel (not "router") — simulates what gateway-bridge does
     instance.enqueue(createEnvelope({
       channel: "webchat",
@@ -155,13 +147,12 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     instance.enqueue(makeEnvelope("Try something"));
     await wait(300);
 
-    // Pending op was created, marked as failed, then copyAndDeleteCompletedOps()
-    // moved it to cortex_session and deleted it from pending_ops. Check cortex_session.
+    // Spawn failed — appendTaskResult writes failure directly to cortex_session
     const rows = instance.db.prepare(
       `SELECT * FROM cortex_session WHERE sender_id = 'cortex:ops'`,
     ).all() as Record<string, unknown>[];
     expect(rows).toHaveLength(1);
-    expect(rows[0].content).toContain("Error: Router spawn failed");
+    expect(rows[0].content).toContain("Router spawn failed");
     expect(rows[0].channel).toBe("webchat");
   });
 
@@ -169,6 +160,7 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     const webchatAdapter = makeMockAdapter("webchat");
     let callCount = 0;
     let lastTriggerChannel = "";
+    const spawns: SpawnParams[] = [];
 
     instance = await startCortex({
       agentId: "main",
@@ -192,7 +184,7 @@ describe("E2E: Task Ownership (Phase 10)", () => {
         }
         return { text: "Server is up.", toolCalls: [] };
       },
-      onSpawn: (p) => p.taskId,
+      onSpawn: (p) => { spawns.push(p); return p.taskId; },
     });
     instance.registerAdapter(webchatAdapter);
 
@@ -200,8 +192,8 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     instance.enqueue(makeEnvelope("Is the server up?"));
     await wait(300);
 
-    const taskId = getPendingOps(instance.db)[0]?.id;
-    expect(taskId).toBeTruthy();
+    expect(spawns).toHaveLength(1);
+    const taskId = spawns[0].taskId;
 
     // Result arrives on webchat channel
     instance.enqueue(createEnvelope({
@@ -249,7 +241,9 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     db.close();
   });
 
-  it("replyChannel persisted through pending op lifecycle", async () => {
+  it("replyChannel passed to onSpawn for webchat channel", async () => {
+    const spawns: SpawnParams[] = [];
+
     instance = await startCortex({
       agentId: "main",
       workspaceDir: path.join(tmpDir, "workspace"),
@@ -264,23 +258,22 @@ describe("E2E: Task Ownership (Phase 10)", () => {
           arguments: { task: "Research something", priority: "background" },
         }],
       }),
-      onSpawn: (p) => p.taskId,
+      onSpawn: (p) => { spawns.push(p); return p.taskId; },
     });
     instance.registerAdapter(makeMockAdapter("webchat"));
 
     instance.enqueue(makeEnvelope("Research this", "webchat"));
     await wait(300);
 
-    // Verify replyChannel survives through pending op lifecycle
-    const ops = getPendingOps(instance.db);
-    expect(ops).toHaveLength(1);
-    const op = getPendingOpById(instance.db, ops[0].id)!;
-    expect(op.replyChannel).toBe("webchat");
-    expect(op.resultPriority).toBe("background");
-    expect(op.status).toBe("pending");
+    // Verify replyChannel is passed to onSpawn
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0].replyChannel).toBe("webchat");
+    expect(spawns[0].resultPriority).toBe("background");
   });
 
-  it("internal channel (router/cron) spawn sets replyChannel to undefined", async () => {
+  it("internal channel (router/cron) spawn sets replyChannel to null", async () => {
+    const spawns: SpawnParams[] = [];
+
     instance = await startCortex({
       agentId: "main",
       workspaceDir: path.join(tmpDir, "workspace"),
@@ -295,7 +288,7 @@ describe("E2E: Task Ownership (Phase 10)", () => {
           arguments: { task: "Internal task" },
         }],
       }),
-      onSpawn: (p) => p.taskId,
+      onSpawn: (p) => { spawns.push(p); return p.taskId; },
     });
     instance.registerAdapter(makeMockAdapter("router"));
 
@@ -308,9 +301,8 @@ describe("E2E: Task Ownership (Phase 10)", () => {
     }));
     await wait(300);
 
-    const ops = getPendingOps(instance.db);
-    expect(ops).toHaveLength(1);
-    // Internal channels set replyChannel to null → stored as undefined
-    expect(ops[0].replyChannel).toBeUndefined();
+    expect(spawns).toHaveLength(1);
+    // Internal channels set replyChannel to null
+    expect(spawns[0].replyChannel).toBeNull();
   });
 });

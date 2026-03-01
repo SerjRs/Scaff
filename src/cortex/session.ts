@@ -14,8 +14,6 @@ import type {
   AttentionLayer,
   CortexEnvelope,
   CortexOutput,
-  PendingOperation,
-  PendingOpStatus,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -49,22 +47,6 @@ export function initSessionTables(db: DatabaseSync): void {
     )
   `);
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS cortex_pending_ops (
-      id               TEXT PRIMARY KEY,
-      type             TEXT NOT NULL,
-      description      TEXT NOT NULL,
-      dispatched_at    TEXT NOT NULL,
-      expected_channel TEXT NOT NULL,
-      status           TEXT NOT NULL DEFAULT 'pending',
-      completed_at     TEXT,
-      result           TEXT,
-      reply_channel    TEXT,
-      result_priority  TEXT,
-      issuer           TEXT NOT NULL DEFAULT 'agent:main:cortex'
-    )
-  `);
-
   // --- Migration MUST run BEFORE index creation ---
   // Existing tables may lack columns (issuer, status, etc.).
   // ALTER TABLE adds them so subsequent CREATE INDEX succeeds.
@@ -86,15 +68,6 @@ export function initSessionTables(db: DatabaseSync): void {
     ON cortex_session(issuer, timestamp)
   `);
 
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_pending_ops_status
-    ON cortex_pending_ops(status)
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_pending_ops_issuer
-    ON cortex_pending_ops(issuer, status)
-  `);
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +127,32 @@ export function appendToolCall(
     INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
     VALUES (?, 'assistant', 'internal', 'cortex', ?, ?, NULL, ?)
   `).run(envelopeId, content, new Date().toISOString(), issuer);
+}
+
+/** Write a task result directly to the session as a foreground message.
+ *  This replaces the old cortex_pending_ops → System Floor path so the LLM
+ *  sees completed/failed results as conversation messages it naturally responds to. */
+export function appendTaskResult(db: DatabaseSync, params: {
+  taskId: string;
+  description: string;
+  status: "completed" | "failed";
+  channel: string;
+  result?: string;
+  error?: string;
+  completedAt: string;
+  issuer?: string;
+}): void {
+  const { taskId, description, status, channel, result, error, completedAt, issuer } = params;
+  let content: string;
+  if (status === "completed") {
+    content = `[TASK_ID]=${taskId}, Message='${description}', Status=Completed, Channel=${channel}, Result='${result ?? "(no result)"}', CompletedAt=${completedAt}`;
+  } else {
+    content = `[TASK_ID]=${taskId}, Message='${description}', Status=Failed, Channel=${channel}, Error='${error ?? "Unknown error"}', CompletedAt=${completedAt}`;
+  }
+  db.prepare(`
+    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+    VALUES (?, 'user', ?, 'cortex:ops', ?, ?, NULL, ?)
+  `).run(taskId, channel, content, completedAt, issuer ?? "agent:main:cortex");
 }
 
 /** Append Cortex's response to the unified session */
@@ -303,168 +302,11 @@ export function getChannelStates(db: DatabaseSync): ChannelState[] {
 }
 
 // ---------------------------------------------------------------------------
-// Pending Operations
-// ---------------------------------------------------------------------------
-
-/** Add a pending operation */
-export function addPendingOp(db: DatabaseSync, op: PendingOperation): void {
-  db.prepare(`
-    INSERT OR REPLACE INTO cortex_pending_ops (id, type, description, dispatched_at, expected_channel, status, reply_channel, result_priority, issuer)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(op.id, op.type, op.description, op.dispatchedAt, op.expectedChannel, op.status ?? "pending", op.replyChannel ?? null, op.resultPriority ?? null, op.issuer ?? "agent:main:cortex");
-}
-
-/**
- * Remove a pending operation (legacy — prefer completePendingOp).
- * @deprecated Use completePendingOp for the lifecycle-based approach.
- */
-export function removePendingOp(db: DatabaseSync, id: string): void {
-  db.prepare(`DELETE FROM cortex_pending_ops WHERE id = ?`).run(id);
-}
-
-/** Mark a pending op as completed and attach the result */
-export function completePendingOp(db: DatabaseSync, id: string, result: string): void {
-  db.prepare(`
-    UPDATE cortex_pending_ops
-    SET status = 'completed', completed_at = ?, result = ?
-    WHERE id = ?
-  `).run(new Date().toISOString(), result, id);
-}
-
-/** Mark a pending op as failed. Stays visible in the System Floor until copy+delete. */
-export function failPendingOp(db: DatabaseSync, id: string, error: string): void {
-  db.prepare(`
-    UPDATE cortex_pending_ops
-    SET status = 'failed', completed_at = ?, result = ?
-    WHERE id = ? AND status = 'pending'
-  `).run(new Date().toISOString(), `Error: ${error}`, id);
-}
-
-/** Get a single pending operation by ID. Returns null if not found. */
-export function getPendingOpById(db: DatabaseSync, id: string): PendingOperation | null {
-  const row = db.prepare(
-    `SELECT * FROM cortex_pending_ops WHERE id = ?`,
-  ).get(id) as Record<string, unknown> | undefined;
-  return row ? rowToPendingOp(row) : null;
-}
-
-/**
- * Get pending operations for System Floor injection.
- *
- * Only `pending` ops remain in the table — completed/failed ops are
- * copied to cortex_session and deleted by copyAndDeleteCompletedOps().
- *
- * @param issuer — optional filter by cognitive owner
- */
-export function getPendingOps(db: DatabaseSync, issuer?: string): PendingOperation[] {
-  if (issuer) {
-    const rows = db.prepare(
-      `SELECT * FROM cortex_pending_ops WHERE issuer = ? ORDER BY dispatched_at ASC`,
-    ).all(issuer) as Record<string, unknown>[];
-    return rows.map(rowToPendingOp);
-  }
-  const rows = db.prepare(
-    `SELECT * FROM cortex_pending_ops ORDER BY dispatched_at ASC`,
-  ).all() as Record<string, unknown>[];
-  return rows.map(rowToPendingOp);
-}
-
-/**
- * Copy completed/failed ops to cortex_session, then delete them.
- *
- * Called after each LLM turn. The result is preserved in cortex_session
- * (where the Fact Extractor will find it), and the op is removed from
- * cortex_pending_ops so it no longer appears in the System Floor.
- *
- * @param issuer — optional filter by cognitive owner (also written to cortex_session)
- * @returns Number of ops copied and deleted
- */
-export function copyAndDeleteCompletedOps(db: DatabaseSync, issuer?: string): number {
-  let sql = `SELECT * FROM cortex_pending_ops WHERE (status = 'completed' OR status = 'failed')`;
-  const sqlParams: import("node:sqlite").SQLInputValue[] = [];
-  if (issuer) {
-    sql += ` AND issuer = ?`;
-    sqlParams.push(issuer);
-  }
-
-  const rows = db.prepare(sql).all(...sqlParams) as Record<string, unknown>[];
-
-  if (rows.length === 0) return 0;
-
-  const insertStmt = db.prepare(`
-    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
-    VALUES (?, 'user', ?, 'cortex:ops', ?, ?, NULL, ?)
-  `);
-  const deleteStmt = db.prepare(`DELETE FROM cortex_pending_ops WHERE id = ?`);
-
-  for (const row of rows) {
-    const op = rowToPendingOp(row);
-    const channel = op.replyChannel ?? op.expectedChannel;
-    const opIssuer = op.issuer ?? issuer ?? "agent:main:cortex";
-    // Same structured format as context.ts System Floor rendering — only Status differs
-    let content: string;
-    if (op.status === "completed") {
-      content = `[TASK_ID]=${op.id}, Message='${op.description}', Status=Completed, Channel=${channel}, Result='${op.result ?? "(no result)"}', CompletedAt=${op.completedAt ?? "unknown"}`;
-    } else {
-      const errorDetail = op.result ?? "Unknown error";
-      content = `[TASK_ID]=${op.id}, Message='${op.description}', Status=Failed, Channel=${channel}, Error='${errorDetail}', CompletedAt=${op.completedAt ?? "unknown"}`;
-    }
-    insertStmt.run(op.id, channel, content, op.completedAt ?? new Date().toISOString(), opIssuer);
-    deleteStmt.run(op.id);
-  }
-
-  return rows.length;
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function rowToPendingOp(row: Record<string, unknown>): PendingOperation {
-  return {
-    id: row.id as string,
-    type: row.type as PendingOperation["type"],
-    description: row.description as string,
-    dispatchedAt: row.dispatched_at as string,
-    expectedChannel: row.expected_channel as ChannelId,
-    status: (row.status as PendingOpStatus) ?? "pending",
-    completedAt: (row.completed_at as string) ?? undefined,
-    result: (row.result as string) ?? undefined,
-    replyChannel: (row.reply_channel as string) ?? undefined,
-    resultPriority: (row.result_priority as PendingOperation["resultPriority"]) ?? undefined,
-    issuer: (row.issuer as string) ?? undefined,
-  };
-}
-
-/** Migration: add lifecycle + issuer columns to existing tables */
+/** Migration: add issuer column to existing tables */
 function _migrateSchema(db: DatabaseSync): void {
-  // --- cortex_pending_ops ---
-  try {
-    const columns = db.prepare(`PRAGMA table_info(cortex_pending_ops)`).all() as { name: string }[];
-    const colNames = new Set(columns.map((c) => c.name));
-
-    if (!colNames.has("status")) {
-      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'`);
-    }
-    if (!colNames.has("completed_at")) {
-      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN completed_at TEXT`);
-    }
-    if (!colNames.has("result")) {
-      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN result TEXT`);
-    }
-    if (!colNames.has("reply_channel")) {
-      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN reply_channel TEXT`);
-    }
-    if (!colNames.has("result_priority")) {
-      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN result_priority TEXT`);
-    }
-    if (!colNames.has("issuer")) {
-      db.exec(`ALTER TABLE cortex_pending_ops ADD COLUMN issuer TEXT NOT NULL DEFAULT 'agent:main:cortex'`);
-    }
-  } catch {
-    // Table doesn't exist yet or migration already done — no-op
-  }
-
   // --- cortex_session ---
   try {
     const columns = db.prepare(`PRAGMA table_info(cortex_session)`).all() as { name: string }[];

@@ -294,9 +294,6 @@ describe("checkpoint", () => {
       channelStates: [
         { channel: "webchat", lastMessageAt: new Date().toISOString(), unreadCount: 0, layer: "foreground" as const },
       ],
-      pendingOps: [
-        { id: "job-1", type: "router_job" as const, description: "Analyze code", dispatchedAt: new Date().toISOString(), expectedChannel: "router", status: "pending" as const },
-      ],
     };
 
     const id = checkpoint(db, data);
@@ -307,7 +304,6 @@ describe("checkpoint", () => {
     expect(loaded!.id).toBe(id);
     expect(loaded!.sessionSnapshot).toBe(data.sessionSnapshot);
     expect(loaded!.channelStates).toEqual(data.channelStates);
-    expect(loaded!.pendingOps).toEqual(data.pendingOps);
   });
 
   it("returns most recent checkpoint", () => {
@@ -315,13 +311,11 @@ describe("checkpoint", () => {
       createdAt: "2026-02-26T14:00:00Z",
       sessionSnapshot: "old",
       channelStates: [],
-      pendingOps: [],
     });
     checkpoint(db, {
       createdAt: "2026-02-26T15:00:00Z",
       sessionSnapshot: "new",
       channelStates: [],
-      pendingOps: [],
     });
 
     const loaded = loadLatestCheckpoint(db);
