@@ -307,6 +307,8 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           // complexity (headers, betas, Claude Code identity).
           const { completeSimple } = await import("@mariozechner/pi-ai");
 
+          params.onError(new Error(`[cortex-llm] DEBUG tools: count=${tools.length} names=[${tools.map((t: any) => t.name).join(",")}] msgCount=${piMessages.length} isOpsTrigger=${context.isOpsTrigger ?? false}`));
+
           const result = await completeSimple(
             model,
             {
@@ -339,6 +341,8 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             ?.join("\n");
 
           // Extract tool calls (sessions_spawn)
+          params.onError(new Error(`[cortex-llm] DEBUG content blocks: ${JSON.stringify(result.content?.map((b: any) => ({ type: b.type, name: b.name })))}`));
+
           const toolCalls: CortexToolCall[] = result.content
             ?.filter((block: any) => block.type === "toolCall")
             ?.map((block: any) => ({

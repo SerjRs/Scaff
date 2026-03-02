@@ -7,7 +7,7 @@
  * This module is the **single integration point** described in the
  * architecture doc (§6). Everything that uses `callGateway()` for agent
  * execution can be routed through the Router by swapping the call to
- * `routerCallGateway()` (Task 11, Step 4 — wiring deferred to a later task).
+ * `routerCallGateway()` (Task 11, Step 4 - wiring deferred to a later task).
  *
  * @module
  */
@@ -24,7 +24,7 @@ import { resolveStateDir } from "../config/paths.js";
 import { getCortexSessionKey } from "../cortex/session.js";
 
 // ---------------------------------------------------------------------------
-// Global singleton — use globalThis to survive bundler chunk splitting.
+// Global singleton - use globalThis to survive bundler chunk splitting.
 // Module-scoped variables get duplicated across chunks, breaking the
 // singleton pattern. globalThis ensures a single shared instance.
 // ---------------------------------------------------------------------------
@@ -48,9 +48,10 @@ function setRouterInstance(instance: RouterInstance | null): void {
  * gateway's existing agent execution mechanism.
  *
  * The executor runs tasks in **fully isolated sessions** under the
- * `router-executor` agent — no SOUL.md, AGENTS.md, USER.md, MEMORY.md,
- * no tools, no memory search, no skills. The Router's tier template
- * (rendered by the Dispatcher) is the executor's ONLY instruction set.
+ * `router-executor` agent - clean workspace (no SOUL.md, AGENTS.md, USER.md,
+ * MEMORY.md). Has full tool access (read, write, exec, web_search, etc.)
+ * for executing tasks that require real data. The Router's tier template
+ * (rendered by the Dispatcher) is the executor's instruction set.
  *
  * Session key format: `agent:router-executor:task:<uuid>`
  *
@@ -60,7 +61,7 @@ function setRouterInstance(instance: RouterInstance | null): void {
 export function createGatewayExecutor(): AgentExecutor {
   return async (prompt: string, model: string): Promise<string> => {
     // Always create an isolated session under the router-executor agent.
-    // This agent has an empty workspace — no context files are injected.
+    // This agent has an empty workspace - no context files are injected.
     const sessionKey = `agent:${EXECUTOR_AGENT_ID}:task:${crypto.randomUUID()}`;
     const idempotencyKey = crypto.randomUUID();
 
@@ -73,7 +74,7 @@ export function createGatewayExecutor(): AgentExecutor {
       });
     }
 
-    // Execute the agent — expectFinal waits for the completed result
+    // Execute the agent - expectFinal waits for the completed result
     const response = await callGateway<{
       runId?: string;
       status: string;
@@ -103,7 +104,7 @@ export function createGatewayExecutor(): AgentExecutor {
         timeoutMs: 10_000,
       });
     } catch {
-      // Best-effort cleanup — don't fail the task
+      // Best-effort cleanup - don't fail the task
     }
 
     // Extract text result from gateway agent response.
@@ -124,7 +125,7 @@ export function createGatewayExecutor(): AgentExecutor {
 }
 
 // ---------------------------------------------------------------------------
-// Auth sync — copy main agent credentials to router-executor agent
+// Auth sync - copy main agent credentials to router-executor agent
 // ---------------------------------------------------------------------------
 
 const EXECUTOR_AGENT_ID = "router-executor";
@@ -132,7 +133,7 @@ const EXECUTOR_AGENT_ID = "router-executor";
 /**
  * Sync auth files from the main agent to the router-executor agent.
  * This ensures the executor can authenticate with the same API keys.
- * Called on startup — idempotent, safe to call multiple times.
+ * Called on startup - idempotent, safe to call multiple times.
  */
 function syncExecutorAuth(): void {
   try {
@@ -154,7 +155,7 @@ function syncExecutorAuth(): void {
       } catch (err) {
         const code = (err as { code?: string }).code;
         if (code === "ENOENT") {
-          // Source file doesn't exist — skip silently
+          // Source file doesn't exist - skip silently
           continue;
         }
         console.log(`[router] Warning: failed to sync ${file} to executor agent: ${(err as Error).message}`);
@@ -181,14 +182,14 @@ function syncExecutorAuth(): void {
  */
 export function initGatewayRouter(config: RouterConfig): void {
   if (!config.enabled) {
-    console.log("[router] Router disabled in config — skipping init");
+    console.log("[router] Router disabled in config - skipping init");
     return;
   }
 
-  // Sync auth before starting — executor needs API credentials
+  // Sync auth before starting - executor needs API credentials
   syncExecutorAuth();
 
-  // Stop any existing instance (idempotent — handles hot-reload)
+  // Stop any existing instance (idempotent - handles hot-reload)
   const existing = getRouterInstance();
   if (existing) {
     console.log("[router] Stopping previous Router instance before re-init");
@@ -203,8 +204,8 @@ export function initGatewayRouter(config: RouterConfig): void {
   const executor = createGatewayExecutor();
 
   // §3.7 Step 3: Push result to the issuer's session on delivery.
-  // Same mechanism as subagent completion announcements — callGateway({ method: "agent" }).
-  // NOTE: Cortex-issued jobs are handled by gateway-bridge.ts via routerEvents —
+  // Same mechanism as subagent completion announcements - callGateway({ method: "agent" }).
+  // NOTE: Cortex-issued jobs are handled by gateway-bridge.ts via routerEvents -
   // skip them here to avoid double-handling (which causes ghost messages on WhatsApp).
   const cortexSessionKey = getCortexSessionKey("main");
   const onDelivered: OnDeliveredCallback = (jobId, job) => {
@@ -224,7 +225,7 @@ export function initGatewayRouter(config: RouterConfig): void {
       content,
     ].join("\n");
 
-    // Fire-and-forget — don't block the Notifier
+    // Fire-and-forget - don't block the Notifier
     callGateway({
       method: "agent",
       params: {
@@ -256,7 +257,7 @@ export function stopGatewayRouter(): void {
   try {
     instance.stop();
   } catch {
-    // Best-effort — don't block gateway shutdown
+    // Best-effort - don't block gateway shutdown
   }
 
   setRouterInstance(null);
@@ -273,16 +274,16 @@ export function stopGatewayRouter(): void {
  * **What it does:**
  * 1. Evaluates task complexity via Ollama (+ Sonnet verification if weight > 3)
  * 2. Resolves weight → tier → model
- * 3. Renders the tier-specific template — this becomes the executor's ONLY prompt
+ * 3. Renders the tier-specific template - this becomes the executor's ONLY prompt
  * 4. Patches the session with the selected model
  * 5. Falls through to normal `callGateway()` with the rendered template as the message
  *
  * **Context isolation:** The session is already under `router-executor` agent
- * (set by `subagent-spawn.ts`), which has an empty workspace — no SOUL.md,
- * AGENTS.md, USER.md, MEMORY.md, no tools. The template is the complete context.
+ * (set by `subagent-spawn.ts`), which has a clean workspace. The agent has
+ * full tool access for task execution. The template provides the instructions.
  *
  * **Standard lifecycle preserved:** `callGateway()` returns `{ runId }` immediately.
- * `agent.wait`, announce, and cleanup all work as usual — the Router doesn't
+ * `agent.wait`, announce, and cleanup all work as usual - the Router doesn't
  * interfere with any gateway mechanisms.
  */
 export async function routerCallGateway<T = Record<string, unknown>>(
@@ -319,7 +320,7 @@ export async function routerCallGateway<T = Record<string, unknown>>(
 
     console.log(`[router] evaluated: w=${weight} → ${tier} (${model})`);
 
-    // 3. Render the tier-specific template — this IS the executor's complete prompt.
+    // 3. Render the tier-specific template - this IS the executor's complete prompt.
     //    No SOUL.md, no AGENTS.md, no parent context. Just the template + task.
     const { getTemplate, renderTemplate } = await import("./templates/index.js");
     const template = getTemplate(resolvedTier, "agent_run");
@@ -348,7 +349,7 @@ export async function routerCallGateway<T = Record<string, unknown>>(
       },
     };
 
-    // 6. Execute via normal callGateway — preserves subagent lifecycle
+    // 6. Execute via normal callGateway - preserves subagent lifecycle
     const response = await callGateway<T>(modifiedOpts);
 
     // 7. Log the Router decision to SQLite (fire-and-forget, non-blocking)
@@ -366,14 +367,14 @@ export async function routerCallGateway<T = Record<string, unknown>>(
     const detail = err instanceof Error ? err.message : String(err);
     console.log(`[router] evaluation/routing failed, falling through to default: ${detail}`);
 
-    // Evaluation or template rendering failed — fall through with original message
+    // Evaluation or template rendering failed - fall through with original message
     return callGateway<T>(opts);
   }
 }
 
 /**
  * Log a Router decision to the SQLite archive for observability.
- * Non-blocking, best-effort — never throws.
+ * Non-blocking, best-effort - never throws.
  */
 async function logRouterDecision(
   instance: RouterInstance,
@@ -409,7 +410,7 @@ async function logRouterDecision(
     });
     archiveJob(db, jobId);
   } catch {
-    // Best-effort — don't break the main flow for tracking failures
+    // Best-effort - don't break the main flow for tracking failures
   }
 }
 
@@ -435,8 +436,8 @@ export function isGatewayRouterActive(): boolean {
 // ---------------------------------------------------------------------------
 // Wiring points (completed)
 // ---------------------------------------------------------------------------
-// [subagent-spawn.ts] — routerCallGateway() replaces callGateway() for agent
+// [subagent-spawn.ts] - routerCallGateway() replaces callGateway() for agent
 //   execution when Router is active. Session key uses router-executor agent
 //   for full context isolation.
-// [server-startup.ts] — initGatewayRouter() called during startup.
-// [server-close.ts] — stopGatewayRouter() called during shutdown.
+// [server-startup.ts] - initGatewayRouter() called during startup.
+// [server-close.ts] - stopGatewayRouter() called during shutdown.

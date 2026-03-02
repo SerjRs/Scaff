@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { updateJob } from "./queue.js";
 
 // ---------------------------------------------------------------------------
-// Shared lifecycle event emitter — other modules (Notifier) listen on this.
+// Shared lifecycle event emitter - other modules (Notifier) listen on this.
 // ---------------------------------------------------------------------------
 
 export const routerEvents = new EventEmitter();
@@ -18,8 +18,8 @@ export const routerEvents = new EventEmitter();
  * Returns the agent's text response.
  *
  * The executor runs in a fully isolated session under the `router-executor`
- * agent — no parent context, no tools, no memory. The prompt (from the
- * Router's tier template) is the executor's only instruction set.
+ * agent with full tool access but no parent context or memory. The prompt
+ * (from the Router's tier template) is the executor's only instruction set.
  */
 export type AgentExecutor = (prompt: string, model: string) => Promise<string>;
 
@@ -28,7 +28,7 @@ export type AgentExecutor = (prompt: string, model: string) => Promise<string>;
 // ---------------------------------------------------------------------------
 
 /**
- * Placeholder executor — will be replaced with real callGateway integration
+ * Placeholder executor - will be replaced with real callGateway integration
  * in the integration task (Task 11).
  */
 export const defaultExecuteAgent: AgentExecutor = async (
@@ -65,13 +65,13 @@ function nowTimestamp(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Worker — run a single job to completion
+// Worker - run a single job to completion
 // ---------------------------------------------------------------------------
 
 /**
  * Execute a router job: start heartbeat, call the agent, record result/error.
  *
- * The heartbeat timer is **always** cleaned up — on success, failure, or
+ * The heartbeat timer is **always** cleaned up - on success, failure, or
  * unexpected exception.
  *
  * Lifecycle events emitted on `routerEvents`:
@@ -104,15 +104,15 @@ export async function run(
     try {
       updateJob(db, jobId, { last_checkpoint: nowTimestamp() });
     } catch {
-      // Best-effort — don't crash the worker if a checkpoint write fails.
+      // Best-effort - don't crash the worker if a checkpoint write fails.
     }
   }, HEARTBEAT_INTERVAL_MS);
 
   try {
-    // 3. Execute the agent (isolated session — no parent context)
+    // 3. Execute the agent (isolated session - no parent context)
     const result = await executor(prompt, model);
 
-    // 4. Success — stop heartbeat first
+    // 4. Success - stop heartbeat first
     clearInterval(heartbeatTimer);
     updateJob(db, jobId, {
       status: "completed",
@@ -121,7 +121,7 @@ export async function run(
     });
     routerEvents.emit("job:completed", { jobId });
   } catch (err) {
-    // 5. Failure — stop heartbeat first
+    // 5. Failure - stop heartbeat first
     clearInterval(heartbeatTimer);
     const errorMessage =
       err instanceof Error ? err.message : String(err);
