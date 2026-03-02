@@ -44,6 +44,10 @@ export interface CortexConfig {
   gardenerSummarizeLLM?: FactExtractorLLM;
   /** LLM function for Gardener fact extraction */
   gardenerExtractLLM?: FactExtractorLLM;
+  /** Override Gardener intervals for testing (milliseconds) */
+  gardenerCompactorIntervalMs?: number;
+  gardenerExtractorIntervalMs?: number;
+  gardenerEvictorIntervalMs?: number;
 }
 
 export interface CortexInstance {
@@ -142,6 +146,10 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
       extractLLM: config.gardenerExtractLLM,
       embedFn: config.embedFn ?? embedViaOllama,
       onError,
+      // Allow interval overrides from config for testing
+      compactorIntervalMs: config.gardenerCompactorIntervalMs,
+      extractorIntervalMs: config.gardenerExtractorIntervalMs,
+      evictorIntervalMs: config.gardenerEvictorIntervalMs,
     });
   }
 

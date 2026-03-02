@@ -54,7 +54,12 @@ function loadCortexConfig(): CortexModeConfig | null {
       enabled: raw.enabled === true,
       defaultMode: raw.defaultMode ?? "off",
       channels: raw.channels ?? {},
-      hippocampus: { enabled: raw.hippocampus?.enabled === true },
+      hippocampus: {
+        enabled: raw.hippocampus?.enabled === true,
+        gardenerCompactorIntervalMs: raw.hippocampus?.gardenerCompactorIntervalMs,
+        gardenerExtractorIntervalMs: raw.hippocampus?.gardenerExtractorIntervalMs,
+        gardenerEvictorIntervalMs: raw.hippocampus?.gardenerEvictorIntervalMs,
+      },
       debugContext: raw.debugContext === true,
     };
   } catch {
@@ -134,6 +139,10 @@ export async function initGatewayCortex(params: {
     hippocampusEnabled: config.hippocampus?.enabled === true,
     gardenerSummarizeLLM: config.hippocampus?.enabled ? gardenerLLM : undefined,
     gardenerExtractLLM: config.hippocampus?.enabled ? gardenerLLM : undefined,
+    // Gardener interval overrides from config (for testing)
+    gardenerCompactorIntervalMs: config.hippocampus?.gardenerCompactorIntervalMs,
+    gardenerExtractorIntervalMs: config.hippocampus?.gardenerExtractorIntervalMs,
+    gardenerEvictorIntervalMs: config.hippocampus?.gardenerEvictorIntervalMs,
     callLLM,
     onError: (err) => {
       params.log.warn(`[cortex] Error: ${err.message}`);

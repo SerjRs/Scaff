@@ -29,8 +29,8 @@ Cortex is OpenClaw's unified processing brain. Every inbound message — regardl
     │  SQLite queue   │  │ (session.ts)   │  │ (hippocampus.ts)   │
     │  Priority-      │  │ Unified        │  │ Hot memory (flat)  │
     │  ordered,       │  │ history,       │  │ Cold storage       │
-    │  WAL mode       │  │ channel state, │  │ (sqlite-vec KNN)   │
-    └─────────┬──────┘  │ pending ops    │  └──────────┬─────────┘
+    │  WAL mode       │  │ channel state  │  │ (sqlite-vec KNN)   │
+    └─────────┬──────┘  │ task results   │  └──────────┬─────────┘
               │          └─────────┬──────┘             │
               │                    │                     │
     ┌─────────▼────────────────────▼─────────────────────▼────────┐
@@ -55,11 +55,11 @@ Cortex is OpenClaw's unified processing brain. Every inbound message — regardl
 | `index.ts` | Entry point. Singleton guard, init all subsystems, public API (`enqueue`, `registerAdapter`, `stop`, `stats`). |
 | `loop.ts` | Main processing loop. Dequeue → context → LLM → tools → output → checkpoint. Max 5 sync tool rounds per message. |
 | `bus.ts` | SQLite message queue. Priority-ordered (`urgent > normal > background`), FIFO within tier. WAL mode for durability. |
-| `session.ts` | Unified session history, channel state tracking, pending operations lifecycle. |
+| `session.ts` | Unified session history, channel state tracking, task result ingestion. |
 | `context.ts` | 4-layer context assembly (system floor, foreground, background, archived). Token budgeting. |
 | `llm-caller.ts` | Real LLM calls via pi-ai streaming (OAuth, Claude Code identity). Also gardener LLM and stub for tests. |
 | `output.ts` | Parse LLM response → `CortexOutput`. Route to adapters. Handle silence, cross-channel directives. |
-| `types.ts` | Core types: `CortexEnvelope`, `BusMessage`, `CortexOutput`, `PendingOperation`, `ChannelState`. |
+| `types.ts` | Core types: `CortexEnvelope`, `BusMessage`, `CortexOutput`, `ChannelState`. |
 | `gateway-bridge.ts` | Gateway integration. Config loading, adapter registration, Router event subscription, startup cleanup. |
 | `hippocampus.ts` | Hot memory (flat table, hit-count ranked) + cold storage (sqlite-vec vector search). |
 | `gardener.ts` | Background maintenance: channel compaction, fact extraction, vector eviction, op harvesting. |
@@ -78,11 +78,10 @@ Each tick of the loop (`loop.ts`) processes exactly one message:
 4. ASSEMBLE        assembleContext() — build 4-layer context
 5. CALL LLM        callLLM(context) — returns text + tool calls
   5a. SYNC TOOLS   Up to 5 rounds of fetch_chat_history / memory_query
-  5b. ASYNC TOOLS  sessions_spawn → addPendingOp → fire to Router
+  5b. ASYNC TOOLS  sessions_spawn → fire to Router (results arrive as session messages)
 6. PARSE           parseResponse() → CortexOutput (targets, silence, cross-channel)
 7. ROUTE           routeOutput() → send via adapters
 8. RECORD          appendResponse(db, output) — record Cortex's reply
-8b. ACKNOWLEDGE    acknowledgeCompletedOps(db) — mark results as "read"
 9. CHECKPOINT      markCompleted(db, id) — state: processing → completed
 ```
 
@@ -90,7 +89,7 @@ Each tick of the loop (`loop.ts`) processes exactly one message:
 
 The loop supports up to `MAX_TOOL_ROUNDS = 5` sync tool round-trips per message. After the LLM responds with a tool call (`fetch_chat_history` or `memory_query`), the tool is executed and the result is fed back to the LLM for another turn.
 
-The async tool `sessions_spawn` is fire-and-forget — it submits work to the Router and tracks it as a pending operation.
+The async tool `sessions_spawn` is fire-and-forget — it submits work to the Router. When results return, they are written directly to the session as foreground messages via `appendTaskResult()`, so the LLM sees them naturally in the next conversation turn.
 
 ## Context Assembly
 
@@ -101,7 +100,6 @@ Context is assembled in 4 layers with token budgeting (`context.ts`):
 - `IDENTITY.md` — agent capabilities
 - `USER.md` — user preferences
 - `MEMORY.md` — persistent memory
-- **Active Operations** — pending, completed (unread), and failed (unread) ops
 - **Known Facts** — hot memory facts (when Hippocampus enabled)
 
 ### Layer 2: Foreground (demand-based)
@@ -118,67 +116,11 @@ Context is assembled in 4 layers with token budgeting (`context.ts`):
 ### Layer 4: Archived (zero cost)
 - Inactive channels — not in context at all
 
-## Pending Operations Lifecycle
+## Async Task Results
 
-Operations dispatched to the Router follow this lifecycle:
+Router delegation results (from `sessions_spawn`) are written directly to the session as foreground messages via `appendTaskResult()` in `session.ts`. This replaced the earlier `cortex_pending_ops` state machine — instead of a separate lifecycle with pending/completed/acknowledged states, results simply appear as conversation messages that the LLM processes naturally on the next turn.
 
-```
-                    ┌──────────┐
-                    │ pending  │  Waiting for result
-                    └────┬─────┘
-                         │
-              ┌──────────┼──────────┐
-              │ success              │ failure
-              ▼                      ▼
-        ┌───────────┐         ┌──────────┐
-        │ completed │         │  failed  │
-        │ (unread)  │         │ (unread) │
-        └─────┬─────┘         └────┬─────┘
-              │                    │
-              │  acknowledgeCompletedOps()
-              │  (after LLM turn)  │
-              ▼                    ▼
-        ┌───────────┐         ┌──────────┐
-        │ completed │         │  failed  │
-        │ (read)    │         │  (read)  │
-        └─────┬─────┘         └──────────┘
-              │                    │
-              │  Op Harvester      │ (no harvesting)
-              ▼                    │
-        ┌───────────┐              │
-        │ gardened  │              │
-        └─────┬─────┘              │
-              │                    │
-              │  7+ days           │
-              ▼                    │
-        ┌───────────┐              │
-        │ archived  │              │
-        └───────────┘              │
-                                   │
-                          Stays in DB for audit
-```
-
-### System Floor Visibility
-
-`getPendingOps()` returns ops that should appear in the System Floor:
-- `status = 'pending'` — shown as `[PENDING]`
-- `status = 'completed'` AND `acknowledged_at IS NULL` — shown as `[NEW RESULT]`
-- `status = 'failed'` AND `acknowledged_at IS NULL` — shown as `[FAILED]`
-
-After the LLM processes a turn, `acknowledgeCompletedOps()` stamps `acknowledged_at` on all completed/failed ops, removing them from future System Floor injections. This is the inbox read/unread pattern.
-
-### Failure Handling
-
-`failPendingOp(db, id, error)` sets:
-- `status = 'failed'`
-- `completed_at = now`
-- `result = 'Error: {error}'`
-
-It does NOT set `acknowledged_at`. The failed op remains visible in `getPendingOps()` so the LLM can see `[FAILED] ... Inform the user that this task failed.` and tell the user. It is only acknowledged (hidden) after the next LLM turn.
-
-### Startup Cleanup
-
-On gateway restart (`gateway-bridge.ts`), any ops still in `pending` status are orphans from a prior crash. They are failed with `"orphaned from prior session (startup cleanup)"` and remain visible for one LLM turn so the user is informed.
+> **Note:** The `cortex_pending_ops` table still exists in the SQLite schema as a leftover but is no longer used by any code path.
 
 ## Hippocampus Memory Subsystem
 
@@ -205,7 +147,6 @@ Four automated maintenance tasks (`gardener.ts`):
 | Channel Compactor | Hourly | Summarize idle foreground channels → demote to background |
 | Fact Extractor | 6 hours | Extract persistent facts from recent session messages → hot memory |
 | Vector Evictor | Weekly | Move stale hot facts (>14 days, <3 hits) → cold storage with embeddings |
-| Op Harvester | 6 hours | Extract facts from completed ops → hot memory, mark ops as gardened |
 
 ## Channel Modes
 
@@ -279,12 +220,8 @@ Indexes: `(channel, timestamp)`, `(timestamp)`
 channel (PK), last_message_at, unread_count, summary, layer
 ```
 
-### Pending Ops (`cortex_pending_ops`)
-```sql
-id (PK), type, description, dispatched_at, expected_channel,
-status, completed_at, result, gardened_at, acknowledged_at
-```
-Index: `(status)`
+### Pending Ops (`cortex_pending_ops`) — DEPRECATED
+Table exists in schema but is no longer used. Task results are written directly to `cortex_session` via `appendTaskResult()`.
 
 ### Hot Memory (`cortex_hot_memory`)
 ```sql

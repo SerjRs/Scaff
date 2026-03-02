@@ -216,6 +216,10 @@ export type CortexMode = "off" | "shadow" | "live";
 /** Hippocampus memory subsystem configuration */
 export interface HippocampusConfig {
   enabled: boolean;
+  /** Override Gardener intervals for testing (milliseconds) */
+  gardenerCompactorIntervalMs?: number;
+  gardenerExtractorIntervalMs?: number;
+  gardenerEvictorIntervalMs?: number;
 }
 
 /** Per-channel mode configuration */

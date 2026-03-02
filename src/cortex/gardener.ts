@@ -140,14 +140,17 @@ export async function runFactExtractor(params: {
 
   for (const channel of channelsToProcess) {
     try {
-      const messages = getSessionHistory(db, { channel, limit: maxMessages });
+      const messages = getSessionHistory(db, { channel });
       // Filter to recent messages
-      const recent = messages.filter((m) => m.timestamp >= since);
+      const recent = messages.filter((m) => m.timestamp >= since).slice(0, maxMessages);
+      console.log(`[gardener] Channel "${channel}": ${messages.length} total, ${recent.length} recent (since ${since})`);
       if (recent.length === 0) continue;
 
       const transcript = recent
         .map((m) => `${m.role === "assistant" ? "Cortex" : m.senderId}: ${m.content}`)
         .join("\n");
+
+      console.log(`[gardener] Transcript length: ${transcript.length} chars, sending to LLM...`);
 
       const prompt = `Extract any persistent, reusable facts from this conversation. \
 Facts are things like user preferences, personal details, project decisions, \
@@ -158,6 +161,7 @@ Conversation:
 ${transcript}`;
 
       const response = await extractLLM(prompt);
+      console.log(`[gardener] LLM response: ${response.substring(0, 200)}`);
 
       // Parse the JSON array of facts
       let facts: string[];
@@ -278,8 +282,11 @@ export function startGardener(params: {
 
   const runExtractor = async () => {
     try {
-      await runFactExtractor({ db, extractLLM });
+      console.log(`[gardener] Fact extractor starting (interval: ${extractorIntervalMs}ms)`);
+      const result = await runFactExtractor({ db, extractLLM });
+      console.log(`[gardener] Fact extractor done: processed=${result.processed}, errors=${result.errors.length}`);
     } catch (err) {
+      console.log(`[gardener] Fact extractor FAILED: ${err}`);
       onError(err instanceof Error ? err : new Error(String(err)));
     }
   };
@@ -292,6 +299,7 @@ export function startGardener(params: {
     }
   };
 
+  console.log(`[gardener] Started — compactor: ${compactorIntervalMs}ms, extractor: ${extractorIntervalMs}ms, evictor: ${evictorIntervalMs}ms`);
   timers.push(setInterval(runCompactor, compactorIntervalMs));
   timers.push(setInterval(runExtractor, extractorIntervalMs));
   timers.push(setInterval(runEvictor, evictorIntervalMs));
