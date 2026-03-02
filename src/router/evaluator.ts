@@ -196,7 +196,9 @@ export async function evaluate(
       console.log(`[router/evaluator] ollama scored: w=${ollamaResult.weight} (${ollamaResult.reasoning})`);
     } catch (ollamaErr) {
       const detail = ollamaErr instanceof Error ? ollamaErr.message : String(ollamaErr);
-      console.log(`[router/evaluator] ollama failed: ${detail} — falling through to sonnet`);
+      const stack = ollamaErr instanceof Error ? ollamaErr.stack : undefined;
+      console.error(`[router/evaluator] ollama failed: ${detail} — falling through to sonnet`);
+      if (stack) console.error(`[router/evaluator] ollama stack: ${stack}`);
     }
 
     // 3. If Ollama succeeded and says ≤3 → trust it, skip Sonnet
@@ -217,7 +219,9 @@ export async function evaluate(
       return sonnetResult;
     } catch (sonnetErr) {
       const detail = sonnetErr instanceof Error ? sonnetErr.message : String(sonnetErr);
-      console.log(`[router/evaluator] sonnet verification failed: ${detail}`);
+      const stack = sonnetErr instanceof Error ? sonnetErr.stack : undefined;
+      console.error(`[router/evaluator] sonnet verification failed: ${detail}`);
+      if (stack) console.error(`[router/evaluator] sonnet stack: ${stack}`);
       // Fall back to Ollama's score if available, otherwise fallback weight
       if (ollamaResult) {
         console.log(`[router/evaluator] using ollama score: w=${ollamaResult.weight}`);
@@ -234,7 +238,9 @@ export async function evaluate(
       ? "evaluator timed out, using fallback"
       : "evaluator failed, using fallback";
     const detail = err instanceof Error ? err.message : String(err);
-    console.log(`[router/evaluator] ${reason}: ${detail}`);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error(`[router/evaluator] ${reason}: ${detail}`);
+    if (stack) console.error(`[router/evaluator] stack: ${stack}`);
 
     return {
       weight: config.fallback_weight,
