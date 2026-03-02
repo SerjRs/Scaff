@@ -49,6 +49,8 @@ export interface LLMCallerParams {
   onError: (err: Error) => void;
   /** Dump the full LLM context (system + messages + tools) to stdout via onError. Default: false */
   debugContext?: boolean;
+  /** Thinking/reasoning level: "minimal" | "low" | "medium" | "high" | "xhigh". Default: none (no thinking). */
+  thinking?: string;
 }
 
 /** Anthropic Messages API format (content may be string or structured blocks for tool use) */
@@ -319,6 +321,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             {
               apiKey: auth.apiKey,
               maxTokens: params.maxResponseTokens,
+              ...(params.thinking ? { reasoning: params.thinking } : {}),
             } as any,
           );
 

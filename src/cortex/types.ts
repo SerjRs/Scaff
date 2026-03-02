@@ -227,6 +227,8 @@ export interface CortexModeConfig {
   enabled: boolean;
   /** LLM model for Cortex brain (e.g. "claude-opus-4-6"). Falls back to agent/global defaults. */
   model?: string | null;
+  /** Thinking/reasoning level: "minimal" | "low" | "medium" | "high" | "xhigh". Default: none. */
+  thinking?: string | null;
   defaultMode: CortexMode;
   channels: Partial<Record<string, CortexMode>>;
   hippocampus?: HippocampusConfig;

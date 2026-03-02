@@ -53,6 +53,7 @@ function loadCortexConfig(): CortexModeConfig | null {
     return {
       enabled: raw.enabled === true,
       model: raw.model ?? null,
+      thinking: raw.thinking ?? null,
       defaultMode: raw.defaultMode ?? "off",
       channels: raw.channels ?? {},
       hippocampus: {
@@ -109,9 +110,10 @@ export async function initGatewayCortex(params: {
       params.log.warn(`[cortex-llm] ${err.message}`);
     },
     debugContext: config.debugContext,
+    ...(config.thinking ? { thinking: config.thinking } : {}),
   });
 
-  params.log.warn(`[cortex] LLM: live (anthropic/${cortexModel})`);
+  params.log.warn(`[cortex] LLM: live (anthropic/${cortexModel}${config.thinking ? `, thinking=${config.thinking}` : ""})`);
 
   // Gardener LLM functions — reuse same auth/model infrastructure
   // Uses the same model as Cortex main LLM for now (could be Haiku for cost efficiency)
