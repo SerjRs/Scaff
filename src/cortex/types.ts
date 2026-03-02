@@ -225,6 +225,8 @@ export interface HippocampusConfig {
 /** Per-channel mode configuration */
 export interface CortexModeConfig {
   enabled: boolean;
+  /** LLM model for Cortex brain (e.g. "claude-opus-4-6"). Falls back to agent/global defaults. */
+  model?: string | null;
   defaultMode: CortexMode;
   channels: Partial<Record<string, CortexMode>>;
   hippocampus?: HippocampusConfig;

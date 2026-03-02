@@ -52,6 +52,7 @@ function loadCortexConfig(): CortexModeConfig | null {
     const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     return {
       enabled: raw.enabled === true,
+      model: raw.model ?? null,
       defaultMode: raw.defaultMode ?? "off",
       channels: raw.channels ?? {},
       hippocampus: {
@@ -90,9 +91,9 @@ export async function initGatewayCortex(params: {
 
   params.log.warn(`[cortex] Starting (mode: ${config.defaultMode})`);
 
-  // Resolve model from config — defaults to claude-sonnet-4-6 if not configured
-  // cfg.model / cfg.agents.defaults.model can be a Model object ({ id, provider }) or a plain string
-  const rawModel = (params.cfg as any).agents?.defaults?.model ?? (params.cfg as any).model;
+  // Resolve model: cortex/config.json.model → cfg.agents.defaults.model → cfg.model → fallback
+  const cortexConfigModel = (config as any).model;
+  const rawModel = cortexConfigModel ?? (params.cfg as any).agents?.defaults?.model ?? (params.cfg as any).model;
   const cortexModel = typeof rawModel === "string"
     ? rawModel
     : (rawModel?.id ?? "claude-sonnet-4-6");

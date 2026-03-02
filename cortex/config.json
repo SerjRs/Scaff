@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "model": "claude-opus-4-6",
   "defaultMode": "off",
   "channels": {
     "webchat": "live"
