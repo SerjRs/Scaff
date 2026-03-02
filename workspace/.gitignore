@@ -1,0 +1,15 @@
+# Personal data — never commit
+MEMORY.md
+memory/
+USER.md
+DNA.json
+IDENTITY.md
+sessions/
+
+# Temp files
+_tmp_*
+_test_*
+_run_*
+_stress_*
+*.sqlite
+*.lock

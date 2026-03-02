@@ -88,7 +88,7 @@ USER.md
 # local tooling
 .serena/
 
-# Agent credentials and memory (NEVER COMMIT)
+# Agent memory (personal data — NEVER COMMIT)
 /memory/
 .agent/*.json
 !.agent/workflows/
@@ -120,7 +120,7 @@ openclaw.json.bak.*
 /sandbox/
 /sandboxes/
 
-# Scaff runtime data (NEVER COMMIT — sensitive auth, queues, local config)
+# Scaff runtime data — secrets, auth, DBs (NEVER COMMIT)
 /credentials/
 /agents/
 /browser/
@@ -131,17 +131,24 @@ openclaw.json.bak.*
 /identity/
 /learning/
 /canvas/
-/cron/
-/router/
-/cortex/
-/workspace/
-/workspace-main/
-/workspace-router-executor/
 /.openclaw/
 /openclaw.json
 /openclaw.json.bak
 /exec-approvals.json
 /update-check.json
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+auth.json
+auth-profiles.json
+
+# Scaff runtime — safe to commit (config, templates, workspace, docs)
+!/workspace/
+/workspace-main/
+/workspace-router-executor/
+!/cron/
+!/router/config.json
+!/cortex/config.json
 /gateway.cmd
 /packages/packages/
 

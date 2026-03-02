@@ -1,0 +1,132 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.2.15",
+    "lastTouchedAt": "2026-02-25T09:24:56.232Z"
+  },
+  "wizard": {
+    "lastRunAt": "2026-02-23T22:24:55.332Z",
+    "lastRunVersion": "2026.2.15",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "diagnostics": {
+    "cacheTrace": {
+      "enabled": true,
+      "includeMessages": true,
+      "includePrompt": true,
+      "includeSystem": true
+    }
+  },
+  "auth": {
+    "profiles": {
+      "anthropic:antrophic": {
+        "provider": "anthropic",
+        "mode": "token"
+      },
+      "anthropic:scaff": {
+        "provider": "anthropic",
+        "mode": "token"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-opus-4-6"
+      },
+      "workspace": "C:\\Users\\Temp User\\.openclaw\\workspace",
+      "memorySearch": {
+        "enabled": true,
+        "provider": "openai",
+        "remote": {
+          "baseUrl": "http://localhost:11434/v1",
+          "apiKey": "ollama"
+        },
+        "fallback": "none",
+        "model": "nomic-embed-text"
+      },
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "thinkingDefault": "high",
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "command-logger": {
+          "enabled": true
+        },
+        "session-memory": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "channels": {
+    "whatsapp": {
+      "dmPolicy": "allowlist",
+      "selfChatMode": false,
+      "allowFrom": [
+        "+40751845717"
+      ],
+      "groupPolicy": "allowlist",
+      "dms": {
+        "+40751845717": {}
+      },
+      "debounceMs": 0,
+      "mediaMaxMb": 50
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "bccc14162a64c91b9d3539c33f24cffa3604ec62d030929a"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "nodes": {
+      "denyCommands": [
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
+        "calendar.add",
+        "contacts.add",
+        "reminders.add"
+      ]
+    }
+  },
+  "skills": {
+    "install": {
+      "nodeManager": "pnpm"
+    }
+  },
+  "plugins": {
+    "allow": [
+      "whatsapp"
+    ],
+    "entries": {
+      "whatsapp": {
+        "enabled": true
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+
+We decided the Cortex will be fed with a small ammount of messages from the session file (e.g. last 20 messages); We will add to the context the last 24h of context from the Hot Memory, which is a vector DB - thus ensuring the Cortex do not lose context; The Hot Memory is a sliding memory which keeps context datapoints only for the last 24h (if the discussion continued, otherwise it keeps the 24h of discussion); Should there be any challenge to reveal the information from  more than 24h, then we bring those data from the Long Memory.
+
+How we should have implemented:
+0. the Session file should be kept small, so we don't feed the Cortex with all information for several days long;
+1. We implemented a Hot Memory: this memory reads the session file and stores the last 24h in a vector DB; but don't overlap with the raw messages from the sesson file being sent to the Cortex (the tail)
+2. When Cortex is being called, it gets the session file and adds to it a portion from the Hot Memory (if there is intersection between the tail being sent and what we have in Hot Memory)
+3. Hot Memory has a limit capacity (24h sliding window), so it continously rebuilds with new data from the session file
+4. Hot Memory is a vector database;
+
+5. The Long Memory, it reads the session file, pulls only important datapoints from there, and stores it in the Long Memory (ignores the noise);
+6. The Long Memory, truncates the session file, so it is not too big;
+7. While Truncating the memory, it should evict the Hot Memory data picking - here is the Eviction strategy
+
+Please read the entire requirement and let me know if there is any gap I did not see.
+
+I would propose, in order to evict the Session file truncation with the HotMemory reading, to have 2 files:
+1. the session file, we add to it messages as the conversation goes;
+2. any added message is automatically added to another file as well, let's call it session_backup
+3. the Long Memory reads data points from the session_backup;
+4. the Hot Memory reads its data from the session_backup as well, having prepared continously its sliding memory window;
+5. The Truncator, truncates the session file, with a smart algorithm so the Cortex keeps a meaningfull context window, we can not truncate in a middle of a topic discussion even if it bypasses 20 messages;

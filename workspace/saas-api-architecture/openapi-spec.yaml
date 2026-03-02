@@ -1,0 +1,1297 @@
+openapi: 3.0.3
+info:
+  title: Multi-Tenant SaaS Platform API
+  description: |
+    Complete REST API for a multi-tenant SaaS platform with RBAC, rate limiting,
+    webhook delivery, and comprehensive audit logging.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api@example.com
+
+servers:
+  - url: https://api.platform.example.com/v1
+    description: Production
+  - url: https://api-staging.platform.example.com/v1
+    description: Staging
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+tags:
+  - name: Authentication
+    description: Authentication and session management
+  - name: Tenants
+    description: Tenant management
+  - name: Users
+    description: User management within tenants
+  - name: Roles
+    description: RBAC role and permission management
+  - name: Webhooks
+    description: Webhook subscription and management
+  - name: Audit
+    description: Audit log access
+  - name: Resources
+    description: Example business resources
+
+paths:
+  # ============================================================================
+  # AUTHENTICATION
+  # ============================================================================
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user and return JWT access/refresh tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, tenant_id]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                tenant_id:
+                  type: string
+                  format: uuid
+                mfa_code:
+                  type: string
+                  description: Multi-factor authentication code (if enabled)
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    description: Access token expiration in seconds
+                  token_type:
+                    type: string
+                    example: Bearer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      security:
+        - RefreshTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout and invalidate tokens
+      responses:
+        '204':
+          description: Logout successful
+
+  # ============================================================================
+  # TENANTS
+  # ============================================================================
+  /tenants:
+    get:
+      tags: [Tenants]
+      summary: List tenants (platform admin only)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, suspended, trial, cancelled]
+      responses:
+        '200':
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Tenant'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Tenants]
+      summary: Create new tenant
+      description: Creates a new tenant with initial admin user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, subdomain, admin_email, plan]
+              properties:
+                name:
+                  type: string
+                  example: Acme Corporation
+                subdomain:
+                  type: string
+                  pattern: '^[a-z0-9-]+$'
+                  example: acme-corp
+                admin_email:
+                  type: string
+                  format: email
+                admin_password:
+                  type: string
+                  format: password
+                  minLength: 12
+                plan:
+                  type: string
+                  enum: [trial, starter, professional, enterprise]
+      responses:
+        '201':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '409':
+          description: Subdomain already exists
+
+  /tenants/{tenant_id}:
+    get:
+      tags: [Tenants]
+      summary: Get tenant details
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Tenants]
+      summary: Update tenant settings
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                settings:
+                  type: object
+                  description: Tenant-specific configuration
+                status:
+                  type: string
+                  enum: [active, suspended, cancelled]
+      responses:
+        '200':
+          description: Tenant updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+
+  # ============================================================================
+  # USERS
+  # ============================================================================
+  /tenants/{tenant_id}/users:
+    get:
+      tags: [Users]
+      summary: List users in tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: role_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, invited]
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+
+    post:
+      tags: [Users]
+      summary: Create/invite user
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role_ids]
+              properties:
+                email:
+                  type: string
+                  format: email
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                role_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                send_invite:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /tenants/{tenant_id}/users/{user_id}:
+    get:
+      tags: [Users]
+      summary: Get user details
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    patch:
+      tags: [Users]
+      summary: Update user
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - $ref: '#/components/parameters/UserIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                role_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                status:
+                  type: string
+                  enum: [active, inactive]
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    delete:
+      tags: [Users]
+      summary: Delete user
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '204':
+          description: User deleted
+
+  # ============================================================================
+  # ROLES & PERMISSIONS
+  # ============================================================================
+  /tenants/{tenant_id}/roles:
+    get:
+      tags: [Roles]
+      summary: List roles
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Role'
+
+    post:
+      tags: [Roles]
+      summary: Create custom role
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, permissions]
+              properties:
+                name:
+                  type: string
+                  example: Content Manager
+                description:
+                  type: string
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                  example: ["resources:read", "resources:write"]
+      responses:
+        '201':
+          description: Role created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+
+  /tenants/{tenant_id}/roles/{role_id}:
+    get:
+      tags: [Roles]
+      summary: Get role details
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: role_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Role details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+
+    patch:
+      tags: [Roles]
+      summary: Update role
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: role_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                permissions:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Role'
+
+    delete:
+      tags: [Roles]
+      summary: Delete role
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: role_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Role deleted
+
+  /permissions:
+    get:
+      tags: [Roles]
+      summary: List all available permissions
+      description: Returns platform-wide permission catalog
+      responses:
+        '200':
+          description: List of permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Permission'
+
+  # ============================================================================
+  # WEBHOOKS
+  # ============================================================================
+  /tenants/{tenant_id}/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List webhook subscriptions
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: List of webhooks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Webhook'
+
+    post:
+      tags: [Webhooks]
+      summary: Create webhook subscription
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  example: https://example.com/webhooks/platform
+                events:
+                  type: array
+                  items:
+                    type: string
+                  example: ["user.created", "resource.updated"]
+                secret:
+                  type: string
+                  description: Optional signing secret (auto-generated if not provided)
+                active:
+                  type: boolean
+                  default: true
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+  /tenants/{tenant_id}/webhooks/{webhook_id}:
+    get:
+      tags: [Webhooks]
+      summary: Get webhook details
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Webhook details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+    patch:
+      tags: [Webhooks]
+      summary: Update webhook
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                active:
+                  type: boolean
+      responses:
+        '200':
+          description: Webhook updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+    delete:
+      tags: [Webhooks]
+      summary: Delete webhook
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Webhook deleted
+
+  /tenants/{tenant_id}/webhooks/{webhook_id}/deliveries:
+    get:
+      tags: [Webhooks]
+      summary: Get webhook delivery history
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Webhook delivery log
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WebhookDelivery'
+
+  /tenants/{tenant_id}/webhooks/{webhook_id}/deliveries/{delivery_id}/retry:
+    post:
+      tags: [Webhooks]
+      summary: Retry failed webhook delivery
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: delivery_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Retry queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  delivery_id:
+                    type: string
+                    format: uuid
+
+  # ============================================================================
+  # AUDIT LOGS
+  # ============================================================================
+  /tenants/{tenant_id}/audit-logs:
+    get:
+      tags: [Audit]
+      summary: Query audit logs
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: actor_id
+          in: query
+          description: Filter by user who performed the action
+          schema:
+            type: string
+            format: uuid
+        - name: resource_type
+          in: query
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditLog'
+
+  /tenants/{tenant_id}/audit-logs/export:
+    post:
+      tags: [Audit]
+      summary: Export audit logs
+      description: Request audit log export (async job)
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_date, end_date]
+              properties:
+                start_date:
+                  type: string
+                  format: date-time
+                end_date:
+                  type: string
+                  format: date-time
+                format:
+                  type: string
+                  enum: [csv, json, parquet]
+                  default: csv
+                filters:
+                  type: object
+      responses:
+        '202':
+          description: Export job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [queued, processing, completed, failed]
+
+  # ============================================================================
+  # EXAMPLE BUSINESS RESOURCES
+  # ============================================================================
+  /tenants/{tenant_id}/resources:
+    get:
+      tags: [Resources]
+      summary: List resources
+      description: Example endpoint for tenant business data
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: List of resources
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Resource'
+
+    post:
+      tags: [Resources]
+      summary: Create resource
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        '201':
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+
+  /tenants/{tenant_id}/resources/{resource_id}:
+    get:
+      tags: [Resources]
+      summary: Get resource
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: resource_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Resource details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+
+    patch:
+      tags: [Resources]
+      summary: Update resource
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: resource_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        '200':
+          description: Resource updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+
+    delete:
+      tags: [Resources]
+      summary: Delete resource
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+        - name: resource_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Resource deleted
+
+# ==============================================================================
+# COMPONENTS
+# ==============================================================================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for service-to-service authentication
+    
+    RefreshTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Refresh-Token
+
+  parameters:
+    TenantIdParam:
+      name: tenant_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Tenant UUID
+    
+    UserIdParam:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: User UUID
+    
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number
+    
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Items per page
+
+  schemas:
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        subdomain:
+          type: string
+        plan:
+          type: string
+          enum: [trial, starter, professional, enterprise]
+        status:
+          type: string
+          enum: [active, suspended, trial, cancelled]
+        settings:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, invited]
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        last_login_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null for system roles, set for custom tenant roles
+        name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        is_system:
+          type: boolean
+          description: True for platform-defined roles
+        created_at:
+          type: string
+          format: date-time
+
+    Permission:
+      type: object
+      properties:
+        name:
+          type: string
+          example: resources:write
+        description:
+          type: string
+        resource:
+          type: string
+          example: resources
+        action:
+          type: string
+          enum: [read, write, delete, admin]
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+          writeOnly: true
+        active:
+          type: boolean
+        description:
+          type: string
+        last_delivery_at:
+          type: string
+          format: date-time
+          nullable: true
+        failure_count:
+          type: integer
+          description: Consecutive failures (resets on success)
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        webhook_id:
+          type: string
+          format: uuid
+        event:
+          type: string
+        payload:
+          type: object
+        status:
+          type: string
+          enum: [success, failed, retrying]
+        response_status:
+          type: integer
+          nullable: true
+        response_body:
+          type: string
+          nullable: true
+        attempt:
+          type: integer
+          description: Delivery attempt number
+        delivered_at:
+          type: string
+          format: date-time
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+          description: User who performed the action
+        actor_email:
+          type: string
+        action:
+          type: string
+          example: user.created
+        resource_type:
+          type: string
+          example: user
+        resource_id:
+          type: string
+          format: uuid
+          nullable: true
+        changes:
+          type: object
+          description: Before/after state
+        metadata:
+          type: object
+          description: Additional context (IP, user agent, etc.)
+        created_at:
+          type: string
+          format: date-time
+
+    Resource:
+      type: object
+      description: Example business resource
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        metadata:
+          type: object
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {}
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            total_pages:
+              type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+        request_id:
+          type: string
+          format: uuid
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or expired token
+            request_id: 550e8400-e29b-41d4-a716-446655440000
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Insufficient permissions
+            request_id: 550e8400-e29b-41d4-a716-446655440000
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+            request_id: 550e8400-e29b-41d4-a716-446655440000
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Request limit per window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Requests remaining
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when limit resets
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until retry allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              message: Too many requests. Please try again later.
+            request_id: 550e8400-e29b-41d4-a716-446655440000
