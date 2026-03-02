@@ -189,6 +189,11 @@ export function initGatewayRouter(config: RouterConfig): void {
   // Sync auth before starting - executor needs API credentials
   syncExecutorAuth();
 
+  // Warm up Ollama in background (non-blocking)
+  import("./evaluator.js")
+    .then((m) => m.warmOllama())
+    .catch((err) => console.error(`[router] Ollama warm-up import failed: ${err}`));
+
   // Stop any existing instance (idempotent - handles hot-reload)
   const existing = getRouterInstance();
   if (existing) {

@@ -1,6 +1,10 @@
 import { callGateway } from "../gateway/call.js";
 import { getTemplate, renderTemplate } from "./templates/index.js";
 import type { EvaluatorConfig, EvaluatorResult } from "./types.js";
+import { record } from "../token-monitor/ledger.js";
+import { normalizeUsage, type UsageLike } from "../agents/usage.js";
+
+const EVALUATOR_MODEL = "claude-sonnet-4-6";
 
 // ---------------------------------------------------------------------------
 // Evaluator — lightweight local LLM complexity scorer via Ollama
@@ -55,9 +59,50 @@ async function callOllama(
     }
 
     const data = (await response.json()) as { response?: string };
+    // Record Ollama usage in token monitor
+    const ollamaData = data as { response?: string; prompt_eval_count?: number; eval_count?: number };
+    record({
+      agentId: "router-evaluator",
+      model: OLLAMA_MODEL,
+      tokensIn: ollamaData.prompt_eval_count ?? 0,
+      tokensOut: ollamaData.eval_count ?? 0,
+      cached: 0,
+    });
     return data.response ?? "";
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Warm up Ollama by loading the model into memory.
+ * Call on gateway startup so first evaluator request isn't cold.
+ */
+export async function warmOllama(): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    const response = await fetch(OLLAMA_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        prompt: "hello",
+        system: "Reply OK.",
+        stream: false,
+        options: { num_predict: 4 },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (response.ok) {
+      console.log(`[router/evaluator] Ollama warmed up (${OLLAMA_MODEL})`);
+    } else {
+      console.error(`[router/evaluator] Ollama warm-up failed: ${response.status}`);
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[router/evaluator] Ollama warm-up error: ${detail}`);
   }
 }
 
@@ -151,9 +196,24 @@ async function verifySonnet(
     timeoutMs,
   });
 
+  // Record token usage for the Router Evaluator
+  const resultObj = response?.result as Record<string, unknown> | undefined;
+  const usage = (resultObj as any)?.usage;
+  if (usage && typeof usage === "object") {
+    const normalized = normalizeUsage(usage as UsageLike);
+    if (normalized) {
+      record({
+        agentId: "router-evaluator",
+        model: EVALUATOR_MODEL,
+        tokensIn: normalized.input ?? 0,
+        tokensOut: normalized.output ?? 0,
+        cached: normalized.cacheRead ?? 0,
+      });
+    }
+  }
+
   // Extract text from gateway response (shape: result.payloads[0].text)
-  const result = response?.result as Record<string, unknown> | undefined;
-  const payloads = result?.payloads as Array<{ text?: string }> | undefined;
+  const payloads = resultObj?.payloads as Array<{ text?: string }> | undefined;
   if (payloads?.[0]?.text) return payloads[0].text;
   if (typeof response?.result === "string") return response.result;
   if (typeof response?.summary === "string") return response.summary;
@@ -216,6 +276,14 @@ export async function evaluate(
       const sonnetText = await verifySonnet(userMessage, timeoutMs * 3);
       const sonnetResult = parseEvaluatorResponse(sonnetText, config.fallback_weight);
       console.log(`[router/evaluator] sonnet verified: w=${sonnetResult.weight} (${sonnetResult.reasoning})`);
+      // Record Sonnet verification usage in token monitor
+      record({
+        agentId: "router-evaluator",
+        model: config.model,
+        tokensIn: 0,
+        tokensOut: 0,
+        cached: 0,
+      });
       return sonnetResult;
     } catch (sonnetErr) {
       const detail = sonnetErr instanceof Error ? sonnetErr.message : String(sonnetErr);
