@@ -189,29 +189,44 @@ export async function evaluate(
     // 2. Stage 1: Ollama (local)
     // Give Ollama 2x the configured timeout — cold model loads can take 4-5s
     // before inference even starts, and concurrent requests queue behind loading.
-    const ollamaText = await callOllama(userMessage, timeoutMs * 2);
-    const ollamaResult = parseEvaluatorResponse(ollamaText, config.fallback_weight);
+    let ollamaResult: EvaluatorResult | null = null;
+    try {
+      const ollamaText = await callOllama(userMessage, timeoutMs * 2);
+      ollamaResult = parseEvaluatorResponse(ollamaText, config.fallback_weight);
+      console.log(`[router/evaluator] ollama scored: w=${ollamaResult.weight} (${ollamaResult.reasoning})`);
+    } catch (ollamaErr) {
+      const detail = ollamaErr instanceof Error ? ollamaErr.message : String(ollamaErr);
+      console.log(`[router/evaluator] ollama failed: ${detail} — falling through to sonnet`);
+    }
 
-    console.log(`[router/evaluator] ollama scored: w=${ollamaResult.weight} (${ollamaResult.reasoning})`);
-
-    // 3. If Ollama says ≤3 → trust it, skip Sonnet
-    if (ollamaResult.weight <= 3) {
+    // 3. If Ollama succeeded and says ≤3 → trust it, skip Sonnet
+    if (ollamaResult && ollamaResult.weight <= 3) {
       console.log(`[router/evaluator] weight ≤3, trusting ollama → haiku`);
       return ollamaResult;
     }
 
-    // 4. Stage 2: Sonnet verification for weight > 3
-    console.log(`[router/evaluator] weight ${ollamaResult.weight} > 3, verifying with sonnet...`);
+    // 4. Stage 2: Sonnet verification (when Ollama scored >3 OR failed entirely)
+    const reason = ollamaResult
+      ? `weight ${ollamaResult.weight} > 3`
+      : "ollama unavailable";
+    console.log(`[router/evaluator] ${reason}, verifying with sonnet...`);
     try {
       const sonnetText = await verifySonnet(userMessage, timeoutMs * 3);
       const sonnetResult = parseEvaluatorResponse(sonnetText, config.fallback_weight);
       console.log(`[router/evaluator] sonnet verified: w=${sonnetResult.weight} (${sonnetResult.reasoning})`);
       return sonnetResult;
     } catch (sonnetErr) {
-      // Sonnet failed — fall back to Ollama's score
       const detail = sonnetErr instanceof Error ? sonnetErr.message : String(sonnetErr);
-      console.log(`[router/evaluator] sonnet verification failed, using ollama score: ${detail}`);
-      return ollamaResult;
+      console.log(`[router/evaluator] sonnet verification failed: ${detail}`);
+      // Fall back to Ollama's score if available, otherwise fallback weight
+      if (ollamaResult) {
+        console.log(`[router/evaluator] using ollama score: w=${ollamaResult.weight}`);
+        return ollamaResult;
+      }
+      return {
+        weight: config.fallback_weight,
+        reasoning: "both ollama and sonnet failed, using fallback",
+      };
     }
   } catch (err) {
     const isTimeout = err instanceof DOMException && err.name === "AbortError";
