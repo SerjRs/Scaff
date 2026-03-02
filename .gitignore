@@ -144,8 +144,8 @@ auth-profiles.json
 
 # Scaff runtime — safe to commit (config, templates, workspace, docs)
 !/workspace/
-/workspace-main/
-/workspace-router-executor/
+# /workspace-main/
+# /workspace-router-executor/
 !/cron/
 !/router/config.json
 !/cortex/config.json
