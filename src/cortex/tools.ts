@@ -61,11 +61,31 @@ previously mentioned details. Returns matching facts ranked by relevance.`,
   },
 };
 
+export const GET_TASK_STATUS_TOOL = {
+  name: "get_task_status",
+  description: `Check the status of a previously spawned task by its ID. Use when you want to \
+know whether a task completed, failed, or is still running. Returns status, result or error, \
+timing information, and the model tier used.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      taskId: {
+        type: "string",
+        description: "The task ID returned when sessions_spawn was called",
+      },
+    },
+    required: ["taskId"],
+  },
+};
+
 /** All Hippocampus tools */
 export const HIPPOCAMPUS_TOOLS = [FETCH_CHAT_HISTORY_TOOL, MEMORY_QUERY_TOOL];
 
+/** Core Cortex tools (always available alongside sessions_spawn) */
+export const CORTEX_TOOLS = [GET_TASK_STATUS_TOOL];
+
 /** Tool names that are handled synchronously (round-trip within same turn) */
-export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query"]);
+export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status"]);
 
 // ---------------------------------------------------------------------------
 // Embed Function Type
@@ -91,6 +111,72 @@ export async function embedViaOllama(text: string): Promise<Float32Array> {
 // ---------------------------------------------------------------------------
 // Tool Executors
 // ---------------------------------------------------------------------------
+
+/** Execute get_task_status — query Router queue for task by ID */
+export function executeGetTaskStatus(args: { taskId: string }): string {
+  try {
+    const path = require("node:path");
+    const { resolveStateDir } = require("../config/paths.js");
+    const { DatabaseSync: SqliteDB } = require("node:sqlite");
+
+    const stateDir = resolveStateDir(process.env);
+    const queuePath = path.join(stateDir, "router", "queue.sqlite");
+    const qdb = new SqliteDB(queuePath, { readOnly: true });
+
+    // Check active jobs first, then archive
+    let job = qdb.prepare("SELECT * FROM jobs WHERE id = ?").get(args.taskId) as any;
+    let source = "active";
+    if (!job) {
+      job = qdb.prepare("SELECT * FROM jobs_archive WHERE id = ?").get(args.taskId) as any;
+      source = "archive";
+    }
+
+    qdb.close();
+
+    if (!job) {
+      return JSON.stringify({ found: false, taskId: args.taskId, message: "Task not found in Router queue." });
+    }
+
+    // Parse payload for the original task description
+    let taskDescription = "";
+    try {
+      const payload = JSON.parse(job.payload ?? "{}");
+      taskDescription = payload.message ?? "";
+    } catch { /* best-effort */ }
+
+    const result: Record<string, unknown> = {
+      found: true,
+      taskId: args.taskId,
+      status: job.status,
+      tier: job.tier,
+      weight: job.weight,
+      task: taskDescription.substring(0, 200),
+      createdAt: job.created_at,
+      startedAt: job.started_at ?? null,
+      finishedAt: job.finished_at ?? null,
+      deliveredAt: job.delivered_at ?? null,
+      source,
+    };
+
+    if (job.status === "completed" && job.result) {
+      result.result = String(job.result).substring(0, 500);
+    }
+    if (job.status === "failed" && job.error) {
+      result.error = String(job.error).substring(0, 500);
+    }
+    if (job.retry_count > 0) {
+      result.retryCount = job.retry_count;
+    }
+
+    return JSON.stringify(result);
+  } catch (err) {
+    return JSON.stringify({
+      found: false,
+      taskId: args.taskId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 /** Execute fetch_chat_history — deterministic relational query */
 export function executeFetchChatHistory(

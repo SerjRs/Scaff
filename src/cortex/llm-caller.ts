@@ -14,7 +14,7 @@
  */
 
 import type { AssembledContext } from "./context.js";
-import { HIPPOCAMPUS_TOOLS } from "./tools.js";
+import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS } from "./tools.js";
 import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 
 // ---------------------------------------------------------------------------
@@ -298,10 +298,10 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             }
           }
 
-          // Select tools: always include sessions_spawn; add hippocampus tools when enabled
+          // Select tools: sessions_spawn + get_task_status always; hippocampus when enabled
           const tools = context.hippocampusEnabled
-            ? [SESSIONS_SPAWN_TOOL, ...HIPPOCAMPUS_TOOLS]
-            : [SESSIONS_SPAWN_TOOL];
+            ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS]
+            : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS];
 
           // Use pi-ai's completeSimple — the same function the main agent
           // uses via createAgentSession → streamSimple. This goes through

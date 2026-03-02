@@ -21,7 +21,7 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
-import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, type EmbedFunction } from "./tools.js";
+import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, type EmbedFunction } from "./tools.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -157,6 +157,11 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 const detail = `'${String(args.query ?? "").slice(0, 120)}'`;
                 appendToolCall(db, msg.envelope.id, tc.name, detail, issuer);
                 result = await executeMemoryQuery(db, args as any, embedFn);
+              } else if (tc.name === "get_task_status") {
+                const args = tc.arguments as Record<string, unknown>;
+                const detail = `taskId=${String(args.taskId ?? "").slice(0, 40)}`;
+                appendToolCall(db, msg.envelope.id, tc.name, detail, issuer);
+                result = executeGetTaskStatus(args as any);
               } else {
                 result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
               }
