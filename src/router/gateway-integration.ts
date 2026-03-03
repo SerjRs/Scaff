@@ -139,28 +139,31 @@ function syncExecutorAuth(): void {
   try {
     const stateDir = resolveStateDir();
     const mainAgentDir = path.join(stateDir, "agents", "main", "agent");
-    const targetAgentIds = [EXECUTOR_AGENT_ID, "router-evaluator"];
+    const executorAgentDir = path.join(stateDir, "agents", EXECUTOR_AGENT_ID, "agent");
+
+    // Ensure executor agent dir exists
+    fs.mkdirSync(executorAgentDir, { recursive: true });
+
+    // Files to sync
     const authFiles = ["auth-profiles.json", "auth.json"];
 
-    for (const agentId of targetAgentIds) {
-      const targetAgentDir = path.join(stateDir, "agents", agentId, "agent");
-      fs.mkdirSync(targetAgentDir, { recursive: true });
-
-      for (const file of authFiles) {
-        const src = path.join(mainAgentDir, file);
-        const dst = path.join(targetAgentDir, file);
-        try {
-          fs.copyFileSync(src, dst);
-        } catch (err) {
-          const code = (err as { code?: string }).code;
-          if (code === "ENOENT") continue;
-          console.error(`[router] Warning: failed to sync ${file} to ${agentId}: ${(err as Error).message}`);
+    for (const file of authFiles) {
+      const src = path.join(mainAgentDir, file);
+      const dst = path.join(executorAgentDir, file);
+      try {
+        fs.copyFileSync(src, dst);
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === "ENOENT") {
+          // Source file doesn't exist - skip silently
+          continue;
         }
+        console.log(`[router] Warning: failed to sync ${file} to executor agent: ${(err as Error).message}`);
       }
     }
-    console.log("[router] Synced auth profiles to router-executor and router-evaluator agents");
+    console.log("[router] Synced auth profiles to router-executor agent");
   } catch (err) {
-    console.error(`[router] Warning: auth sync failed: ${(err as Error).message}`);
+    console.log(`[router] Warning: auth sync failed: ${(err as Error).message}`);
   }
 }
 
