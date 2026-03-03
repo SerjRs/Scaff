@@ -249,9 +249,14 @@ export async function evaluate(
     // 2. Stage 1: Ollama (local)
     // Give Ollama 2x the configured timeout — cold model loads can take 4-5s
     // before inference even starts, and concurrent requests queue behind loading.
+    console.log(`[router/evaluator] ===== EVALUATE START =====`);
+    console.log(`[router/evaluator] config: model=${config.model} tier=${config.tier} timeout=${config.timeout}s fallback=${config.fallback_weight}`);
+    console.log(`[router/evaluator] task: ${task.slice(0, 150)}`);
     let ollamaResult: EvaluatorResult | null = null;
     try {
+      console.log(`[router/evaluator] calling ollama (timeout=${timeoutMs * 2}ms)...`);
       const ollamaText = await callOllama(userMessage, timeoutMs * 2);
+      console.log(`[router/evaluator] ollama raw response: ${ollamaText.slice(0, 200)}`);
       ollamaResult = parseEvaluatorResponse(ollamaText, config.fallback_weight);
       console.log(`[router/evaluator] ollama scored: w=${ollamaResult.weight} (${ollamaResult.reasoning})`);
     } catch (ollamaErr) {
@@ -264,6 +269,7 @@ export async function evaluate(
     // 3. If Ollama succeeded and says ≤3 → trust it, skip Sonnet
     if (ollamaResult && ollamaResult.weight <= 3) {
       console.log(`[router/evaluator] weight ≤3, trusting ollama → haiku`);
+      console.log(`[router/evaluator] ===== EVALUATE END: w=${ollamaResult.weight} tier=haiku =====`);
       return ollamaResult;
     }
 
@@ -272,10 +278,13 @@ export async function evaluate(
       ? `weight ${ollamaResult.weight} > 3`
       : "ollama unavailable";
     console.log(`[router/evaluator] ${reason}, verifying with sonnet...`);
+    console.log(`[router/evaluator] sessionKey will use agent=router-evaluator, config.model=${config.model}`);
     try {
       const sonnetText = await verifySonnet(userMessage, timeoutMs * 3);
+      console.log(`[router/evaluator] sonnet raw response: ${String(sonnetText).slice(0, 200)}`);
       const sonnetResult = parseEvaluatorResponse(sonnetText, config.fallback_weight);
       console.log(`[router/evaluator] sonnet verified: w=${sonnetResult.weight} (${sonnetResult.reasoning})`);
+      console.log(`[router/evaluator] ===== EVALUATE END: w=${sonnetResult.weight} tier=${sonnetResult.weight <= 3 ? 'haiku' : sonnetResult.weight <= 7 ? 'sonnet' : 'opus'} =====`);
       // Record Sonnet verification usage in token monitor
       record({
         agentId: "router-evaluator",
@@ -293,8 +302,10 @@ export async function evaluate(
       // Fall back to Ollama's score if available, otherwise fallback weight
       if (ollamaResult) {
         console.log(`[router/evaluator] using ollama score: w=${ollamaResult.weight}`);
+        console.log(`[router/evaluator] ===== EVALUATE END: w=${ollamaResult.weight} (sonnet failed, using ollama) =====`);
         return ollamaResult;
       }
+      console.log(`[router/evaluator] ===== EVALUATE END: w=${config.fallback_weight} (both failed, using fallback) =====`);
       return {
         weight: config.fallback_weight,
         reasoning: "both ollama and sonnet failed, using fallback",
