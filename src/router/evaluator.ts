@@ -2,9 +2,6 @@ import { callGateway } from "../gateway/call.js";
 import { getTemplate, renderTemplate } from "./templates/index.js";
 import type { EvaluatorConfig, EvaluatorResult } from "./types.js";
 import { record } from "../token-monitor/ledger.js";
-import { normalizeUsage, type UsageLike } from "../agents/usage.js";
-
-const EVALUATOR_MODEL = "claude-sonnet-4-6";
 
 // ---------------------------------------------------------------------------
 // Evaluator — lightweight local LLM complexity scorer via Ollama
@@ -179,7 +176,7 @@ async function verifySonnet(
   timeoutMs: number,
 ): Promise<string> {
   const idempotencyKey = crypto.randomUUID();
-  const sessionKey = `agent:main:router-evaluator:${idempotencyKey}`;
+  const sessionKey = `agent:router-evaluator:evaluator:${idempotencyKey}`;
 
   const response = await callGateway<{
     result?: unknown;
@@ -196,23 +193,11 @@ async function verifySonnet(
     timeoutMs,
   });
 
-  // Record token usage for the Router Evaluator
-  const resultObj = response?.result as Record<string, unknown> | undefined;
-  const usage = (resultObj as any)?.usage;
-  if (usage && typeof usage === "object") {
-    const normalized = normalizeUsage(usage as UsageLike);
-    if (normalized) {
-      record({
-        agentId: "router-evaluator",
-        model: EVALUATOR_MODEL,
-        tokensIn: normalized.input ?? 0,
-        tokensOut: normalized.output ?? 0,
-        cached: normalized.cacheRead ?? 0,
-      });
-    }
-  }
+  // Token usage is tracked automatically by the embedded runner's stream-hook
+  // via the session key agent:router-evaluator:evaluator:<id>
 
   // Extract text from gateway response (shape: result.payloads[0].text)
+  const resultObj = response?.result as Record<string, unknown> | undefined;
   const payloads = resultObj?.payloads as Array<{ text?: string }> | undefined;
   if (payloads?.[0]?.text) return payloads[0].text;
   if (typeof response?.result === "string") return response.result;
