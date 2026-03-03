@@ -11,7 +11,17 @@
       "compaction": {
         "mode": "safeguard"
       }
-    }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true
+      },
+      {
+        "id": "router-evaluator",
+        "model": "anthropic/claude-sonnet-4-6"
+      }
+    ]
   },
   "commands": {
     "native": "auto",
@@ -37,9 +47,27 @@
       "fallback_weight": 5
     },
     "tiers": {
-      "haiku": { "range": [1, 3], "model": "anthropic/claude-haiku-4-5" },
-      "sonnet": { "range": [4, 7], "model": "anthropic/claude-sonnet-4-6" },
-      "opus": { "range": [8, 10], "model": "anthropic/claude-opus-4-6" }
+      "haiku": {
+        "range": [
+          1,
+          3
+        ],
+        "model": "anthropic/claude-haiku-4-5"
+      },
+      "sonnet": {
+        "range": [
+          4,
+          7
+        ],
+        "model": "anthropic/claude-sonnet-4-6"
+      },
+      "opus": {
+        "range": [
+          8,
+          10
+        ],
+        "model": "anthropic/claude-opus-4-6"
+      }
     }
   },
   "plugins": {
@@ -55,7 +83,9 @@
       "lobster"
     ],
     "load": {
-      "paths": ["~/.openclaw/extensions"]
+      "paths": [
+        "~/.openclaw/extensions"
+      ]
     }
   },
   "gateway": {

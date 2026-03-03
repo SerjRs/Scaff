@@ -20,7 +20,7 @@ import { assembleContext, type AssembledContext, type ToolResultEntry } from "./
 import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
-import { appendToSession, appendResponse, appendToolCall, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
+import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, type EmbedFunction } from "./tools.js";
 
 // ---------------------------------------------------------------------------
@@ -142,6 +142,11 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           const syncCalls = llmResult.toolCalls.filter((tc) => SYNC_TOOL_NAMES.has(tc.name));
           if (syncCalls.length === 0) break;
 
+          // Store the assistant's raw response (with tool_use blocks) as structured content
+          if (llmResult._rawContent && llmResult._rawContent.length > 0) {
+            appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, llmResult._rawContent, issuer);
+          }
+
           // Execute sync tools and collect results
           const toolResults: ToolResultEntry[] = [];
           for (const tc of syncCalls) {
@@ -149,18 +154,12 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             try {
               if (tc.name === "fetch_chat_history") {
                 const args = tc.arguments as Record<string, unknown>;
-                const detail = Object.entries(args).map(([k, v]) => `${k}=${v}`).join(", ");
-                appendToolCall(db, msg.envelope.id, tc.name, detail, issuer);
                 result = executeFetchChatHistory(db, args as any);
               } else if (tc.name === "memory_query") {
                 const args = tc.arguments as Record<string, unknown>;
-                const detail = `'${String(args.query ?? "").slice(0, 120)}'`;
-                appendToolCall(db, msg.envelope.id, tc.name, detail, issuer);
                 result = await executeMemoryQuery(db, args as any, embedFn);
               } else if (tc.name === "get_task_status") {
                 const args = tc.arguments as Record<string, unknown>;
-                const detail = `taskId=${String(args.taskId ?? "").slice(0, 40)}`;
-                appendToolCall(db, msg.envelope.id, tc.name, detail, issuer);
                 result = executeGetTaskStatus(args as any);
               } else {
                 result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
@@ -168,6 +167,9 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             } catch (err) {
               result = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
             }
+            // Store tool result as structured content block
+            appendStructuredContent(db, msg.envelope.id, "user", "internal",
+              [{ type: "tool_result", tool_use_id: tc.id, content: result }], issuer);
             toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
           }
 
@@ -187,7 +189,13 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // 5b. Handle async tool calls (sessions_spawn → Router delegation)
         // Skip for ops triggers — the LLM should only relay results, not dispatch.
         // Even if the LLM sneaks a tool call through, we ignore it on trigger turns.
-        for (const tc of isOpsTrigger ? [] : llmResult.toolCalls) {
+        // Handle async tool calls (sessions_spawn)
+        const asyncCalls = isOpsTrigger ? [] : llmResult.toolCalls.filter((tc) => tc.name === "sessions_spawn");
+        if (asyncCalls.length > 0 && llmResult._rawContent) {
+          // Store the assistant's raw response with tool_use blocks as structured content
+          appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, llmResult._rawContent, issuer);
+        }
+        for (const tc of asyncCalls) {
           if (tc.name === "sessions_spawn" && onSpawn) {
             const args = tc.arguments as { task?: string; priority?: string };
             const task = args.task ?? "";
@@ -214,9 +222,13 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 completedAt: new Date().toISOString(),
                 issuer,
               });
-              appendToolCall(db, msg.envelope.id, "sessions_spawn", `'${task.slice(0, 120)}', priority=${resultPriority} → FAILED`, issuer);
+              // Store structured tool result for the failure
+              appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                [{ type: "tool_result", tool_use_id: tc.id, content: `Router spawn failed for task: ${task.slice(0, 120)}` }], issuer);
             } else {
-              appendToolCall(db, msg.envelope.id, "sessions_spawn", `'${task.slice(0, 120)}', priority=${resultPriority} → taskId=${taskId}`, issuer);
+              // Store structured tool result for the dispatch acknowledgment
+              appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                [{ type: "tool_result", tool_use_id: tc.id, content: `Task dispatched. [TASK_ID]=${taskId}, Status=Pending, Priority=${resultPriority}` }], issuer);
             }
           }
         }

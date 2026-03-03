@@ -137,11 +137,19 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
 
   const system = systemParts.join("\n\n---\n\n");
 
-  // Convert structured session messages directly — no lossy text parsing
-  const messages: AnthropicMessage[] = context.foregroundMessages.map((msg) => ({
-    role: msg.role as "user" | "assistant",
-    content: msg.content,
-  }));
+  // Convert structured session messages — parse JSON arrays for tool round-trips.
+  // Content from cortex_session is always a string (SQLite TEXT column), but may
+  // contain JSON-serialized content block arrays from appendStructuredContent().
+  // These must be parsed back into arrays so the LLM sees proper tool_use/tool_result
+  // blocks on replay, not flat text that teaches it to mimic tool calls as text.
+  // @see docs/hipocampus-architecture.md §6.6
+  const messages: AnthropicMessage[] = context.foregroundMessages.map((msg) => {
+    let content: string | unknown[] = msg.content;
+    if (typeof content === "string" && content.startsWith("[")) {
+      try { content = JSON.parse(content); } catch { /* keep as string */ }
+    }
+    return { role: msg.role as "user" | "assistant", content };
+  });
 
   // Ensure we have at least one user message (API requirement)
   if (messages.length === 0) {
@@ -184,8 +192,13 @@ function consolidateMessages(messages: AnthropicMessage[]): AnthropicMessage[] {
   for (let i = 1; i < messages.length; i++) {
     const prev = consolidated[consolidated.length - 1];
     if (messages[i].role === prev.role) {
-      // Merge consecutive same-role messages
-      prev.content += "\n" + messages[i].content;
+      // Merge consecutive same-role messages.
+      // Handle mixed string/array content — normalize both to arrays before merging.
+      const prevBlocks = Array.isArray(prev.content) ? prev.content
+        : [{ type: "text" as const, text: prev.content }];
+      const nextBlocks = Array.isArray(messages[i].content) ? messages[i].content
+        : [{ type: "text" as const, text: messages[i].content }];
+      prev.content = [...prevBlocks, ...(nextBlocks as unknown[])];
     } else {
       consolidated.push({ ...messages[i] });
     }

@@ -166,8 +166,9 @@ describe("contextToMessages", () => {
     };
 
     const result = contextToMessages(context);
+    // After consolidation, merged same-role messages become arrays of text blocks
     expect(result.messages).toEqual([
-      { role: "user", content: "hello\nworld" },
+      { role: "user", content: [{ type: "text", text: "hello" }, { type: "text", text: "world" }] },
       { role: "assistant", content: "Hi!" },
     ]);
   });

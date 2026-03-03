@@ -179,7 +179,7 @@ async function verifySonnet(
   timeoutMs: number,
 ): Promise<string> {
   const idempotencyKey = crypto.randomUUID();
-  const sessionKey = `agent:main:router-evaluator:${idempotencyKey}`;
+  const sessionKey = `agent:router-evaluator:eval:${idempotencyKey}`;
 
   const response = await callGateway<{
     result?: unknown;

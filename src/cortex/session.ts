@@ -114,7 +114,9 @@ export function appendToSession(db: DatabaseSync, envelope: CortexEnvelope, issu
   );
 }
 
-/** Record a tool call in the session so the LLM can see its own actions in future turns */
+/** Record a tool call in the session so the LLM can see its own actions in future turns.
+ *  @deprecated Use appendStructuredContent() for new code — this stores tool calls as flat text
+ *  which causes context poisoning (the LLM learns to output tool calls as text on replay). */
 export function appendToolCall(
   db: DatabaseSync,
   envelopeId: string,
@@ -127,6 +129,25 @@ export function appendToolCall(
     INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
     VALUES (?, 'assistant', 'internal', 'cortex', ?, ?, NULL, ?)
   `).run(envelopeId, content, new Date().toISOString(), issuer);
+}
+
+/** Store structured content blocks (tool_use, tool_result, text) in the session.
+ *  Content is JSON-serialized so contextToMessages() can replay it as proper
+ *  Anthropic API content blocks instead of flat text.
+ *  @see docs/hipocampus-architecture.md §6.6 */
+export function appendStructuredContent(
+  db: DatabaseSync,
+  envelopeId: string,
+  role: "user" | "assistant",
+  channel: string,
+  contentBlocks: unknown[],
+  issuer = "agent:main:cortex",
+): void {
+  const content = JSON.stringify(contentBlocks);
+  db.prepare(`
+    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+    VALUES (?, ?, ?, 'cortex', ?, ?, NULL, ?)
+  `).run(envelopeId, role, channel, content, new Date().toISOString(), issuer);
 }
 
 /** Write a task result directly to the session as a foreground message.

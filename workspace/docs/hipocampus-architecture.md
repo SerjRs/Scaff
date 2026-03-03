@@ -1,6 +1,6 @@
 # Memory Flow Architecture
 
-*Version: 1.3 — 2026-02-28*
+*Version: 1.4 — 2026-03-03*
 *Status: Approved*
 *Ref: `cortex-architecture.md`, `router-architecture-v2.md`, `cortex-implementation-tasks.md`*
 
@@ -220,6 +220,65 @@ CREATE TABLE IF NOT EXISTS cortex_pending_ops (
 
 CREATE INDEX IF NOT EXISTS idx_pending_ops_status ON cortex_pending_ops(status);
 ```
+
+## 6.6 Structured Tool Round-Trips in Session History
+
+### The Problem
+
+When Cortex makes a real `sessions_spawn` tool call via the Anthropic API, the LLM returns a `tool_use` content block. The loop executes it, stores dispatch evidence as text in `cortex_session`, and feeds a `tool_result` back to the LLM. This works for the current turn.
+
+On **subsequent turns**, the session history is replayed to the API. If tool interactions were stored as flat text strings (e.g., `[DISPATCHED] [TASK_ID]=abc, Message='...'`), the `contextToMessages()` function in `llm-caller.ts` wraps them as `{"type": "text", "text": "..."}` content blocks. The model sees its own past tool usage represented as plain text — and learns in-context to replicate that pattern, outputting `[Tool] sessions_spawn: ...` as text instead of making real API tool calls.
+
+This is a **context poisoning loop**: text-based tool evidence → model mimics text output → stored as more text evidence → reinforces the pattern.
+
+### The Fix: Structured Content Blocks
+
+Tool round-trips in `cortex_session` must be stored as **structured content block arrays**, not flat strings. This ensures `contextToMessages()` passes them through as proper `tool_use`/`tool_result` blocks on replay.
+
+**Assistant message (tool call):**
+```json
+{
+  "role": "assistant",
+  "content": [
+    {"type": "tool_use", "id": "toolu_abc", "name": "sessions_spawn", "input": {"task": "..."}},
+    {"type": "text", "text": "Searching for that now."}
+  ]
+}
+```
+
+**User message (tool result):**
+```json
+{
+  "role": "user",
+  "content": [
+    {"type": "tool_result", "tool_use_id": "toolu_abc", "content": "Task dispatched. [TASK_ID]=abc, Status=Pending"}
+  ]
+}
+```
+
+The `contextToMessages()` code already handles this — `typeof m.content === "string"` returns false for arrays, so they pass through untouched to `completeSimple()`.
+
+### What Changes
+
+| Component | Before | After |
+|-----------|--------|-------|
+| `loop.ts` — dispatch storage | Stores `[DISPATCHED] ...` as flat string in `cortex_session.content` | Stores the raw `tool_use` content block array from the LLM response |
+| `loop.ts` — tool result storage | Stores tool result as flat string | Stores as `tool_result` content block array |
+| `llm-caller.ts` — replay | Wraps string content as `{"type": "text"}` | Passes array content through unchanged |
+| `cortex_session.content` column | Always `TEXT` (string) | `TEXT` containing either a plain string OR a JSON-serialized array of content blocks |
+
+### What Does NOT Change
+
+- The `[TASK_ID]=...` format in `cortex_pending_ops` / System Floor — that is system context, not assistant history
+- The `[DISPATCHED]` text prefix for dispatch evidence in the System Floor preamble
+- The `copyAndDeleteCompletedOps()` flow — completed ops are still copied to `cortex_session` as user-role text messages (they are informational, not tool round-trips)
+- Sync tools (`fetch_chat_history`, `memory_query`, `get_task_status`) — these execute within a single turn and their `tool_use`/`tool_result` blocks should also be stored structurally
+
+### Session Reset
+
+After deploying this change, the existing `cortex_session` history contains text-based tool evidence that will continue to poison the model. The session must be truncated or reset to eliminate the in-context examples of text-based tool calls.
+
+---
 
 ## 7. The Gardener Subsystem
 To keep the memory flow healthy, OpenClaw runs a background system cron agent called the Gardener.

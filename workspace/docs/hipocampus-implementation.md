@@ -174,6 +174,60 @@ This phase fixes the async tool provenance gap: results from `sessions_spawn` cu
 
 ---
 
+## Phase 6: Structured Tool Round-Trips in Session History
+
+This phase fixes the context poisoning loop where Cortex outputs tool calls as text instead of using the API's `tool_use` mechanism. The root cause: tool interactions stored as flat strings in `cortex_session` teach the model in-context to mimic text-based tool patterns on replay.
+
+### Tasks
+
+* **Task 6.1: Structured storage for assistant tool calls.** Modify `loop.ts` to store the LLM's raw `_rawContent` (content block array) as the `cortex_session.content` value when the response contains `tool_use` blocks. Serialize the array as JSON. The `content` column remains `TEXT` — it holds either a plain string or a JSON array string.
+
+* **Task 6.2: Structured storage for tool results.** After executing a sync tool (`sessions_spawn`, `get_task_status`, `fetch_chat_history`, `memory_query`), store the tool result in `cortex_session` as a JSON-serialized array: `[{"type": "tool_result", "tool_use_id": "<id>", "content": "<result>"}]`. Role is `user`.
+
+* **Task 6.3: Update `contextToMessages()` deserialization.** In `llm-caller.ts`, when building `piMessages` from `foregroundMessages`, detect if `m.content` is a JSON array string (starts with `[`). If so, `JSON.parse()` it and pass the structured blocks through. If it's a plain string, wrap as `{"type": "text"}` as before.
+
+* **Task 6.4: Reset poisoned session history.** After deploying Tasks 6.1–6.3, truncate `cortex_session` to remove text-based tool evidence. Either `DELETE FROM cortex_session` or `DELETE FROM cortex_session WHERE id < <threshold>` to keep recent non-tool messages.
+
+### Unit Tests
+
+* **`test_tool_call_stored_structured`**: Simulate a Cortex turn that returns a `tool_use` block. Assert `cortex_session` stores the content as a JSON array string, not a flat text string. Assert the array contains a `tool_use` block with correct `id`, `name`, `input`.
+
+* **`test_tool_result_stored_structured`**: After a tool execution, assert the tool result row in `cortex_session` has content parseable as a JSON array containing a `tool_result` block with the correct `tool_use_id`.
+
+* **`test_contextToMessages_replays_structured`**: Seed `cortex_session` with a JSON array content string. Call `contextToMessages()`. Assert the resulting message has `content` as an array (not wrapped in `{"type": "text"}`).
+
+* **`test_contextToMessages_handles_plain_strings`**: Seed `cortex_session` with a plain text content string. Call `contextToMessages()`. Assert the resulting message has `content` as `[{"type": "text", "text": "..."}]` (backward compatible).
+
+* **`test_mixed_history_replay`**: Seed `cortex_session` with alternating plain text and JSON array content strings. Assert `contextToMessages()` correctly handles both formats in the same conversation.
+
+### Phase 6 E2E Test
+
+* **`test_structured_tool_roundtrip_e2e`**:
+  1. Cortex receives a user message requiring delegation.
+  2. LLM returns a `tool_use` block for `sessions_spawn`.
+  3. Assert the assistant message in `cortex_session` is a JSON array with `tool_use`.
+  4. Assert the tool result message is a JSON array with `tool_result`.
+  5. On the **next turn**, replay the session. Assert the LLM sees proper `tool_use`/`tool_result` blocks (not text). Assert `stopReason` is `tool_use` or `end_turn` — NOT `stop` with text-based tool output.
+
+---
+
+## Phase 7: Router Evaluator Model Fix
+
+This is independent of Hippocampus but deploys together. The Router evaluator's `verifySonnet()` function doesn't pass the configured model to `callGateway`, causing it to fall back to the agent's global default (Opus) instead of using Sonnet.
+
+### Tasks
+
+* **Task 7.1: Thread `config.model` into `verifySonnet()`.** *(Already implemented in `src/router/evaluator.ts` — not yet built/pushed.)*
+  - Add `model: string` parameter to `verifySonnet()` signature
+  - Pass `model` in the `callGateway` params object
+  - Update the call site in `evaluate()` to pass `config.model`
+
+### Verification
+
+* After rebuild, send a task through Cortex webchat. Check logs for `[router/evaluator] sonnet verified` entries. The `DIAG-AUTH` line for the evaluator run should show `model=claude-sonnet-4-6`, not `model=claude-opus-4-6`.
+
+---
+
 ## Final Comprehensive E2E Tests
 
 These tests validate the architecture holistically across Cortex, the Router, and the Hippocampus.
