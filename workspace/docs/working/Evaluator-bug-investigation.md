@@ -64,6 +64,41 @@ No `model` parameter is passed. The embedded runner picks model from:
 1. Agent's `models.json` → **doesn't exist** for `router-evaluator`
 2. Global default → `claude-opus-4-6`
 
+## Router Queue Analysis
+
+110 archived jobs total. Weight distribution:
+- w=1-3 → haiku (most jobs): evaluator correctly classifies simple tasks
+- w=4-5 → sonnet: evaluator + Sonnet verification working for moderate tasks
+- w=0 → none scored opus-level in practice
+
+Last job (3a36c10f at 16:27): result was "The AI service is temporarily overloaded" — executor API overload.
+
+**The evaluator IS functioning** — it scores tasks, Sonnet verifies when weight >3, tier selection works. The bug is specifically that Sonnet verification uses Opus instead of Sonnet (model not passed explicitly).
+
+## Post-Rebuild Status (16:55 rebuild)
+
+After the Sonnet model fix was deployed:
+- **No evaluator calls have occurred** — the evaluator hasn't been triggered
+- Token monitor shows empty for `router-evaluator` because no evaluator ran post-rebuild
+
+### Critical Finding: Cortex sessions_spawn is broken post-rebuild
+
+At 17:02:56, Cortex LLM returned:
+```
+content blocks: [{"type":"thinking"},{"type":"text"}]
+textContent: "[Tool] sessions_spawn: 'Read the file at C:\Users\Temp User\.openclaw\src\gatewa"
+```
+
+**There is no `tool_use` block** — the LLM is outputting `[Tool] sessions_spawn` as plain text, not as an actual tool call. The Cortex loop sees text and routes it to webchat output. No tool execution happens, so the Router never receives the task.
+
+This means:
+- Zero jobs entered the Router queue post-rebuild
+- The evaluator never fired
+- The Sonnet model fix is deployed but unverifiable
+- **Cortex's tool calling is broken** — the LLM stopped making real tool calls
+
+Possible cause: the `completeSimple` call may not be passing the tool definitions correctly after the rebuild, or the thinking=high parameter changed how the model structures its responses (thinking models may format tool calls differently).
+
 ## Fix Required
 
 Pass the model explicitly in the `callGateway` call, or create a `models.json` for the `router-evaluator` agent that specifies Sonnet.
