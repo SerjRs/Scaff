@@ -81,7 +81,7 @@ for ($i = 1; $i -le 40; $i++) {
         Start-Sleep -Seconds 5  # let it fully initialize
         $wakeTime = (Get-Date).AddSeconds(90).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
         Push-Location $root
-        & pnpm openclaw cron add --at $wakeTime --session main --message "Gateway rebuilt and restarted. Scaff is back online. Verify everything works." --delete-after-run --name "rebuild-wake" 2>$null
+        & pnpm openclaw cron add --at $wakeTime --session main --system-event "REBUILD_WAKEUP: Gateway rebuilt and restarted. Send a WhatsApp message to Serj confirming you are back online." --delete-after-run --name "rebuild-wake" 2>$null
         Pop-Location
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  Wake-up cron scheduled for $wakeTime" -ForegroundColor Green
