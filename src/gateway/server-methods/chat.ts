@@ -927,11 +927,32 @@ export const chatHandlers: GatewayRequestHandlers = {
               };
             }
 
-            // Feed to Cortex with runId in replyContext for delivery matching
+            // Feed to Cortex with runId in replyContext for delivery matching.
+            // When images are present, encode content as a JSON content-block array
+            // so appendToSession stores it as structured content that contextToMessages
+            // will parse back into proper Anthropic image blocks.
+            let cortexContent: string = parsedMessage;
+            if (parsedImages.length > 0) {
+              const blocks: unknown[] = [];
+              if (parsedMessage.trim()) {
+                blocks.push({ type: "text", text: parsedMessage });
+              }
+              for (const img of parsedImages) {
+                blocks.push({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: img.mimeType,
+                    data: img.data,
+                  },
+                });
+              }
+              cortexContent = JSON.stringify(blocks);
+            }
             cortexFeed(cortexMkEnvelope({
               channel: "webchat",
               sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
-              content: parsedMessage,
+              content: cortexContent,
               priority: "urgent",
               replyContext: { channel: "webchat", messageId: clientRunId },
             }));
@@ -951,17 +972,11 @@ export const chatHandlers: GatewayRequestHandlers = {
               }
             }, 120_000); // 2 minute timeout
 
-            // Save user message to transcript so it persists in the UI
-            // (dispatchInboundMessage normally does this — we must do it manually)
-            const transcriptPath = resolveTranscriptPath({
-              sessionId: entry?.sessionId ?? clientRunId,
-              storePath,
-              sessionFile: entry?.sessionFile,
-              agentId,
-            });
-            if (transcriptPath) {
-              appendInjectedUserMessageToTranscript({ transcriptPath, message: parsedMessage });
-            }
+            // Do NOT write to the main agent transcript in Cortex live mode.
+            // Cortex owns the conversation via cortex_session (SQLite).
+            // Writing here pollutes the WhatsApp/channel session with webchat
+            // messages (cross-channel bleed). Webchat UI history in live mode
+            // should be served from cortex_session (TODO: cortex.history endpoint).
 
             return; // Skip dispatchInboundMessage — Cortex handles it
           } catch (err) {
