@@ -99,9 +99,14 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
       if (isOpsTrigger) {
         // Ops triggers are not real messages — store a brief system notification
         // so the foreground ends with a user-role message (API requirement).
+        // The actual task result ([TASK_ID]=...) is already in the session history
+        // (written by gateway-bridge's appendTaskResult before the trigger).
+        // We must give the LLM a clear instruction to relay it.
         appendToSession(db, {
           ...msg.envelope,
-          content: "[Task update available]",
+          content: "[Task completed — a new TASK_ID result has been added to the conversation above. " +
+            "Find it, summarize the key findings, and deliver the result to the user on the reply channel. " +
+            "Do NOT say the task is still running. Do NOT stay silent.]",
           sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
         }, issuer);
       } else {
