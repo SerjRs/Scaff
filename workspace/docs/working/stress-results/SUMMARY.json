@@ -1,0 +1,125 @@
+{
+  "totalElapsed": "154",
+  "results": [
+    {
+      "id": "T01",
+      "phase": 1,
+      "code": 0,
+      "elapsed": 14.4
+    },
+    {
+      "id": "T02",
+      "phase": 1,
+      "code": 0,
+      "elapsed": 37.4
+    },
+    {
+      "id": "T03",
+      "phase": 1,
+      "code": 0,
+      "elapsed": 16.8
+    },
+    {
+      "id": "T04",
+      "phase": 1,
+      "code": 0,
+      "elapsed": 16.3
+    },
+    {
+      "id": "T05",
+      "phase": 2,
+      "code": 0,
+      "elapsed": 24.1
+    },
+    {
+      "id": "T06",
+      "phase": 2,
+      "code": 0,
+      "elapsed": 24.4
+    },
+    {
+      "id": "T07",
+      "phase": 2,
+      "code": 0,
+      "elapsed": 27.8
+    },
+    {
+      "id": "T08",
+      "phase": 2,
+      "code": 0,
+      "elapsed": 26.4
+    },
+    {
+      "id": "T09",
+      "phase": 2,
+      "code": 0,
+      "elapsed": 27
+    },
+    {
+      "id": "T10",
+      "phase": 3,
+      "code": 0,
+      "elapsed": 71.3
+    },
+    {
+      "id": "T11",
+      "phase": 3,
+      "code": 0,
+      "elapsed": 40.8
+    },
+    {
+      "id": "T12",
+      "phase": 3,
+      "code": 0,
+      "elapsed": 68
+    },
+    {
+      "id": "T13",
+      "phase": 3,
+      "code": 0,
+      "elapsed": 53
+    },
+    {
+      "id": "T14",
+      "phase": 4,
+      "code": 0,
+      "elapsed": 49.2
+    },
+    {
+      "id": "T15",
+      "phase": 4,
+      "code": 0,
+      "elapsed": 73.3
+    },
+    {
+      "id": "T16",
+      "phase": 4,
+      "code": 0,
+      "elapsed": 76
+    },
+    {
+      "id": "T17",
+      "phase": 4,
+      "code": 0,
+      "elapsed": 68.2
+    },
+    {
+      "id": "T18",
+      "phase": 5,
+      "code": 0,
+      "elapsed": 61.1
+    },
+    {
+      "id": "T19",
+      "phase": 5,
+      "code": 0,
+      "elapsed": 74.6
+    },
+    {
+      "id": "T20",
+      "phase": 5,
+      "code": 0,
+      "elapsed": 74.3
+    }
+  ]
+}
