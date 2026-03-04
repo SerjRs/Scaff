@@ -11,5 +11,18 @@
 `scripts/delegate.ps1 -Task -Domain -Urgency` → spawns sub-agent.
 Full protocol: `docs/delegation-protocol.md`
 
+## Self-Rebuild & Restart
+Script: `~/.openclaw/rebuild.ps1` — builds, kills gateway, restarts, wakes Scaff via cron.
+
+**Usage (always detached — inline kills your session mid-exec):**
+```powershell
+Start-Process powershell -ArgumentList "-File `"$env:USERPROFILE\.openclaw\rebuild.ps1`" -Build" -WorkingDirectory "$env:USERPROFILE\.openclaw"
+```
+- `-Build` flag: run `pnpm build` before restart. Omit for restart-only.
+- Wake-up: one-shot cron fires ~90s after restart with `REBUILD_WAKEUP` system event
+- **When you receive `REBUILD_WAKEUP`**: send a WhatsApp message to Serj confirming you're back online
+- `--message` does NOT work with `--session main` cron — must use `--system-event`
+- **NEVER call rebuild.ps1 inline** — gateway kill takes you out before cron gets scheduled
+
 ## PowerShell escaping
 Use `scripts/lib/exec-ps.ps1` or backticks. Details: `docs/powershell-escaping.md`
