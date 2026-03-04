@@ -190,6 +190,7 @@ async function verifySonnet(
       message: `${EVALUATOR_SYSTEM_PROMPT}\n\n${userMessage}`,
       sessionKey,
       deliver: false,
+      model: 'anthropic/claude-sonnet-4-6',
       idempotencyKey,
     },
     expectFinal: true,

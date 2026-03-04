@@ -195,6 +195,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       bestEffortDeliver?: boolean;
       label?: string;
       spawnedBy?: string;
+      model?: string;
       inputProvenance?: InputProvenance;
     };
     const cfg = loadConfig();
@@ -398,7 +399,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         lastChannel: deliveryFields.lastChannel ?? entry?.lastChannel,
         lastTo: deliveryFields.lastTo ?? entry?.lastTo,
         lastAccountId: deliveryFields.lastAccountId ?? entry?.lastAccountId,
-        modelOverride: entry?.modelOverride,
+        modelOverride: request.model || entry?.modelOverride,
         providerOverride: entry?.providerOverride,
         label: labelValue,
         spawnedBy: spawnedByValue,
