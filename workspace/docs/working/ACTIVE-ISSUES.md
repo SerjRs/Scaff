@@ -16,13 +16,13 @@
 
 | # | Issue | Details | Next Step |
 |---|-------|---------|-----------|
-| 15 | **Cold memory empty — Vector Evictor never ran** | `cortex_cold_memory` table exists with 0 rows. The weekly Gardener task that embeds stale hot facts into `sqlite-vec` cold storage has never executed. No long-term semantic retrieval available. | Verify Vector Evictor code exists, wire it up as a Gardener cron task. |
-| 16 | **Gardener not running** | None of the 3 Gardener subsystems are active: Fact Extractor (6h), Channel Compactor (hourly), Vector Evictor (weekly). Hot memory is only populated by auto-capture, not curated extraction. No compression of inactive channels. | Implement and schedule all 3 Gardener tasks as cron jobs. |
-| 17 | **`memory_query` tool — unclear if wired up** | The hippocampus architecture defines a semantic recall tool against cold storage (`sqlite-vec`). Unknown if it's exposed to Cortex as a callable tool. | Check Cortex tool definitions, verify `memory_query` is registered and functional. |
-| 18 | **`fetch_chat_history` tool — unclear if wired up** | The hippocampus architecture defines a chronological recall tool against `cortex_session`. Unknown if it's exposed to Cortex. | Check Cortex tool definitions, verify `fetch_chat_history` is registered and functional. |
-| 19 | **Foreground soft cap partially implemented** | The architecture specifies a soft cap (last 20 messages or ~4K tokens) on Foreground context, with `fetch_chat_history` for on-demand expansion. Current implementation may not enforce the cap or may use a different limit. | Audit `buildForeground()` / context assembly for soft cap enforcement. |
+| 15 | ~~**Cold memory empty — Vector Evictor never ran**~~ | Code exists and is wired. 0 cold rows because no hot facts are >14 days old yet (all ≤7 days). Evictor will run when facts age. Not a bug. | ✅ Not a bug — working as designed |
+| 16 | ~~**Gardener not running**~~ | All 3 workers implemented and scheduled via setInterval. Gardener starts when hippocampus.enabled=true (confirmed). Intervals: Compactor 10min, Extractor 5min, Evictor 10min. Hot memory has 4606 facts, channel states populated. | ✅ Working |
+| 17 | ~~**`memory_query` tool — unclear if wired up**~~ | Fully implemented in tools.ts, exposed to LLM via HIPPOCAMPUS_TOOLS, wired in loop.ts sync tool round-trip. Embeds query → KNN search cold storage → promotes retrieved facts back to hot. | ✅ Working |
+| 18 | ~~**`fetch_chat_history` tool — unclear if wired up**~~ | Fully implemented in tools.ts, exposed to LLM, wired in loop.ts. Queries cortex_session by channel with limit/before params. | ✅ Working |
+| 19 | **Foreground soft cap — budget-remainder approach** | Implemented as budget-remainder (not explicit soft cap per arch spec). Foreground gets maxTokens - systemFloor - background. No hard "max 20 messages" limit. This is functional but differs from the architecture doc. | Monitor — works, may tune later |
 | 6 | **Webchat image attachments silently dropped** | Images sent via webchat are not processed. Pipeline traced to `parseMessageWithAttachments()` in `chat-attachments.ts` but code not yet read. | Read `parseMessageWithAttachments()` and trace the image pipeline. |
-| 8 | **Evaluator using Opus instead of Sonnet (regression)** | Token monitor shows `router-evaluator` making 8 calls on `claude-opus-4-6` vs 4 on `anthropic/claude-sonnet-4-6`. The model resolution or session key is still falling back to the main agent's Opus model. Regressed after build `bc67a41`. | Trace evaluator model resolution: check `verifySonnet()`, session key format, and `agents.list` config for `router-evaluator`. |
+| 8 | ~~**Evaluator using Opus instead of Sonnet (regression)**~~ | Fixed: agents.list with both `main` (default) and `router-evaluator` + model param schema change. Token monitor confirmed working: Ollama evaluates, Haiku/Sonnet/Opus dispatch. | ✅ Fixed |
 
 ## Open — Medium Priority
 
