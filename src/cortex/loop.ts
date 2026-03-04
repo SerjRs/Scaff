@@ -97,16 +97,26 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
 
       // 2. Append to unified session
       if (isOpsTrigger) {
-        // Ops triggers are not real messages — store a brief system notification
-        // so the foreground ends with a user-role message (API requirement).
-        // The actual task result ([TASK_ID]=...) is already in the session history
-        // (written by gateway-bridge's appendTaskResult before the trigger).
-        // We must give the LLM a clear instruction to relay it.
+        // Ops triggers carry the task result inline (via metadata) so the LLM
+        // doesn't have to search session history. This eliminates prompt-dependent
+        // silence failures. The full result is also persisted by appendTaskResult
+        // (called in gateway-bridge before the trigger) for audit/replay.
+        const meta = msg.envelope.metadata ?? {};
+        const taskId = meta.taskId ?? "unknown";
+        const taskDesc = meta.taskDescription ?? "";
+        const taskStatus = meta.taskStatus ?? "completed";
+        const replyChannel = meta.replyChannel ?? "webchat";
+        let triggerContent: string;
+        if (taskStatus === "completed") {
+          const result = meta.taskResult ?? "(no result)";
+          triggerContent = `[Task completed] Task=${taskId}, Request='${taskDesc}', Channel=${replyChannel}\n\nResult:\n${result}\n\nDeliver this result to the user on the ${replyChannel} channel. Summarize key findings clearly.`;
+        } else {
+          const error = meta.taskError ?? "Unknown error";
+          triggerContent = `[Task failed] Task=${taskId}, Request='${taskDesc}', Channel=${replyChannel}, Error: ${error}\n\nInform the user that the task failed and explain the error.`;
+        }
         appendToSession(db, {
           ...msg.envelope,
-          content: "[Task completed — a new TASK_ID result has been added to the conversation above. " +
-            "Find it, summarize the key findings, and deliver the result to the user on the reply channel. " +
-            "Do NOT say the task is still running. Do NOT stay silent.]",
+          content: triggerContent,
           sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
         }, issuer);
       } else {

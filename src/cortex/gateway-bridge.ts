@@ -282,12 +282,25 @@ export async function initGatewayCortex(params: {
           });
         }
 
-        // Send ops trigger to wake the Cortex loop — result is already in foreground
+        // Send ops trigger to wake the Cortex loop — carry result inline so the loop
+        // doesn't depend on the LLM finding it in session history.
+        const triggerMeta: Record<string, unknown> = {
+          ops_trigger: true,
+          replyChannel,
+          taskId: jobId,
+          taskDescription,
+          taskStatus: job.status,
+        };
+        if (job.status === "completed") {
+          triggerMeta.taskResult = job.result ?? "Task completed.";
+        } else {
+          triggerMeta.taskError = job.error ?? "Unknown error";
+        }
         const trigger = createEnvelope({
           channel: "router",
           sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
           content: "",
-          metadata: { ops_trigger: true, replyChannel },
+          metadata: triggerMeta,
         });
         instance.enqueue(trigger);
 
