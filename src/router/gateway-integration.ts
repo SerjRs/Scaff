@@ -109,10 +109,20 @@ export function createGatewayExecutor(): AgentExecutor {
 
     // Extract text result from gateway agent response.
     // Shape: { result: { payloads: [{ text, mediaUrl }], meta } }
+    // For multi-tool runs, payloads contains ALL assistant text outputs:
+    // payloads[0] = first intermediate text (e.g., "Now let me look at...")
+    // payloads[N] = final answer after all tool rounds complete
+    // Always use the LAST payload — it contains the complete result.
     const result = response?.result as Record<string, unknown> | undefined;
     const payloads = result?.payloads as Array<{ text?: string }> | undefined;
-    if (payloads?.[0]?.text) {
-      return payloads[0].text;
+    if (payloads && payloads.length > 0) {
+      // Use last payload (final answer), fall back through earlier ones if empty
+      for (let i = payloads.length - 1; i >= 0; i--) {
+        const txt = payloads[i]?.text;
+        if (txt) {
+          return txt;
+        }
+      }
     }
     if (typeof response?.result === "string") {
       return response.result;
