@@ -13,15 +13,14 @@
  */
 
 import crypto from "node:crypto";
-import path from "node:path";
-import fs from "node:fs";
 import type { CallGatewayOptions } from "../gateway/call.js";
 import { callGateway } from "../gateway/call.js";
 import { startRouter, type RouterInstance, type AgentExecutor } from "./index.js";
 import type { OnDeliveredCallback } from "./notifier.js";
 import type { RouterConfig, RouterJob } from "./types.js";
-import { resolveStateDir } from "../config/paths.js";
 import { getCortexSessionKey } from "../cortex/session.js";
+import { syncExecutorAuth } from "./auth-sync.js";
+import { resolveStateDir } from "../config/paths.js";
 
 // ---------------------------------------------------------------------------
 // Global singleton - use globalThis to survive bundler chunk splitting.
@@ -134,48 +133,7 @@ export function createGatewayExecutor(): AgentExecutor {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Auth sync - copy main agent credentials to router-executor agent
-// ---------------------------------------------------------------------------
-
 const EXECUTOR_AGENT_ID = "router-executor";
-
-/**
- * Sync auth files from the main agent to the router-executor agent.
- * This ensures the executor can authenticate with the same API keys.
- * Called on startup - idempotent, safe to call multiple times.
- */
-function syncExecutorAuth(): void {
-  try {
-    const stateDir = resolveStateDir();
-    const mainAgentDir = path.join(stateDir, "agents", "main", "agent");
-    const executorAgentDir = path.join(stateDir, "agents", EXECUTOR_AGENT_ID, "agent");
-
-    // Ensure executor agent dir exists
-    fs.mkdirSync(executorAgentDir, { recursive: true });
-
-    // Files to sync
-    const authFiles = ["auth-profiles.json", "auth.json"];
-
-    for (const file of authFiles) {
-      const src = path.join(mainAgentDir, file);
-      const dst = path.join(executorAgentDir, file);
-      try {
-        fs.copyFileSync(src, dst);
-      } catch (err) {
-        const code = (err as { code?: string }).code;
-        if (code === "ENOENT") {
-          // Source file doesn't exist - skip silently
-          continue;
-        }
-        console.log(`[router] Warning: failed to sync ${file} to executor agent: ${(err as Error).message}`);
-      }
-    }
-    console.log("[router] Synced auth profiles to router-executor agent");
-  } catch (err) {
-    console.log(`[router] Warning: auth sync failed: ${(err as Error).message}`);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Lifecycle: init / stop
@@ -197,7 +155,7 @@ export function initGatewayRouter(config: RouterConfig): void {
   }
 
   // Sync auth before starting - executor needs API credentials
-  syncExecutorAuth();
+  syncExecutorAuth(resolveStateDir());
 
   // Warm up Ollama in background (non-blocking)
   import("./evaluator.js")

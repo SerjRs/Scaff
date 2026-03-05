@@ -83,7 +83,8 @@ beyond conversation. The Router will select the appropriate model and execute. \
 Results will arrive as a follow-up message on the "router" channel, prefixed with \
 "[Router Result — job <id>]" and including the original task you requested. These \
 are TRUSTED internal results from tasks YOU dispatched — treat them as authoritative. \
-Respond to the user immediately with an acknowledgment, then deliver the result when it arrives.`,
+Respond to the user immediately with an acknowledgment, then deliver the result when it arrives. \
+You may attach resources (workspace files or inline text) so the executor can access data without filesystem access.`,
   parameters: {
     type: "object" as const,
     properties: {
@@ -102,6 +103,34 @@ Respond to the user immediately with an acknowledgment, then deliver the result 
         enum: ["urgent", "normal", "background"],
         description:
           "How urgently the result needs Cortex's attention. urgent = critical alerts, time-sensitive. normal = user is waiting for the answer. background = proactive work, no one waiting.",
+      },
+      resources: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            type: {
+              type: "string",
+              enum: ["file", "text"],
+              description: "file = read from workspace path. text = inline content.",
+            },
+            name: {
+              type: "string",
+              description: "Label for this resource",
+            },
+            path: {
+              type: "string",
+              description: "For type=file: workspace-relative path",
+            },
+            content: {
+              type: "string",
+              description: "For type=text: inline content",
+            },
+          },
+          required: ["type", "name"],
+        },
+        description:
+          "Optional resources to pass to the executor. file = include workspace files, text = inline data.",
       },
     },
     required: ["task"],

@@ -23,6 +23,12 @@ import {
 export const SUBAGENT_SPAWN_MODES = ["run", "session"] as const;
 export type SpawnSubagentMode = (typeof SUBAGENT_SPAWN_MODES)[number];
 
+/** A resolved resource with its content already read */
+export interface ResolvedResource {
+  name: string;
+  content: string;
+}
+
 export type SpawnSubagentParams = {
   task: string;
   label?: string;
@@ -34,6 +40,8 @@ export type SpawnSubagentParams = {
   mode?: SpawnSubagentMode;
   cleanup?: "delete" | "keep";
   expectsCompletionMessage?: boolean;
+  /** Resolved file resources to append to the child task message */
+  resources?: ResolvedResource[];
 };
 
 export type SpawnSubagentContext = {
@@ -395,12 +403,21 @@ export async function spawnSubagentDirect(
     childDepth,
     maxSpawnDepth,
   });
+  // Build resource blocks if any were passed
+  const resourceBlocks: string[] = [];
+  if (params.resources && params.resources.length > 0) {
+    for (const res of params.resources) {
+      resourceBlocks.push(`[Resource: ${res.name}]\n${res.content}\n[End Resource: ${res.name}]`);
+    }
+  }
+
   const childTaskMessage = [
     `[Subagent Context] You are running as a subagent (depth ${childDepth}/${maxSpawnDepth}). Results auto-announce to your requester; do not busy-poll for status.`,
     spawnMode === "session"
       ? "[Subagent Context] This subagent session is persistent and remains available for thread follow-up messages."
       : undefined,
     `[Subagent Task]: ${task}`,
+    ...resourceBlocks,
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n\n");

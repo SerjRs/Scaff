@@ -21,7 +21,7 @@ describe("getTemplate", () => {
     expect(tpl).toBeTruthy();
     expect(tpl).toContain("{task}");
     expect(tpl).toContain("task executor");
-    expect(tpl).toContain("no tools");
+    expect(tpl).toContain("available tools");
   });
 
   it("loads the sonnet/agent_run template", () => {
@@ -29,7 +29,7 @@ describe("getTemplate", () => {
     expect(tpl).toBeTruthy();
     expect(tpl).toContain("{task}");
     expect(tpl).toContain("task executor");
-    expect(tpl).toContain("no tools");
+    expect(tpl).toContain("available tools");
   });
 
   it("loads the opus/agent_run template", () => {
@@ -37,7 +37,7 @@ describe("getTemplate", () => {
     expect(tpl).toBeTruthy();
     expect(tpl).toContain("{task}");
     expect(tpl).toContain("task executor");
-    expect(tpl).toContain("no tools");
+    expect(tpl).toContain("available tools");
   });
 
   it("throws a clear error for invalid tier/type", () => {

@@ -7,6 +7,7 @@
  * @see docs/cortex-architecture.md §4.3
  */
 
+import fs from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import {
   dequeueNext,
@@ -27,6 +28,12 @@ import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGe
 // Types
 // ---------------------------------------------------------------------------
 
+/** A resource resolved and ready for inclusion in the executor's task message */
+export interface ResolvedResource {
+  name: string;
+  content: string;
+}
+
 /** Parameters passed to the onSpawn callback when Cortex delegates to the Router */
 export interface SpawnParams {
   task: string;
@@ -35,6 +42,8 @@ export interface SpawnParams {
   envelopeId: string;
   /** Pre-generated task ID — Cortex owns the UUID, Router stores it as-is */
   taskId: string;
+  /** Resolved file resources to include in the executor's task message */
+  resources?: ResolvedResource[];
 }
 
 export interface CortexLoopOptions {
@@ -212,7 +221,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         }
         for (const tc of asyncCalls) {
           if (tc.name === "sessions_spawn" && onSpawn) {
-            const args = tc.arguments as { task?: string; priority?: string };
+            const args = tc.arguments as { task?: string; priority?: string; resources?: Array<{ type: string; name?: string; path?: string; content?: string }> };
             const task = args.task ?? "";
             const resultPriority = (args.priority as "urgent" | "normal" | "background") ?? "normal";
             // Reply channel = source channel if user-facing, null if internal/system
@@ -223,8 +232,33 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             // Cortex owns the UUID — Router stores it as-is
             const taskId = crypto.randomUUID();
 
+            // Resolve resources — read files from workspace, pass text as-is
+            const resolvedResources: ResolvedResource[] = [];
+            if (Array.isArray(args.resources)) {
+              for (const res of args.resources) {
+                const name = typeof res.name === "string" ? res.name : "unnamed";
+                if (res.type === "file" && typeof res.path === "string") {
+                  // Resolve workspace-relative path against main agent workspace
+                  const fullPath = res.path.startsWith("/") || /^[A-Za-z]:/.test(res.path)
+                    ? res.path
+                    : `${workspaceDir}/${res.path}`;
+                  try {
+                    const content = fs.readFileSync(fullPath, "utf-8");
+                    resolvedResources.push({ name, content });
+                  } catch {
+                    resolvedResources.push({ name, content: `[File not found: ${res.path}]` });
+                  }
+                } else if (res.type === "text" && typeof res.content === "string") {
+                  resolvedResources.push({ name, content: res.content });
+                }
+              }
+            }
+
             // Fire spawn — Router result will arrive via gateway-bridge → appendTaskResult
-            const jobId = onSpawn({ task, replyChannel, resultPriority, envelopeId: msg.envelope.id, taskId });
+            const jobId = onSpawn({
+              task, replyChannel, resultPriority, envelopeId: msg.envelope.id, taskId,
+              resources: resolvedResources.length > 0 ? resolvedResources : undefined,
+            });
 
             if (!jobId) {
               // Spawn failed — write failure directly to session as foreground message
