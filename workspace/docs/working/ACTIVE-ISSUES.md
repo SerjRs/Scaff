@@ -18,6 +18,8 @@
 | 18 | `fetch_chat_history` tool — unclear if wired up | Fully implemented, exposed to LLM, wired in loop.ts. | ✅ Working |
 | 20 | Cortex does not start after config rewrite | Cortex config lives in `cortex/config.json` (NOT openclaw.json). Also: assistant message prefill incompatible with thinking=high caused 400 errors. | Strip trailing assistant messages in llm-caller.ts when thinking enabled (`b82b57331`). Config validator checks correct file. | ✅ Fixed |
 | 21 | Evaluator does not start after config rewrite | 1) `router-evaluator` missing from agents.list. 2) `verifySonnet` had hardcoded `'anthropic/claude-sonnet-4-6'` → gateway double-prefixed to `'anthropic/anthropic/...'`. 3) Ghost token entry from zero-token record() call. | Use `EVALUATOR_MODEL` constant without provider prefix (`6c39f45e0`). Remove redundant record() (`548e3a41b`). Agent model set to `claude-sonnet-4-6`. | ✅ Fixed |
+| 11 | Executor workspace isolation | Executor isolated by design (empty workspace, auth only). Cortex passes files via `resources` param in `sessions_spawn`. Resources inlined as `[Resource: name]` blocks in executor prompt. No workspace sharing needed. | E2E verified: file resource read and delivered to executor. | ✅ Fixed |
+| 14 | Executor context & resource-passing | `sessions_spawn` now accepts `resources` array (file/url/inline). `sessions-spawn-tool.ts` resolves files, `subagent-spawn.ts` inlines as `[Resource]` blocks in task message. `dispatcher.ts` has `formatResourceBlocks()` for router-direct path. Cortex tool definition documents resource usage. | 17/17 unit tests + live e2e pass. Commits: `663a82ed6`, `b82b57331`. | ✅ Fixed |
 
 ## Open — High Priority
 
@@ -31,8 +33,7 @@
 | # | Issue | Details | Next Step |
 |---|-------|---------|-----------|
 | 9 | **WhatsApp gateway disconnects** | 4 disconnects overnight (status 428, 499, 503). All auto-reconnected within seconds. | Monitor — may be normal WA server behavior. Investigate if frequency increases. |
-| 14 | **Executor context & performance review** | Review executor's context assembly, prompt size, tool availability, and execution times. Identify bottlenecks and optimization opportunities. **Gap:** No mechanism for Cortex to pass resources (files, URLs, data) to the executor beyond stuffing everything into the `task` string. `sessions_spawn` only has a `task` field — no `resources`, `attachments`, or `context_files` param. Cortex must inline all content, bloating the task and wasting tokens. Need to enrich the spawn API with a resource/attachment mechanism so executors can receive structured context without token waste. | Profile executor runs; design resource-passing API for `sessions_spawn`. |
-| 11 | **Executor workspace isolation** | Executor reads from `workspace-router-executor/` not main agent's `workspace/`. By design, but limits what tasks can access. Related to #14 gap — even if executor had file access, Cortex has no way to tell it WHICH files to read. | Evaluate whether executor should share main workspace or get selective file access. |
+| 9 | **WhatsApp gateway disconnects** | 4 disconnects overnight (status 428, 499, 503). All auto-reconnected within seconds. | Monitor — may be normal WA server behavior. Investigate if frequency increases. |
 | 12 | **Ollama bypassed under load** | Concurrent evaluations always timeout → Sonnet fallback handles all scoring. Ollama only works for sequential evals. | Consider queue/serialization for Ollama evals, or accept Sonnet-only. |
 
 ## Open — Low Priority / Future
