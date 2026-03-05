@@ -12,6 +12,13 @@
 | 4 | Cortex tool calls output as text (context poisoning) | Tool interactions stored as flat strings → replayed as text → model mimics | Structured content blocks in `cortex_session` + consolidation in `llm-caller.ts` | ✅ Fixed, committed (`b477e7f17`) |
 | 5 | Cortex `[silence]` on task completions | Ops-trigger carried empty content, loop used vague prompt, LLM didn't comply | Trigger now carries task result inline via metadata; loop extracts and injects directly (`371f84be5`) | ✅ Fixed, hardened, 6/6 e2e tests pass |
 
+## Open — Critical
+
+| # | Issue | Details | Next Step |
+|---|-------|---------|-----------|
+| 20 | **Cortex does not start after config rewrite** | Cortex requires `cortex` section in openclaw.json. Without it, starts in `mode: off` — webchat messages not routed to Router. Lost when config was manually rewritten 2026-03-05 04:00. | Ensure `cortex` section always present. Add to config validator. |
+| 21 | **Evaluator does not start after config rewrite** | Evaluator requires `router-evaluator` in `agents.list`. Without it, all tasks fall through to `fallback_weight` and get dispatched to sonnet tier with no actual evaluation. Additionally, Ollama must be running for primary evaluation. Lost when config was manually rewritten 2026-03-05 04:00. | Ensure `agents.list` includes `router-evaluator`. Add to config validator. Ensure Ollama is up on gateway start. |
+
 ## Open — High Priority
 
 | # | Issue | Details | Next Step |
