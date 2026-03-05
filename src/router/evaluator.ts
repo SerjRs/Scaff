@@ -286,14 +286,7 @@ export async function evaluate(
       const sonnetResult = parseEvaluatorResponse(sonnetText, config.fallback_weight);
       console.log(`[router/evaluator] sonnet verified: w=${sonnetResult.weight} (${sonnetResult.reasoning})`);
       console.log(`[router/evaluator] ===== EVALUATE END: w=${sonnetResult.weight} tier=${sonnetResult.weight <= 3 ? 'haiku' : sonnetResult.weight <= 7 ? 'sonnet' : 'opus'} =====`);
-      // Record Sonnet verification usage in token monitor
-      record({
-        agentId: "router-evaluator",
-        model: config.model,
-        tokensIn: 0,
-        tokensOut: 0,
-        cached: 0,
-      });
+      // Token usage is already recorded by callGateway session
       return sonnetResult;
     } catch (sonnetErr) {
       const detail = sonnetErr instanceof Error ? sonnetErr.message : String(sonnetErr);
