@@ -62,4 +62,45 @@ describe("auth-sync", () => {
     expect(fs.existsSync(executorDir)).toBe(true);
     expect(readExecutorFile("auth-profiles.json")).toBe("{}");
   });
+
+  it("e2e: full lifecycle — sync, update idempotency, no-op on missing auth", () => {
+    // --- Step 1: Create main agent with auth files and sync ---
+    const initialProfiles = JSON.stringify({
+      profiles: { "anthropic:default": { type: "token", token: "sk-ant-oat-initial" } },
+    });
+    const initialAuth = JSON.stringify({ refreshToken: "rt-initial" });
+    setupMainAgent({
+      "auth-profiles.json": initialProfiles,
+      "auth.json": initialAuth,
+    });
+
+    syncExecutorAuth(tmpDir);
+
+    expect(readExecutorFile("auth-profiles.json")).toBe(initialProfiles);
+    expect(readExecutorFile("auth.json")).toBe(initialAuth);
+
+    // --- Step 2: Update main agent auth and re-sync (idempotency) ---
+    const updatedProfiles = JSON.stringify({
+      profiles: { "anthropic:default": { type: "token", token: "sk-ant-oat-updated" } },
+    });
+    const updatedAuth = JSON.stringify({ refreshToken: "rt-updated" });
+    const mainDir = path.join(tmpDir, "agents", "main", "agent");
+    fs.writeFileSync(path.join(mainDir, "auth-profiles.json"), updatedProfiles);
+    fs.writeFileSync(path.join(mainDir, "auth.json"), updatedAuth);
+
+    syncExecutorAuth(tmpDir);
+
+    expect(readExecutorFile("auth-profiles.json")).toBe(updatedProfiles);
+    expect(readExecutorFile("auth.json")).toBe(updatedAuth);
+
+    // --- Step 3: Remove main agent auth entirely — should be a no-op ---
+    fs.rmSync(path.join(tmpDir, "agents", "main"), { recursive: true, force: true });
+
+    // Should not throw and should NOT delete existing executor files
+    expect(() => syncExecutorAuth(tmpDir)).not.toThrow();
+
+    // Executor files from step 2 remain untouched (sync is additive, not destructive)
+    expect(readExecutorFile("auth-profiles.json")).toBe(updatedProfiles);
+    expect(readExecutorFile("auth.json")).toBe(updatedAuth);
+  });
 });

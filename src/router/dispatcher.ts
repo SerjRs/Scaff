@@ -4,6 +4,15 @@ import { getTemplate, renderTemplate } from "./templates/index.js";
 import { run, type AgentExecutor } from "./worker.js";
 import type { RouterConfig, RouterJob, Tier, TierConfig } from "./types.js";
 
+/** Format resolved resources into labeled blocks for prompt injection. */
+export function formatResourceBlocks(resources: Array<{ name: string; content: string }>): string {
+  if (!resources || resources.length === 0) return "";
+  const blocks = resources.map(
+    (r) => `[Resource: ${r.name}]\n${r.content}\n[End Resource: ${r.name}]`,
+  );
+  return "\n\n" + blocks.join("\n\n");
+}
+
 // ---------------------------------------------------------------------------
 // Tier resolution
 // ---------------------------------------------------------------------------
@@ -54,15 +63,20 @@ export function dispatch(
   const template = getTemplate(tier, job.type);
 
   // Parse payload — stored as JSON string in the DB
-  const payload: { message?: string; context?: string } =
+  const payload: { message?: string; context?: string; resources?: Array<{ name: string; content: string }> } =
     typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload;
 
-  const prompt = renderTemplate(template, {
+  let prompt = renderTemplate(template, {
     task: payload.message ?? "",
     context: payload.context ?? "",
     issuer: job.issuer,
     constraints: "",
   });
+
+  // Append resource blocks to the prompt if present
+  if (payload.resources && payload.resources.length > 0) {
+    prompt += formatResourceBlocks(payload.resources);
+  }
 
   // 4. Update job: set tier, transition to in_execution
   updateJob(db, job.id, {

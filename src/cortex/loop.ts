@@ -221,7 +221,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         }
         for (const tc of asyncCalls) {
           if (tc.name === "sessions_spawn" && onSpawn) {
-            const args = tc.arguments as { task?: string; priority?: string; resources?: Array<{ type: string; name?: string; path?: string; content?: string }> };
+            const args = tc.arguments as { task?: string; priority?: string; resources?: Array<{ type: string; name?: string; path?: string; url?: string; content?: string }> };
             const task = args.task ?? "";
             const resultPriority = (args.priority as "urgent" | "normal" | "background") ?? "normal";
             // Reply channel = source channel if user-facing, null if internal/system
@@ -248,6 +248,8 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                   } catch {
                     resolvedResources.push({ name, content: `[File not found: ${res.path}]` });
                   }
+                } else if (res.type === "url" && typeof res.url === "string") {
+                  resolvedResources.push({ name, content: `[URL: ${res.url}]` });
                 } else if (res.type === "text" && typeof res.content === "string") {
                   resolvedResources.push({ name, content: res.content });
                 }

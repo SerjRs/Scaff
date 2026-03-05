@@ -1,9 +1,18 @@
+import fs from "node:fs";
 import { Type } from "@sinclair/typebox";
 import type { GatewayMessageChannel } from "../../utils/message-channel.js";
 import { optionalStringEnum } from "../schema/typebox.js";
-import { SUBAGENT_SPAWN_MODES, spawnSubagentDirect } from "../subagent-spawn.js";
+import { SUBAGENT_SPAWN_MODES, spawnSubagentDirect, type ResolvedResource } from "../subagent-spawn.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
+
+const ResourceSchema = Type.Object({
+  type: Type.Union([Type.Literal("file"), Type.Literal("url"), Type.Literal("inline")]),
+  path: Type.Optional(Type.String()),
+  url: Type.Optional(Type.String()),
+  content: Type.Optional(Type.String()),
+  label: Type.Optional(Type.String()),
+});
 
 const SessionsSpawnToolSchema = Type.Object({
   task: Type.String(),
@@ -17,6 +26,7 @@ const SessionsSpawnToolSchema = Type.Object({
   thread: Type.Optional(Type.Boolean()),
   mode: optionalStringEnum(SUBAGENT_SPAWN_MODES),
   cleanup: optionalStringEnum(["delete", "keep"] as const),
+  resources: Type.Optional(Type.Array(ResourceSchema)),
 });
 
 export function createSessionsSpawnTool(opts?: {
@@ -61,6 +71,27 @@ export function createSessionsSpawnTool(opts?: {
           : undefined;
       const thread = params.thread === true;
 
+      // Resolve resources
+      const resolvedResources: ResolvedResource[] = [];
+      const rawResources = params.resources as Array<{ type: string; path?: string; url?: string; content?: string; label?: string }> | undefined;
+      if (Array.isArray(rawResources)) {
+        for (const res of rawResources) {
+          const name = typeof res.label === "string" ? res.label : "unnamed";
+          if (res.type === "file" && typeof res.path === "string") {
+            try {
+              const content = fs.readFileSync(res.path, "utf-8");
+              resolvedResources.push({ name, content });
+            } catch {
+              resolvedResources.push({ name, content: `[File not found: ${res.path}]` });
+            }
+          } else if (res.type === "url" && typeof res.url === "string") {
+            resolvedResources.push({ name, content: `[URL: ${res.url}]` });
+          } else if (res.type === "inline" && typeof res.content === "string") {
+            resolvedResources.push({ name, content: res.content });
+          }
+        }
+      }
+
       const result = await spawnSubagentDirect(
         {
           task,
@@ -73,6 +104,7 @@ export function createSessionsSpawnTool(opts?: {
           mode,
           cleanup,
           expectsCompletionMessage: true,
+          resources: resolvedResources.length > 0 ? resolvedResources : undefined,
         },
         {
           agentSessionKey: opts?.agentSessionKey,

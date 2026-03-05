@@ -13,6 +13,22 @@ if (-not $root) { $root = "C:\Users\Temp User\.openclaw" }
 
 Write-Host "`n=== OpenClaw Rebuild ===" -ForegroundColor Cyan
 
+# GUARD: Refuse to rebuild if today's daily log doesn't exist
+$todayLog = Join-Path $root "workspace\memory\$(Get-Date -Format 'yyyy-MM-dd').md"
+if (-not (Test-Path $todayLog)) {
+    Write-Host "  ABORT: No daily log at $todayLog" -ForegroundColor Red
+    Write-Host "  Write your memory before restarting!" -ForegroundColor Red
+    exit 1
+}
+
+# GUARD: Backup openclaw.json before anything
+$configPath = Join-Path $root "openclaw.json"
+if (Test-Path $configPath) {
+    $backupPath = Join-Path $root "openclaw.json.pre-rebuild"
+    Copy-Item $configPath $backupPath -Force
+    Write-Host "  Config backed up to openclaw.json.pre-rebuild" -ForegroundColor DarkGray
+}
+
 # 1. Build (before kill so we don't have downtime during build)
 if ($Build) {
     Write-Host "[1/4] Building..." -ForegroundColor Yellow

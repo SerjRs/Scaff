@@ -21,6 +21,7 @@ import { isTruthyEnvValue } from "../infra/env.js";
 import type { loadOpenClawPlugins } from "../plugins/loader.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { initGatewayRouter } from "../router/gateway-integration.js";
+import { syncExecutorAuth } from "../router/auth-sync.js";
 import { initGatewayCortex, type GatewayCortexHandle } from "../cortex/gateway-bridge.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
@@ -160,6 +161,13 @@ export async function startGatewaySidecars(params: {
     });
   } catch (err) {
     params.log.warn(`plugin services failed to start: ${String(err)}`);
+  }
+
+  // Sync auth unconditionally — executor needs fresh credentials regardless of router config.
+  try {
+    syncExecutorAuth(resolveStateDir(process.env));
+  } catch (err) {
+    params.log.warn(`[auth-sync] Failed to sync executor auth: ${String(err)}`);
   }
 
   // Start the Router service if enabled in config.

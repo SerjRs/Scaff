@@ -111,8 +111,8 @@ You may attach resources (workspace files or inline text) so the executor can ac
           properties: {
             type: {
               type: "string",
-              enum: ["file", "text"],
-              description: "file = read from workspace path. text = inline content.",
+              enum: ["file", "url", "text"],
+              description: "file = read from workspace path. url = reference a URL. text = inline content.",
             },
             name: {
               type: "string",
@@ -122,6 +122,10 @@ You may attach resources (workspace files or inline text) so the executor can ac
               type: "string",
               description: "For type=file: workspace-relative path",
             },
+            url: {
+              type: "string",
+              description: "For type=url: the URL to reference",
+            },
             content: {
               type: "string",
               description: "For type=text: inline content",
@@ -130,7 +134,7 @@ You may attach resources (workspace files or inline text) so the executor can ac
           required: ["type", "name"],
         },
         description:
-          "Optional resources to pass to the executor. file = include workspace files, text = inline data.",
+          "Optional resources to pass to the executor. file = include workspace files, url = reference a URL, text = inline data.",
       },
     },
     required: ["task"],

@@ -19,8 +19,6 @@ import { startRouter, type RouterInstance, type AgentExecutor } from "./index.js
 import type { OnDeliveredCallback } from "./notifier.js";
 import type { RouterConfig, RouterJob } from "./types.js";
 import { getCortexSessionKey } from "../cortex/session.js";
-import { syncExecutorAuth } from "./auth-sync.js";
-import { resolveStateDir } from "../config/paths.js";
 
 // ---------------------------------------------------------------------------
 // Global singleton - use globalThis to survive bundler chunk splitting.
@@ -153,9 +151,6 @@ export function initGatewayRouter(config: RouterConfig): void {
     console.log("[router] Router disabled in config - skipping init");
     return;
   }
-
-  // Sync auth before starting - executor needs API credentials
-  syncExecutorAuth(resolveStateDir());
 
   // Warm up Ollama in background (non-blocking)
   import("./evaluator.js")

@@ -165,7 +165,7 @@ export async function initGatewayCortex(params: {
       }
     },
     // Fire-and-forget delegation to the Router when Cortex calls sessions_spawn
-    onSpawn: ({ task, replyChannel, resultPriority, taskId }) => {
+    onSpawn: ({ task, replyChannel, resultPriority, taskId, resources }) => {
       try {
         const router = getGatewayRouter();
         if (!router) {
@@ -175,12 +175,17 @@ export async function initGatewayCortex(params: {
 
         const issuer = getCortexSessionKey("main");
 
+        const payload: Record<string, unknown> = {
+          message: task,
+          context: JSON.stringify({ replyChannel, resultPriority, source: "cortex" }),
+        };
+        if (resources && resources.length > 0) {
+          payload.resources = resources;
+        }
+
         const jobId = router.enqueue(
           "agent_run",
-          {
-            message: task,
-            context: JSON.stringify({ replyChannel, resultPriority, source: "cortex" }),
-          },
+          payload,
           issuer,
           taskId,
         );

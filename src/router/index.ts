@@ -22,7 +22,7 @@ export interface RouterInstance {
   /** Enqueue a job and return its ID immediately (fire-and-forget). */
   enqueue: (
     type: JobType,
-    payload: { message: string; context?: string },
+    payload: { message: string; context?: string; resources?: Array<{ name: string; content: string }> },
     issuer: string,
     taskId: string,
   ) => string;
@@ -30,7 +30,7 @@ export interface RouterInstance {
   /** Enqueue a job and wait for the result (sync-style). */
   enqueueAndWait: (
     type: JobType,
-    payload: { message: string; context?: string },
+    payload: { message: string; context?: string; resources?: Array<{ name: string; content: string }> },
     issuer: string,
     taskId: string,
     timeoutMs?: number,
@@ -96,7 +96,7 @@ export function startRouter(
 
   function enqueue(
     type: JobType,
-    payload: { message: string; context?: string },
+    payload: { message: string; context?: string; resources?: Array<{ name: string; content: string }> },
     issuer: string,
     taskId: string,
   ): string {
@@ -105,7 +105,7 @@ export function startRouter(
 
   async function enqueueAndWait(
     type: JobType,
-    payload: { message: string; context?: string },
+    payload: { message: string; context?: string; resources?: Array<{ name: string; content: string }> },
     issuer: string,
     taskId: string,
     timeoutMs?: number,
