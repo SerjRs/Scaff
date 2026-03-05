@@ -1,35 +1,30 @@
 # ACTIVE-ISSUES.md
 
-*Last updated: 2026-03-04*
+*Last updated: 2026-03-05*
 
-## Fixed (pending commit/push)
+## Fixed
 
 | # | Issue | Root Cause | Fix | Status |
 |---|-------|-----------|-----|--------|
-| 1 | Router result truncation — complex tasks (w≥7) return 47-85 char intermediate text instead of full results | `createGatewayExecutor()` returned `payloads[0].text` (first intermediate output) instead of last payload | Iterate from last payload backwards in `gateway-integration.ts` | ✅ Fixed, built, deployed. Not committed. |
-| 2 | Evaluator using Opus instead of Sonnet for verification | `verifySonnet()` session key resolved to main agent → Opus model | Added `router-evaluator` to `agents.list` in `openclaw.json` with explicit Sonnet model | ✅ Fixed, committed (`b477e7f17`) |
-| 3 | Evaluator token tracking — `tokensIn: 0, tokensOut: 0` | Wrong agentId resolution from session key | Session key changed to `agent:router-evaluator:eval:<uuid>` | ✅ Fixed, committed (`b477e7f17`) |
-| 4 | Cortex tool calls output as text (context poisoning) | Tool interactions stored as flat strings → replayed as text → model mimics | Structured content blocks in `cortex_session` + consolidation in `llm-caller.ts` | ✅ Fixed, committed (`b477e7f17`) |
-| 5 | Cortex `[silence]` on task completions | Ops-trigger carried empty content, loop used vague prompt, LLM didn't comply | Trigger now carries task result inline via metadata; loop extracts and injects directly (`371f84be5`) | ✅ Fixed, hardened, 6/6 e2e tests pass |
-
-## Open — Critical
-
-| # | Issue | Details | Next Step |
-|---|-------|---------|-----------|
-| 20 | **Cortex does not start after config rewrite** | Cortex requires `cortex` section in openclaw.json. Without it, starts in `mode: off` — webchat messages not routed to Router. Lost when config was manually rewritten 2026-03-05 04:00. | Ensure `cortex` section always present. Add to config validator. |
-| 21 | **Evaluator does not start after config rewrite** | Evaluator requires `router-evaluator` in `agents.list`. Without it, all tasks fall through to `fallback_weight` and get dispatched to sonnet tier with no actual evaluation. Additionally, Ollama must be running for primary evaluation. Lost when config was manually rewritten 2026-03-05 04:00. | Ensure `agents.list` includes `router-evaluator`. Add to config validator. Ensure Ollama is up on gateway start. |
+| 1 | Router result truncation — complex tasks (w≥7) return 47-85 char intermediate text instead of full results | `createGatewayExecutor()` returned `payloads[0].text` (first intermediate output) instead of last payload | Iterate from last payload backwards in `gateway-integration.ts` | ✅ Fixed |
+| 2 | Evaluator using Opus instead of Sonnet for verification | `verifySonnet()` session key resolved to main agent → Opus model | Added `router-evaluator` to `agents.list` with explicit Sonnet model (`b477e7f17`) | ✅ Fixed |
+| 3 | Evaluator token tracking — `tokensIn: 0, tokensOut: 0` | Wrong agentId resolution from session key | Session key changed to `agent:router-evaluator:eval:<uuid>` (`b477e7f17`) | ✅ Fixed |
+| 4 | Cortex tool calls output as text (context poisoning) | Tool interactions stored as flat strings → replayed as text → model mimics | Structured content blocks in `cortex_session` + consolidation in `llm-caller.ts` (`b477e7f17`) | ✅ Fixed |
+| 5 | Cortex `[silence]` on task completions | Ops-trigger carried empty content, loop used vague prompt, LLM didn't comply | Trigger now carries task result inline via metadata; loop extracts and injects directly (`371f84be5`) | ✅ Fixed |
+| 8 | Evaluator using Opus instead of Sonnet (regression) | agents.list missing `router-evaluator` after config rewrite | Restored agents.list with `router-evaluator` + model param schema change | ✅ Fixed |
+| 15 | Cold memory empty — Vector Evictor never ran | 0 cold rows because no hot facts are >14 days old yet. Evictor will run when facts age. | ✅ Not a bug — working as designed |
+| 16 | Gardener not running | All 3 workers implemented and scheduled via setInterval. Confirmed working. | ✅ Working |
+| 17 | `memory_query` tool — unclear if wired up | Fully implemented, exposed to LLM, wired in loop.ts. | ✅ Working |
+| 18 | `fetch_chat_history` tool — unclear if wired up | Fully implemented, exposed to LLM, wired in loop.ts. | ✅ Working |
+| 20 | Cortex does not start after config rewrite | Cortex config lives in `cortex/config.json` (NOT openclaw.json). Also: assistant message prefill incompatible with thinking=high caused 400 errors. | Strip trailing assistant messages in llm-caller.ts when thinking enabled (`b82b57331`). Config validator checks correct file. | ✅ Fixed |
+| 21 | Evaluator does not start after config rewrite | 1) `router-evaluator` missing from agents.list. 2) `verifySonnet` had hardcoded `'anthropic/claude-sonnet-4-6'` → gateway double-prefixed to `'anthropic/anthropic/...'`. 3) Ghost token entry from zero-token record() call. | Use `EVALUATOR_MODEL` constant without provider prefix (`6c39f45e0`). Remove redundant record() (`548e3a41b`). Agent model set to `claude-sonnet-4-6`. | ✅ Fixed |
 
 ## Open — High Priority
 
 | # | Issue | Details | Next Step |
 |---|-------|---------|-----------|
-| 15 | ~~**Cold memory empty — Vector Evictor never ran**~~ | Code exists and is wired. 0 cold rows because no hot facts are >14 days old yet (all ≤7 days). Evictor will run when facts age. Not a bug. | ✅ Not a bug — working as designed |
-| 16 | ~~**Gardener not running**~~ | All 3 workers implemented and scheduled via setInterval. Gardener starts when hippocampus.enabled=true (confirmed). Intervals: Compactor 10min, Extractor 5min, Evictor 10min. Hot memory has 4606 facts, channel states populated. | ✅ Working |
-| 17 | ~~**`memory_query` tool — unclear if wired up**~~ | Fully implemented in tools.ts, exposed to LLM via HIPPOCAMPUS_TOOLS, wired in loop.ts sync tool round-trip. Embeds query → KNN search cold storage → promotes retrieved facts back to hot. | ✅ Working |
-| 18 | ~~**`fetch_chat_history` tool — unclear if wired up**~~ | Fully implemented in tools.ts, exposed to LLM, wired in loop.ts. Queries cortex_session by channel with limit/before params. | ✅ Working |
-| 19 | **Foreground soft cap — budget-remainder approach** | Implemented as budget-remainder (not explicit soft cap per arch spec). Foreground gets maxTokens - systemFloor - background. No hard "max 20 messages" limit. This is functional but differs from the architecture doc. | Monitor — works, may tune later |
 | 6 | **Webchat image attachments silently dropped** | Images sent via webchat are not processed. Pipeline traced to `parseMessageWithAttachments()` in `chat-attachments.ts` but code not yet read. | Read `parseMessageWithAttachments()` and trace the image pipeline. |
-| 8 | ~~**Evaluator using Opus instead of Sonnet (regression)**~~ | Fixed: agents.list with both `main` (default) and `router-evaluator` + model param schema change. Token monitor confirmed working: Ollama evaluates, Haiku/Sonnet/Opus dispatch. | ✅ Fixed |
+| 19 | **Foreground soft cap — budget-remainder approach** | Implemented as budget-remainder (not explicit soft cap per arch spec). Foreground gets maxTokens - systemFloor - background. No hard "max 20 messages" limit. This is functional but differs from the architecture doc. | Monitor — works, may tune later |
 
 ## Open — Medium Priority
 
