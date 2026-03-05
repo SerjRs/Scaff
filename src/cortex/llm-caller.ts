@@ -349,6 +349,14 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS]
             : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS];
 
+          // When thinking/reasoning is enabled, Claude rejects assistant message prefill
+          // (last message cannot be assistant). Strip trailing assistant messages.
+          if (params.thinking && piMessages.length > 0) {
+            while (piMessages.length > 0 && piMessages[piMessages.length - 1].role === "assistant") {
+              piMessages.pop();
+            }
+          }
+
           // Use pi-ai's completeSimple — the same function the main agent
           // uses via createAgentSession → streamSimple. This goes through
           // pi-ai's streamAnthropic → createClient which handles all OAuth
