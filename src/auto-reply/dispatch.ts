@@ -39,6 +39,28 @@ export async function dispatchInboundMessage(params: {
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
 }): Promise<DispatchInboundResult> {
+  // Cortex shadow/live feed for non-webchat channels (webchat has its own hook in chat.ts)
+  const channel = params.ctx.OriginatingChannel;
+  if (channel && channel !== "webchat") {
+    try {
+      const cortexFeed = (globalThis as any).__openclaw_cortex_feed__ as ((e: any) => void) | undefined;
+      const cortexMkEnvelope = (globalThis as any).__openclaw_cortex_createEnvelope__ as ((p: any) => any) | undefined;
+      const cortexGetMode = (globalThis as any).__openclaw_cortex_getChannelMode__ as ((ch: string) => string) | undefined;
+      const cortexMode = cortexGetMode ? cortexGetMode(channel) : "off";
+      if ((cortexMode === "shadow" || cortexMode === "live") && cortexFeed && cortexMkEnvelope) {
+        const rawBody = params.ctx.RawBody || params.ctx.Body || "";
+        if (rawBody.trim() && !rawBody.trim().startsWith("/")) {
+          cortexFeed(cortexMkEnvelope({
+            channel,
+            sender: { id: params.ctx.From || "unknown", name: params.ctx.SenderName || params.ctx.From || "Unknown", relationship: "partner" },
+            content: rawBody,
+            priority: "normal",
+          }));
+        }
+      }
+    } catch { /* Cortex not available — ignore */ }
+  }
+
   const finalized = finalizeInboundContext(params.ctx);
   return await withReplyDispatcher({
     dispatcher: params.dispatcher,
