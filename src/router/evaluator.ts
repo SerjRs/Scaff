@@ -190,7 +190,7 @@ async function verifySonnet(
       message: `${EVALUATOR_SYSTEM_PROMPT}\n\n${userMessage}`,
       sessionKey,
       deliver: false,
-      model: 'anthropic/claude-sonnet-4-6',
+      model: EVALUATOR_MODEL,
       idempotencyKey,
     },
     expectFinal: true,
@@ -300,6 +300,8 @@ export async function evaluate(
       const stack = sonnetErr instanceof Error ? sonnetErr.stack : undefined;
       console.error(`[router/evaluator] sonnet verification failed: ${detail}`);
       if (stack) console.error(`[router/evaluator] sonnet stack: ${stack}`);
+      // Write debug to file since console may not reach gateway logs
+      try { const fs = await import("node:fs"); fs.appendFileSync(process.env.USERPROFILE + "/.openclaw/tmp/evaluator-debug.log", `[${new Date().toISOString()}] sonnet failed: ${detail}\n${stack ?? ""}\n\n`); } catch {}
       // Fall back to Ollama's score if available, otherwise fallback weight
       if (ollamaResult) {
         console.log(`[router/evaluator] using ollama score: w=${ollamaResult.weight}`);
