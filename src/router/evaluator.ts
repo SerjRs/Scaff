@@ -172,7 +172,7 @@ export function parseEvaluatorResponse(
  */
 /**
  * Call Sonnet via callGateway to verify a weight score.
- * Used when Ollama scores > 3 — we don't trust the local model for complex tasks.
+ * Used when Ollama scores > 2 — we don't trust the local model for complex tasks.
  */
 async function verifySonnet(
   userMessage: string,
@@ -268,7 +268,7 @@ export async function evaluate(
     }
 
     // 3. If Ollama succeeded and says ≤3 → trust it, skip Sonnet
-    if (ollamaResult && ollamaResult.weight <= 3) {
+    if (ollamaResult && ollamaResult.weight <= 2) {
       console.log(`[router/evaluator] weight ≤3, trusting ollama → haiku`);
       console.log(`[router/evaluator] ===== EVALUATE END: w=${ollamaResult.weight} tier=haiku =====`);
       return ollamaResult;
