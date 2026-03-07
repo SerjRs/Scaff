@@ -154,14 +154,14 @@ export async function runFactExtractor(params: {
 
       const prompt = `Extract ONLY facts that are EXPLICITLY stated in this conversation. \
 Facts are things like user preferences, personal details, project decisions, \
-technical choices, system configurations, or task outcomes.
+technical choices, system configurations, or relationships.
 
 RULES:
 - ONLY extract what is directly said or clearly demonstrated. Do NOT infer, assume, or fabricate.
 - If the user says "I live in Bucharest" → extract that. If they don't mention where they live → extract nothing about location.
-- Prefer specific, verifiable facts over vague observations.
-- Skip greetings, filler, and routine acknowledgments.
-- Each fact should be a standalone statement that would be useful in future conversations.
+- Prefer specific, verifiable facts that would be useful weeks or months later.
+- Skip: greetings, filler, routine acknowledgments, one-off computation results, task dispatch IDs, stress test data, ephemeral status observations, temporary debugging output.
+- Each fact should be a standalone statement useful in future conversations.
 - If no facts are found, return an empty array [].
 
 Return ONLY a JSON array of strings, one fact per entry.
