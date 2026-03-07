@@ -115,11 +115,11 @@ export async function initGatewayCortex(params: {
 
   params.log.warn(`[cortex] LLM: live (anthropic/${cortexModel}${config.thinking ? `, thinking=${config.thinking}` : ""})`);
 
-  // Gardener LLM functions — reuse same auth/model infrastructure
-  // Uses the same model as Cortex main LLM for now (could be Haiku for cost efficiency)
+  // Gardener LLM functions — use Haiku for cost efficiency (extraction is simple, doesn't need Opus)
+  const gardenerModel = (config as any).hippocampus?.gardenerModel ?? "claude-haiku-4-5";
   const gardenerLLMParams = {
     provider: "anthropic",
-    modelId: cortexModel,
+    modelId: gardenerModel,
     agentDir: resolveUserPath(".openclaw/agents/main/agent"),
     config: params.cfg,
     maxResponseTokens: 2048,
@@ -128,6 +128,7 @@ export async function initGatewayCortex(params: {
     },
   };
   const gardenerLLM = createGardenerLLMFunction(gardenerLLMParams);
+  params.log.warn(`[cortex] Gardener LLM: anthropic/${gardenerModel}`);
 
   // Pre-import Router and session modules for the synchronous onSpawn callback
   const { getGatewayRouter } = await import("../router/gateway-integration.js");

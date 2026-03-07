@@ -152,10 +152,19 @@ export async function runFactExtractor(params: {
 
       console.log(`[gardener] Transcript length: ${transcript.length} chars, sending to LLM...`);
 
-      const prompt = `Extract any persistent, reusable facts from this conversation. \
+      const prompt = `Extract ONLY facts that are EXPLICITLY stated in this conversation. \
 Facts are things like user preferences, personal details, project decisions, \
-technical choices, or recurring patterns. Return ONLY a JSON array of strings, \
-one fact per entry. If no facts are found, return an empty array [].
+technical choices, system configurations, or task outcomes.
+
+RULES:
+- ONLY extract what is directly said or clearly demonstrated. Do NOT infer, assume, or fabricate.
+- If the user says "I live in Bucharest" → extract that. If they don't mention where they live → extract nothing about location.
+- Prefer specific, verifiable facts over vague observations.
+- Skip greetings, filler, and routine acknowledgments.
+- Each fact should be a standalone statement that would be useful in future conversations.
+- If no facts are found, return an empty array [].
+
+Return ONLY a JSON array of strings, one fact per entry.
 
 Conversation:
 ${transcript}`;

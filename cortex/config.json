@@ -4,13 +4,15 @@
   "thinking": "high",
   "defaultMode": "off",
   "channels": {
-    "webchat": "live"
+    "webchat": "live",
+    "whatsapp": "shadow"
   },
   "hippocampus": {
     "enabled": true,
-    "gardenerCompactorIntervalMs": 600000,
-    "gardenerExtractorIntervalMs": 300000,
-    "gardenerEvictorIntervalMs": 600000
+    "gardenerCompactorIntervalMs": 3600000,
+    "gardenerExtractorIntervalMs": 21600000,
+    "gardenerEvictorIntervalMs": 604800000,
+    "gardenerModel": "claude-haiku-4-5"
   },
   "debugContext": true
 }
