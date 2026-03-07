@@ -3,6 +3,7 @@
 *Last recalibrated: 2026-02-24*
 
 ## Shards
+- `memory/long-term/architecture-state.md` — **READ FIRST** — live system state, what's running, config, message flows, critical rules
 - `memory/long-term/identity.md` — name, personality, avatar, partnership agreement, model identity
 - `memory/long-term/people.md` — people, contacts
 - `memory/long-term/security.md` — security rules, Clawdex, DNA verification
