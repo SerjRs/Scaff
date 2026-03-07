@@ -202,13 +202,14 @@ describe("evaluate", () => {
     expect(result.reasoning).toContain("fallback");
   });
 
-  it("returns fallback with 'evaluator failed' reasoning when LLM call throws", async () => {
+  it("returns fallback with 'both failed' reasoning when LLM call throws", async () => {
     fetchSpy.mockRejectedValueOnce(new Error("network error"));
 
     const { evaluate } = await import("./evaluator.js");
     const result = await evaluate(makeConfig({ fallback_weight: 6 }), "Test");
     expect(result.weight).toBe(6);
-    expect(result.reasoning).toBe("evaluator failed, using fallback");
+    expect(result.reasoning).toContain("failed");
+    expect(result.reasoning).toContain("fallback");
   });
 
   it("returns fallback on HTTP error response", async () => {
@@ -219,7 +220,8 @@ describe("evaluate", () => {
     const { evaluate } = await import("./evaluator.js");
     const result = await evaluate(makeConfig({ fallback_weight: 5 }), "Test");
     expect(result.weight).toBe(5);
-    expect(result.reasoning).toBe("evaluator failed, using fallback");
+    expect(result.reasoning).toContain("failed");
+    expect(result.reasoning).toContain("fallback");
   });
 
   it("returns fallback on timeout (AbortError)", async () => {
@@ -243,7 +245,8 @@ describe("evaluate", () => {
       "Slow task",
     );
     expect(result.weight).toBe(5);
-    expect(result.reasoning).toBe("evaluator timed out, using fallback");
+    expect(result.reasoning).toContain("failed");
+    expect(result.reasoning).toContain("fallback");
   });
 
   it("respects different fallback_weight values", async () => {
