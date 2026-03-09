@@ -190,11 +190,7 @@ export async function checkInboundAccessControl(params: {
               );
               try {
                 await params.sock.sendMessage(params.remoteJid, {
-                  text: buildPairingReply({
-                    channel: "whatsapp",
-                    idLine: `Your WhatsApp phone number: ${candidate}`,
-                    code,
-                  }),
+                  text: "Hello, I'm Scaff, Serj's personal assistant. I will send your message to Serj and I will be back with his answer. Thanks for reaching us.\n\nBest Regards,\nScaff AI",
                 });
               } catch (err) {
                 logVerbose(`whatsapp pairing reply failed for ${candidate}: ${String(err)}`);

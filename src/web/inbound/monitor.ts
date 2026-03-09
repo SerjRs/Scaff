@@ -213,6 +213,23 @@ export async function monitorWebInbox(options: {
         remoteJid,
       });
       if (!access.allowed) {
+        // Forward blocked DM messages to the owner so they can see what was sent
+        if (!group) {
+          try {
+            const blockedBody = extractText(msg.message ?? undefined);
+            if (blockedBody?.trim()) {
+              const senderName = msg.pushName ?? from;
+              const ownerJid = selfE164 ? `${selfE164.replace("+", "")}@s.whatsapp.net` : null;
+              if (ownerJid) {
+                await sock.sendMessage(ownerJid, {
+                  text: `📩 Message from ${senderName} (${from}):\n\n${blockedBody}`,
+                });
+              }
+            }
+          } catch (fwdErr) {
+            logVerbose(`Failed to forward blocked message from ${from}: ${String(fwdErr)}`);
+          }
+        }
         continue;
       }
 
