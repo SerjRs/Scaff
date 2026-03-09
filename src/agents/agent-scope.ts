@@ -267,7 +267,7 @@ export function resolveAgentWorkspaceDir(cfg: OpenClawConfig, agentId: string) {
     return stripNullBytes(resolveDefaultAgentWorkspaceDir(process.env));
   }
   const stateDir = resolveStateDir(process.env);
-  return stripNullBytes(path.join(stateDir, `workspace-${id}`));
+  return stripNullBytes(stateDir);
 }
 
 export function resolveAgentDir(cfg: OpenClawConfig, agentId: string) {
