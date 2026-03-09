@@ -205,6 +205,13 @@ export async function initGatewayCortex(params: {
   // chat.ts registers a delivery callback per runId in __openclaw_cortex_delivery__
   const { WebchatAdapter } = await import("./adapters/webchat.js");
   const webchatAdapter = new WebchatAdapter(async (target) => {
+    // Gate on live mode — suppress sends in shadow mode
+    const webchatMode = getCortexChannelMode("webchat" as ChannelId);
+    if (webchatMode !== "live") {
+      params.log.warn(`[cortex] Webchat adapter: suppressed send (mode=${webchatMode}, shadow observe only)`);
+      return;
+    }
+
     const deliveryCallbacks = (globalThis as any).__openclaw_cortex_delivery__ as
       | Map<string, (content: string) => void>
       | undefined;
@@ -236,6 +243,34 @@ export async function initGatewayCortex(params: {
   });
   instance.registerAdapter(webchatAdapter);
   params.log.warn("[cortex] Webchat adapter registered for live delivery");
+
+  // Register WhatsApp adapter for live delivery
+  const { WhatsAppAdapter } = await import("./adapters/whatsapp.js");
+  const whatsappAdapter = new WhatsAppAdapter(async (target) => {
+    try {
+      // Gate on live mode — in shadow mode, Cortex processes messages but must NOT
+      // send replies (the main agent handles delivery). Without this check, shadow
+      // mode causes dual replies: both Cortex and main agent send to WhatsApp.
+      const whatsappMode = getCortexChannelMode("whatsapp" as ChannelId);
+      if (whatsappMode !== "live") {
+        params.log.warn(`[cortex] WhatsApp adapter: suppressed send (mode=${whatsappMode}, shadow observe only)`);
+        return;
+      }
+      // threadId = chatId (set from replyContext.threadId in output.ts)
+      const chatId = target.threadId ?? target.replyTo ?? null;
+      if (!chatId || !target.content?.trim()) {
+        params.log.warn(`[cortex] WhatsApp adapter: missing chatId(threadId=${target.threadId}, replyTo=${target.replyTo}) or content(${target.content?.length ?? 0} chars) — response dropped`);
+        return;
+      }
+      const { sendMessageWhatsApp } = await import("../web/outbound.js");
+      await sendMessageWhatsApp(chatId, target.content, { verbose: false });
+      params.log.warn(`[cortex] WhatsApp reply delivered to ${chatId.substring(0, 8)}...`);
+    } catch (err) {
+      params.log.warn(`[cortex] WhatsApp send failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+  instance.registerAdapter(whatsappAdapter);
+  params.log.warn("[cortex] WhatsApp adapter registered for live delivery");
 
   // Subscribe to Router job deliveries — ingest results into Cortex bus (§6.2, §6.3)
   // Router is just another channel; results enter the unified state like any message.
@@ -347,6 +382,8 @@ export async function initGatewayCortex(params: {
   (globalThis as any).__openclaw_cortex_feed__ = feedCortex;
   (globalThis as any).__openclaw_cortex_createEnvelope__ = createEnvelope;
   (globalThis as any).__openclaw_cortex_getChannelMode__ = getCortexChannelMode;
+  (globalThis as any).__openclaw_cortex_appendMainReply__ = appendMainAgentReply;
+  (globalThis as any).__openclaw_cortex_debug__ = config.debugContext;
 
   params.log.warn(`[cortex] Started. Channels: ${channelModes || "(all default: " + config.defaultMode + ")"}`);
 
@@ -388,6 +425,44 @@ export function feedCortex(envelope: CortexEnvelope): void {
     handle.shadowHook.observe(envelope);
   } else if (mode === "live") {
     handle.instance.enqueue(envelope);
+  }
+}
+
+/**
+ * Write the main agent's actual reply to cortex_session.
+ * Called from dispatch-from-config.ts after the main agent responds.
+ * This allows the Gardener to extract facts from real conversations,
+ * not just Cortex shadow responses.
+ */
+export function appendMainAgentReply(params: {
+  channel: string;
+  userMessage: string;
+  assistantReply: string;
+  envelopeId?: string;
+}): void {
+  if (!handle?.instance) return;
+
+  const mode = handle.getChannelMode(params.channel as ChannelId);
+  if (mode === "off") return;
+
+  try {
+    const db = handle.instance.db;
+    if (!db) return;
+
+    const { randomUUID } = require("node:crypto");
+    const envId = params.envelopeId || randomUUID();
+    const now = new Date().toISOString();
+    const issuer = "main-agent";
+
+    // Write the assistant reply (user message already written by shadow feed)
+    if (params.assistantReply?.trim()) {
+      db.prepare(`
+        INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
+        VALUES (?, 'assistant', ?, 'scaff', ?, ?, NULL, ?)
+      `).run(envId, params.channel, params.assistantReply, now, issuer);
+    }
+  } catch {
+    // Non-critical — don't break the main reply path
   }
 }
 

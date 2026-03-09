@@ -8,6 +8,7 @@ import {
   type ReplyDispatcher,
   type ReplyDispatcherOptions,
   type ReplyDispatcherWithTypingOptions,
+  type ReplyDispatchKind,
 } from "./reply/reply-dispatcher.js";
 import type { FinalizedMsgContext, MsgContext } from "./templating.js";
 import type { GetReplyOptions } from "./types.js";
@@ -47,6 +48,7 @@ export async function dispatchInboundMessage(params: {
       const cortexMkEnvelope = (globalThis as any).__openclaw_cortex_createEnvelope__ as ((p: any) => any) | undefined;
       const cortexGetMode = (globalThis as any).__openclaw_cortex_getChannelMode__ as ((ch: string) => string) | undefined;
       const cortexMode = cortexGetMode ? cortexGetMode(channel) : "off";
+      console.warn(`[dispatch] Cortex mode for ${channel}: ${cortexMode} (getMode=${!!cortexGetMode}, feed=${!!cortexFeed}, mkEnvelope=${!!cortexMkEnvelope})`);
       if ((cortexMode === "shadow" || cortexMode === "live") && cortexFeed && cortexMkEnvelope) {
         const rawBody = params.ctx.RawBody || params.ctx.Body || "";
         if (rawBody.trim() && !rawBody.trim().startsWith("/")) {
@@ -55,10 +57,21 @@ export async function dispatchInboundMessage(params: {
             sender: { id: params.ctx.From || "unknown", name: params.ctx.SenderName || params.ctx.From || "Unknown", relationship: "partner" },
             content: rawBody,
             priority: "normal",
+            replyContext: {
+              channel,
+              threadId: params.ctx.From || undefined,
+              messageId: params.ctx.MessageSid || undefined,
+            },
           }));
         }
       }
-    } catch { /* Cortex not available — ignore */ }
+      // When Cortex is live for this channel, skip main agent entirely.
+      // Cortex handles the response through its own adapter.
+      if (cortexMode === "live") {
+        console.warn(`[dispatch] Cortex LIVE for ${channel} — skipping main agent`);
+        return { queuedFinal: false, counts: { final: 0, block: 0, tool: 0 } as Record<ReplyDispatchKind, number> };
+      }
+    } catch (err) { console.warn(`[dispatch] Cortex check error: ${err instanceof Error ? err.message : String(err)}`); }
   }
 
   const finalized = finalizeInboundContext(params.ctx);

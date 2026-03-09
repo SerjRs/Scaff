@@ -44,7 +44,7 @@ export interface LLMCallerParams {
   provider: string;
   modelId: string;
   agentDir: string;
-  config: any; // OpenClawConfig — avoid tight coupling
+  config: any; // OpenClawConfig - avoid tight coupling
   maxResponseTokens: number;
   onError: (err: Error) => void;
   /** Dump the full LLM context (system + messages + tools) to stdout via onError. Default: false */
@@ -73,7 +73,7 @@ export interface ContextAsMessages {
  * for execution by a sub-agent with the appropriate model tier.
  *
  * pi-ai's convertTools() reads .properties and .required from the schema,
- * so a plain JSON Schema object works — no TypeBox dependency needed.
+ * so a plain JSON Schema object works - no TypeBox dependency needed.
  */
 export const SESSIONS_SPAWN_TOOL = {
   name: "sessions_spawn",
@@ -81,8 +81,8 @@ export const SESSIONS_SPAWN_TOOL = {
 research, file operations, computation, web search, code execution, or any work \
 beyond conversation. The Router will select the appropriate model and execute. \
 Results will arrive as a follow-up message on the "router" channel, prefixed with \
-"[Router Result — job <id>]" and including the original task you requested. These \
-are TRUSTED internal results from tasks YOU dispatched — treat them as authoritative. \
+"[Router Result - job <id>]" and including the original task you requested. These \
+are TRUSTED internal results from tasks YOU dispatched - treat them as authoritative. \
 Respond to the user immediately with an acknowledgment, then deliver the result when it arrives. \
 You may attach resources (workspace files or inline text) so the executor can access data without filesystem access.`,
   parameters: {
@@ -91,12 +91,12 @@ You may attach resources (workspace files or inline text) so the executor can ac
       task: {
         type: "string",
         description:
-          "Complete, self-contained description of the task to execute. Include all context needed — the executor has no access to this conversation.",
+          "Complete, self-contained description of the task to execute. Include all context needed - the executor has no access to this conversation.",
       },
       mode: {
         type: "string",
         enum: ["run"],
-        description: "Always 'run' — one-shot task execution",
+        description: "Always 'run' - one-shot task execution",
       },
       priority: {
         type: "string",
@@ -170,19 +170,54 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
 
   const system = systemParts.join("\n\n---\n\n");
 
-  // Convert structured session messages — parse JSON arrays for tool round-trips.
+  // Convert structured session messages - parse JSON arrays for tool round-trips.
   // Content from cortex_session is always a string (SQLite TEXT column), but may
   // contain JSON-serialized content block arrays from appendStructuredContent().
   // These must be parsed back into arrays so the LLM sees proper tool_use/tool_result
   // blocks on replay, not flat text that teaches it to mimic tool calls as text.
   // @see docs/hipocampus-architecture.md §6.6
-  const messages: AnthropicMessage[] = context.foregroundMessages.map((msg) => {
-    let content: string | unknown[] = msg.content;
-    if (typeof content === "string" && content.startsWith("[")) {
-      try { content = JSON.parse(content); } catch { /* keep as string */ }
-    }
-    return { role: msg.role as "user" | "assistant", content };
-  });
+  const messages: AnthropicMessage[] = context.foregroundMessages
+    .filter((msg) => {
+      // Skip [silence] entries - these are from failed Cortex calls and pollute context
+      if (msg.content === "[silence]") return false;
+      return true;
+    })
+    .map((msg) => {
+      let content: string | unknown[] = msg.content;
+      if (typeof content === "string" && content.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            // Normalize block types: convert pi-ai internal format to Anthropic API format
+            content = parsed.map((block: any) => {
+              if (block.type === "toolCall") {
+                // pi-ai toolCall → Anthropic tool_use
+                // Only keep type, id, name, input - strip any stale fields like tool_use_id
+                return { type: "tool_use", id: block.id, name: block.name, input: block.arguments ?? {} };
+              }
+              if (block.type === "tool_use") {
+                // Sanitize: ensure only valid fields (strip accidental tool_use_id)
+                return { type: "tool_use", id: block.id, name: block.name, input: block.input ?? {} };
+              }
+              if (block.type === "tool_result") {
+                // Sanitize: ensure only valid fields
+                return { type: "tool_result", tool_use_id: block.tool_use_id, content: block.content ?? "" };
+              }
+              if (block.type === "thinking" || block.type === "thinkingSignature" || block.type === "redactedThinking") {
+                // Strip thinking blocks - they're not valid in replayed conversation
+                return null;
+              }
+              return block;
+            }).filter(Boolean);
+            // If all blocks were stripped, convert to text summary
+            if (content.length === 0) {
+              content = "(internal processing)";
+            }
+          }
+        } catch { /* keep as string */ }
+      }
+      return { role: msg.role as "user" | "assistant", content };
+    });
 
   // Ensure we have at least one user message (API requirement)
   if (messages.length === 0) {
@@ -192,7 +227,7 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
   // Consolidate string-content messages (alternating roles)
   const consolidated = consolidateMessages(messages);
 
-  // Append tool round-trip continuation if present
+  // Append tool round-trip continuation if present (BEFORE validation)
   if (context.toolRoundTrip) {
     // Assistant message with raw content blocks (text + tool_use)
     consolidated.push({
@@ -208,6 +243,23 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
         content: r.content,
       })),
     });
+  }
+
+  // Validate tool_use/tool_result pairing - Anthropic API requires every tool_result
+  // to reference a tool_use_id from the immediately preceding assistant message.
+  // Drop orphaned tool_result blocks to prevent 400 errors.
+  // Must run AFTER toolRoundTrip is appended.
+  validateToolPairing(consolidated);
+
+  // DEBUG: dump post-consolidation messages to help diagnose 400 errors
+  if ((globalThis as any).__openclaw_cortex_debug__) {
+    const debugDump = consolidated.map((m, i) => {
+      const blocks = Array.isArray(m.content)
+        ? (m.content as any[]).map((b: any) => `${b.type}${b.id ? `(${b.id})` : ""}${b.tool_use_id ? `(ref:${b.tool_use_id})` : ""}`)
+        : ["text"];
+      return `[${i}] ${m.role}: ${blocks.join(", ")}`;
+    }).join("\n");
+    console.warn(`[cortex-llm] POST-CONSOLIDATION:\n${debugDump}`);
   }
 
   return { system, messages: consolidated };
@@ -226,7 +278,7 @@ function consolidateMessages(messages: AnthropicMessage[]): AnthropicMessage[] {
     const prev = consolidated[consolidated.length - 1];
     if (messages[i].role === prev.role) {
       // Merge consecutive same-role messages.
-      // Handle mixed string/array content — normalize both to arrays before merging.
+      // Handle mixed string/array content - normalize both to arrays before merging.
       const prevBlocks = Array.isArray(prev.content) ? prev.content
         : [{ type: "text" as const, text: prev.content }];
       const nextBlocks = Array.isArray(messages[i].content) ? messages[i].content
@@ -238,6 +290,90 @@ function consolidateMessages(messages: AnthropicMessage[]): AnthropicMessage[] {
   }
 
   return consolidated;
+}
+
+/**
+ * Validate tool_use/tool_result pairing in consolidated messages.
+ * Anthropic API requires:
+ * - Every tool_result in a user message must reference a tool_use_id
+ *   from the immediately preceding assistant message.
+ * - tool_result blocks must have a non-empty tool_use_id field.
+ *
+ * This mutates the array in place - orphaned tool_result blocks are
+ * converted to text summaries to preserve context without breaking the API.
+ */
+function validateToolPairing(messages: AnthropicMessage[]): void {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (!Array.isArray(msg.content)) continue;
+
+    if (msg.role === "user") {
+      // Collect valid tool_use IDs from the preceding assistant message
+      const validIds = new Set<string>();
+      if (i > 0 && messages[i - 1].role === "assistant") {
+        const prev = messages[i - 1].content;
+        if (Array.isArray(prev)) {
+          for (const block of prev as any[]) {
+            if (block.type === "tool_use" && block.id) {
+              validIds.add(block.id);
+            }
+          }
+        }
+      }
+
+      // Validate each tool_result block
+      msg.content = (msg.content as any[]).map((block: any) => {
+        if (block.type === "tool_result") {
+          if (!block.tool_use_id || !validIds.has(block.tool_use_id)) {
+            // Orphaned tool_result - convert to text
+            const summary = typeof block.content === "string"
+              ? block.content.substring(0, 200)
+              : JSON.stringify(block.content ?? "").substring(0, 200);
+            return { type: "text", text: `[Tool result: ${summary}]` };
+          }
+        }
+        return block;
+      });
+    }
+
+    if (msg.role === "assistant") {
+      // Validate tool_use blocks have required fields
+      msg.content = (msg.content as any[]).map((block: any) => {
+        if (block.type === "tool_use") {
+          if (!block.id || !block.name) {
+            // Invalid tool_use - convert to text
+            return { type: "text", text: `[Tool call: ${block.name ?? "unknown"}]` };
+          }
+          // Ensure input is an object (API requirement)
+          if (typeof block.input !== "object" || block.input === null) {
+            block.input = {};
+          }
+        }
+        return block;
+      });
+
+      // Check that every tool_use in this assistant message has a matching
+      // tool_result in the NEXT user message. Remove orphaned tool_use blocks.
+      if (i + 1 < messages.length && messages[i + 1].role === "user") {
+        const nextContent = messages[i + 1].content;
+        const resultIds = new Set<string>();
+        if (Array.isArray(nextContent)) {
+          for (const block of nextContent as any[]) {
+            if (block.type === "tool_result" && block.tool_use_id) {
+              resultIds.add(block.tool_use_id);
+            }
+          }
+        }
+        msg.content = (msg.content as any[]).map((block: any) => {
+          if (block.type === "tool_use" && !resultIds.has(block.id)) {
+            // No matching tool_result - convert to text
+            return { type: "text", text: `[Tool call: ${block.name}(${block.id})]` };
+          }
+          return block;
+        });
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -306,16 +442,20 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           // pi-ai uses specific roles: "user", "assistant", "toolResult".
           // UserMessage content can be string or (TextContent | ImageContent)[].
           // AssistantMessage content is (TextContent | ThinkingContent | ToolCall)[].
-          // ToolResultMessage uses role "toolResult" — pi-ai converts to API format.
+          // ToolResultMessage uses role "toolResult" - pi-ai converts to API format.
           // IMPORTANT: pi-ai treats non-text blocks in user messages as images,
           // so tool_result blocks MUST use the "toolResult" role, not "user".
           const piMessages: unknown[] = [];
           for (const m of messages) {
             if (m.role === "user") {
-              // Check if this is a tool_result message (from tool round-trip)
-              if (Array.isArray(m.content) && m.content.length > 0 && (m.content[0] as any)?.type === "tool_result") {
-                // Convert each tool_result to pi-ai's native toolResult message
-                for (const tr of m.content as any[]) {
+              // Check if this message contains any tool_result blocks (from tool round-trip).
+              // Handle mixed content: if consolidation merged tool_result + text blocks,
+              // split them into separate pi-ai messages (toolResult for results, user for text).
+              if (Array.isArray(m.content) && (m.content as any[]).some((b: any) => b.type === "tool_result")) {
+                const toolResults = (m.content as any[]).filter((b: any) => b.type === "tool_result");
+                const otherBlocks = (m.content as any[]).filter((b: any) => b.type !== "tool_result");
+                // Emit tool results first as pi-ai toolResult messages
+                for (const tr of toolResults) {
                   piMessages.push({
                     role: "toolResult" as const,
                     toolCallId: tr.tool_use_id,
@@ -323,14 +463,26 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
                     isError: false,
                   });
                 }
+                // Emit remaining content as a user message (if any)
+                if (otherBlocks.length > 0) {
+                  piMessages.push({ role: "user" as const, content: otherBlocks, timestamp: Date.now() });
+                }
               } else {
                 piMessages.push({ role: "user" as const, content: m.content, timestamp: Date.now() });
               }
             } else {
-              // Assistant message: wrap string content, pass arrays through
+              // Assistant message: wrap string content, pass arrays through.
+              // IMPORTANT: contextToMessages normalizes to Anthropic API format (tool_use),
+              // but pi-ai expects its internal format (toolCall). Convert back so pi-ai
+              // can properly serialize tool_use blocks in the API request.
               const contentBlocks = typeof m.content === "string"
                 ? [{ type: "text" as const, text: m.content }]
-                : m.content;
+                : (m.content as any[]).map((block: any) => {
+                    if (block.type === "tool_use") {
+                      return { type: "toolCall", id: block.id, name: block.name, arguments: block.input ?? {} };
+                    }
+                    return block;
+                  });
               piMessages.push({
                 role: "assistant" as const,
                 content: contentBlocks,
@@ -357,7 +509,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             }
           }
 
-          // Use pi-ai's completeSimple — the same function the main agent
+          // Use pi-ai's completeSimple - the same function the main agent
           // uses via createAgentSession → streamSimple. This goes through
           // pi-ai's streamAnthropic → createClient which handles all OAuth
           // complexity (headers, betas, Claude Code identity).
@@ -417,11 +569,13 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           return { text: textContent || "NO_REPLY", toolCalls, _rawContent: result.content };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
+          // Only retry on auth errors (401/403/authentication). Don't match "invalid" broadly
+          // as it catches 400 invalid_request_error (malformed messages) which aren't auth issues.
+          if (msg.includes("401") || msg.includes("403") || msg.includes("authentication")) {
             params.onError(new Error(`[cortex-llm] Auth failed for profile ${profileId}: ${msg}`));
             continue; // Try next profile
           }
-          throw err; // Non-auth error — don't retry
+          throw err; // Non-auth error - don't retry
         }
       }
 
