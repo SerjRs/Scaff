@@ -45,10 +45,19 @@ function buildMemorySection(params: {
   if (!params.availableTools.has("memory_search") && !params.availableTools.has("memory_get")) {
     return [];
   }
-  const lines = [
+  const lines: string[] = [];
+  // Code search guidance (if tool available)
+  if (params.availableTools.has("code_search")) {
+    lines.push(
+      "## Code Search",
+      "Before reading source files for development tasks, use code_search to find relevant code first. It searches ~14,000 indexed chunks semantically. Returns file paths, line numbers, and snippets. Use it to locate functions, understand patterns, and reduce token waste from reading entire files blind.",
+      "",
+    );
+  }
+  lines.push(
     "## Memory Recall",
     "Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on MEMORY.md + memory/*.md; then use memory_get to pull only the needed lines. If low confidence after search, say you checked.",
-  ];
+  );
   if (params.citationsMode === "off") {
     lines.push(
       "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",

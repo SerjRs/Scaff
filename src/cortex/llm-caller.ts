@@ -168,6 +168,16 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     // archived layers have no content
   }
 
+  // Append tool usage guidance
+  systemParts.push(
+    "## Tool Guidance\n" +
+    "- **code_search**: Use before spawning coding tasks to find relevant files and functions. " +
+    "Searches ~14,000 indexed source code chunks semantically. Returns file paths, line numbers, " +
+    "and snippets. Include results as context in sessions_spawn tasks so executors don't grep blind.\n" +
+    "- **fetch_chat_history**: Use when you need older messages not in the active window.\n" +
+    "- **memory_query**: Use when you need to recall facts from long-term memory.",
+  );
+
   const system = systemParts.join("\n\n---\n\n");
 
   // Convert structured session messages - parse JSON arrays for tool round-trips.
