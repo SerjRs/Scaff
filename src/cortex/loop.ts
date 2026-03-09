@@ -23,7 +23,7 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
-import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, type EmbedFunction } from "./tools.js";
+import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, type EmbedFunction } from "./tools.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -186,6 +186,9 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               } else if (tc.name === "get_task_status") {
                 const args = tc.arguments as Record<string, unknown>;
                 result = executeGetTaskStatus(args as any);
+              } else if (tc.name === "code_search") {
+                const args = tc.arguments as Record<string, unknown>;
+                result = executeCodeSearch(args as any);
               } else {
                 result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
               }

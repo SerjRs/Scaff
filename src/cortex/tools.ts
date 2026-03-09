@@ -78,14 +78,36 @@ timing information, and the model tier used.`,
   },
 };
 
+export const CODE_SEARCH_TOOL = {
+  name: "code_search",
+  description: `Semantic search over the OpenClaw source code index (~2,300 files, ~14,000 chunks). \
+Use before spawning coding tasks to find relevant files, functions, and code blocks. \
+Returns file paths, line numbers, chunk names, and code snippets ranked by relevance. \
+Much cheaper than having executors grep blindly.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      query: {
+        type: "string",
+        description: "Natural language or code query to search for",
+      },
+      limit: {
+        type: "number",
+        description: "Maximum number of results to return (default: 5, max: 20)",
+      },
+    },
+    required: ["query"],
+  },
+};
+
 /** All Hippocampus tools */
 export const HIPPOCAMPUS_TOOLS = [FETCH_CHAT_HISTORY_TOOL, MEMORY_QUERY_TOOL];
 
 /** Core Cortex tools (always available alongside sessions_spawn) */
-export const CORTEX_TOOLS = [GET_TASK_STATUS_TOOL];
+export const CORTEX_TOOLS = [GET_TASK_STATUS_TOOL, CODE_SEARCH_TOOL];
 
 /** Tool names that are handled synchronously (round-trip within same turn) */
-export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status"]);
+export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search"]);
 
 // ---------------------------------------------------------------------------
 // Embed Function Type
@@ -206,6 +228,41 @@ export function executeFetchChatHistory(
       timestamp: m.timestamp,
     })),
   );
+}
+
+/** Execute code_search — semantic search over the source code index */
+export function executeCodeSearch(args: { query: string; limit?: number }): string {
+  try {
+    const path = require("node:path");
+    const { execSync } = require("node:child_process");
+    const fs = require("node:fs");
+    const { resolveStateDir } = require("../config/paths.js");
+
+    const openclawDir = resolveStateDir();
+    const searchScript = path.join(openclawDir, "scripts", "code-search.mjs");
+    const dbPath = path.join(openclawDir, "scaff-tools", "code-index.sqlite");
+
+    if (!fs.existsSync(dbPath)) {
+      return JSON.stringify({ error: "Code index not found. Run: node scripts/code-index.mjs", available: false });
+    }
+    if (!fs.existsSync(searchScript)) {
+      return JSON.stringify({ error: "Search script not found", available: false });
+    }
+
+    const limit = Math.min(Math.max(args.limit ?? 5, 1), 20);
+    const escapedQuery = args.query.replace(/"/g, '\\"');
+    const output = execSync(
+      `node "${searchScript}" --top ${limit} "${escapedQuery}"`,
+      { cwd: openclawDir, timeout: 30_000, encoding: "utf-8" },
+    );
+
+    return output.trim();
+  } catch (err) {
+    return JSON.stringify({
+      error: `Code search failed: ${err instanceof Error ? err.message : String(err)}`,
+      available: true,
+    });
+  }
 }
 
 /** Execute memory_query — vector search against cold storage + hot tracking */
