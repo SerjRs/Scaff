@@ -4,12 +4,30 @@ import { getTemplate, renderTemplate } from "./templates/index.js";
 import { run, type AgentExecutor } from "./worker.js";
 import type { RouterConfig, RouterJob, Tier, TierConfig } from "./types.js";
 
+/** Max resource content size (64 KB) */
+const MAX_RESOURCE_CONTENT_LENGTH = 65536;
+
+/** Sanitize resource name — strip characters that could break delimiters */
+function sanitizeResourceName(name: string): string {
+  return name.replace(/[\[\]\n\r]/g, "_").slice(0, 200);
+}
+
+/** Escape content to prevent delimiter spoofing */
+function escapeResourceContent(content: string, name: string): string {
+  const truncated = content.length > MAX_RESOURCE_CONTENT_LENGTH
+    ? content.slice(0, MAX_RESOURCE_CONTENT_LENGTH) + "\n[... truncated at 64KB]"
+    : content;
+  return truncated.replaceAll(`[End Resource: ${name}]`, `[End Resource\\: ${name}]`);
+}
+
 /** Format resolved resources into labeled blocks for prompt injection. */
 export function formatResourceBlocks(resources: Array<{ name: string; content: string }>): string {
   if (!resources || resources.length === 0) return "";
-  const blocks = resources.map(
-    (r) => `[Resource: ${r.name}]\n${r.content}\n[End Resource: ${r.name}]`,
-  );
+  const blocks = resources.map((r) => {
+    const safeName = sanitizeResourceName(r.name);
+    const safeContent = escapeResourceContent(r.content, safeName);
+    return `[Resource: ${safeName}]\n${safeContent}\n[End Resource: ${safeName}]`;
+  });
   return "\n\n" + blocks.join("\n\n");
 }
 

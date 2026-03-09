@@ -1,4 +1,32 @@
 {
   "version": 1,
-  "jobs": []
+  "jobs": [
+    {
+      "id": "0ea5bb41-dade-4a64-9f77-009cd697527a",
+      "name": "hippocampus-refresh",
+      "enabled": true,
+      "createdAtMs": 1773004822487,
+      "updatedAtMs": 1773055232904,
+      "schedule": {
+        "kind": "every",
+        "everyMs": 7200000,
+        "anchorMs": 1773004822487
+      },
+      "sessionTarget": "main",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "systemEvent",
+        "text": "HIPPOCAMPUS_REFRESH"
+      },
+      "state": {
+        "nextRunAtMs": 1773062422543,
+        "lastRunAtMs": 1773055222543,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 10361,
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0
+      }
+    }
+  ]
 }

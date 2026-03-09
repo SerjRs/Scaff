@@ -163,11 +163,13 @@ export async function startGatewaySidecars(params: {
     params.log.warn(`plugin services failed to start: ${String(err)}`);
   }
 
-  // Sync auth unconditionally — executor needs fresh credentials regardless of router config.
-  try {
-    syncExecutorAuth(resolveStateDir(process.env));
-  } catch (err) {
-    params.log.warn(`[auth-sync] Failed to sync executor auth: ${String(err)}`);
+  // Only sync auth if the router/executor is actually enabled.
+  if (params.cfg.router?.enabled) {
+    try {
+      syncExecutorAuth(resolveStateDir(process.env));
+    } catch (err) {
+      params.log.warn(`[auth-sync] Failed to sync executor auth: ${String(err)}`);
+    }
   }
 
   // Start the Router service if enabled in config.

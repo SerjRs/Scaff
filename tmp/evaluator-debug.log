@@ -1,0 +1,612 @@
+[2026-03-07T08:44:50.235Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:164:20
+
+[2026-03-07T08:44:50.248Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:177:20
+
+[2026-03-07T08:44:50.255Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:190:20
+
+[2026-03-07T08:44:50.262Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:200:20
+
+[2026-03-07T08:44:50.269Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:209:20
+
+[2026-03-07T08:44:50.293Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:220:20
+
+[2026-03-07T08:44:50.322Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:241:20
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:44:50.330Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:253:21
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:44:50.335Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:258:21
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:44:50.341Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:268:5
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:44:50.353Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:286:5
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:44:50.360Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:300:20
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:52:41.752Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:164:20
+
+[2026-03-07T08:52:41.754Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:177:20
+
+[2026-03-07T08:52:41.755Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:190:20
+
+[2026-03-07T08:52:41.757Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:200:20
+
+[2026-03-07T08:52:41.758Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:209:20
+
+[2026-03-07T08:52:41.761Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:220:20
+
+[2026-03-07T08:52:41.787Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:241:20
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:52:41.790Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:253:21
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:52:41.791Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:258:21
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:52:41.793Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:268:5
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:52:41.795Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:286:5
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T08:52:41.796Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:300:20
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T09:00:32.132Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:164:20
+
+[2026-03-07T09:00:32.144Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:177:20
+
+[2026-03-07T09:00:32.151Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:190:20
+
+[2026-03-07T09:00:32.158Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:200:20
+
+[2026-03-07T09:00:32.166Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:209:20
+
+[2026-03-07T09:00:32.174Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:221:20
+
+[2026-03-07T09:00:32.206Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:243:20
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T09:00:32.213Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:256:21
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T09:00:32.218Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:261:21
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T09:00:32.226Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:271:5
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T09:00:32.241Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:289:5
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+
+[2026-03-07T09:00:32.248Z] sonnet failed: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+Error: [vitest] No "resolveConfigPath" export is defined on the "../config/config.js" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+    at VitestMocker.createError (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:311:17)
+    at Object.get (file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/vitest@4.0.18_@opentelemetr_c9688654361f600a6ea7cb5666ec9fae/node_modules/vitest/dist/chunks/startModuleRunner.DEj0jb3e.js:384:16)
+    at resolveGatewayCallContext (C:/Users/Temp User/.openclaw/src/gateway/call.ts:220:24)
+    at callGatewayWithScopes (C:/Users/Temp User/.openclaw/src/gateway/call.ts:386:19)
+    at callGatewayLeastPrivilege (C:/Users/Temp User/.openclaw/src/gateway/call.ts:432:16)
+    at callGateway (C:/Users/Temp User/.openclaw/src/gateway/call.ts:446:16)
+    at verifySonnet (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:184:26)
+    at evaluate (C:/Users/Temp User/.openclaw/src/router/evaluator.ts:284:32)
+    at C:/Users/Temp User/.openclaw/src/router/evaluator.test.ts:303:20
+    at file:///C:/Users/Temp%20User/.openclaw/node_modules/.pnpm/@vitest+runner@4.0.18/node_modules/@vitest/runner/dist/index.js:915:20
+

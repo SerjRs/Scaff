@@ -502,6 +502,30 @@ export async function dispatchReplyFromConfig(params: {
       }
     }
 
+    // Feed main agent reply to Cortex session (for Hippocampus fact extraction).
+    // This writes the real assistant response — not Cortex shadow's [silence].
+    try {
+      const appendMainReply = (globalThis as any).__openclaw_cortex_appendMainReply__ as
+        | ((p: { channel: string; userMessage: string; assistantReply: string }) => void)
+        | undefined;
+      const replyText = replies.map((r) => r.text).filter(Boolean).join("\n")
+        || accumulatedBlockText
+        || "";
+      logVerbose(`[hippocampus-hook] channel=${channel} hookExists=${!!appendMainReply} replies=${replies.length} blockCount=${blockCount} replyTextLen=${replyText.length} accBlockLen=${accumulatedBlockText.length}`);
+      if (appendMainReply) {
+        if (replyText.trim() && channel) {
+          appendMainReply({
+            channel,
+            userMessage: content,
+            assistantReply: replyText,
+          });
+          logVerbose(`[hippocampus-hook] Written to cortex_session: ${replyText.substring(0, 80)}...`);
+        }
+      }
+    } catch (hookErr) {
+      logVerbose(`[hippocampus-hook] Error: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`);
+    }
+
     const counts = dispatcher.getQueuedCounts();
     counts.final += routedFinalCount;
     recordProcessed("completed");

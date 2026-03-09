@@ -8,6 +8,7 @@
  */
 
 import fs from "node:fs";
+import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import {
   dequeueNext,
@@ -239,14 +240,18 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 const name = typeof res.name === "string" ? res.name : "unnamed";
                 if (res.type === "file" && typeof res.path === "string") {
                   // Resolve workspace-relative path against main agent workspace
-                  const fullPath = res.path.startsWith("/") || /^[A-Za-z]:/.test(res.path)
-                    ? res.path
-                    : `${workspaceDir}/${res.path}`;
-                  try {
-                    const content = fs.readFileSync(fullPath, "utf-8");
-                    resolvedResources.push({ name, content });
-                  } catch {
-                    resolvedResources.push({ name, content: `[File not found: ${res.path}]` });
+                  // Security: normalize and constrain to workspace boundary
+                  const resolvedPath = path.resolve(workspaceDir, res.path);
+                  const normalizedWorkspace = path.resolve(workspaceDir);
+                  if (!resolvedPath.startsWith(normalizedWorkspace + path.sep) && resolvedPath !== normalizedWorkspace) {
+                    resolvedResources.push({ name, content: `[Access denied: path "${res.path}" is outside workspace boundary]` });
+                  } else {
+                    try {
+                      const content = fs.readFileSync(resolvedPath, "utf-8");
+                      resolvedResources.push({ name, content });
+                    } catch {
+                      resolvedResources.push({ name, content: `[File not found: ${res.path}]` });
+                    }
                   }
                 } else if (res.type === "url" && typeof res.url === "string") {
                   resolvedResources.push({ name, content: `[URL: ${res.url}]` });

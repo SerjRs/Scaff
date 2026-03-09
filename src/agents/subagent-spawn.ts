@@ -3,6 +3,7 @@ import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinkin
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
+import { formatResourceBlocks } from "../router/dispatcher.js";
 import { routerCallGateway, isGatewayRouterActive } from "../router/gateway-integration.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
@@ -403,24 +404,18 @@ export async function spawnSubagentDirect(
     childDepth,
     maxSpawnDepth,
   });
-  // Build resource blocks if any were passed
-  const resourceBlocks: string[] = [];
-  if (params.resources && params.resources.length > 0) {
-    for (const res of params.resources) {
-      resourceBlocks.push(`[Resource: ${res.name}]\n${res.content}\n[End Resource: ${res.name}]`);
-    }
-  }
+  const resourceSection = formatResourceBlocks(params.resources ?? []);
 
-  const childTaskMessage = [
-    `[Subagent Context] You are running as a subagent (depth ${childDepth}/${maxSpawnDepth}). Results auto-announce to your requester; do not busy-poll for status.`,
-    spawnMode === "session"
-      ? "[Subagent Context] This subagent session is persistent and remains available for thread follow-up messages."
-      : undefined,
-    `[Subagent Task]: ${task}`,
-    ...resourceBlocks,
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n\n");
+  const childTaskMessage =
+    [
+      `[Subagent Context] You are running as a subagent (depth ${childDepth}/${maxSpawnDepth}). Results auto-announce to your requester; do not busy-poll for status.`,
+      spawnMode === "session"
+        ? "[Subagent Context] This subagent session is persistent and remains available for thread follow-up messages."
+        : undefined,
+      `[Subagent Task]: ${task}`,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n\n") + resourceSection;
 
   const childIdem = crypto.randomUUID();
   let childRunId: string = childIdem;

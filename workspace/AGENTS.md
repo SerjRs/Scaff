@@ -14,7 +14,8 @@ Before doing anything else:
 2. Read `USER.md` — this is who you're helping
 3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
 4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
-5. **If context is missing or you feel clueless:** Read your most recent session backup (`agents/main/sessions/*.jsonl` — sort by LastWriteTime, read the latest). This is your true memory — every tool call, every message, every decision. It always exists even when daily logs don't.
+5. Read `memory/memory-config.json` — check `shardsEnabled`. If `true`, read the shard files listed in `shardPaths`. If `false`, skip them entirely (rely on Hippocampus facts in MEMORY.md instead).
+6. **If context is missing or you feel clueless:** Read your most recent session backup (`agents/main/sessions/*.jsonl` — sort by LastWriteTime, read the latest). This is your true memory — every tool call, every message, every decision. It always exists even when daily logs don't.
 
 Don't ask permission. Just do it.
 
