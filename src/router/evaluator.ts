@@ -2,7 +2,7 @@ import { callGateway } from "../gateway/call.js";
 import { getTemplate, renderTemplate } from "./templates/index.js";
 import type { EvaluatorConfig, EvaluatorResult } from "./types.js";
 import { record } from "../token-monitor/ledger.js";
-import { normalizeUsage, type UsageLike } from "../agents/usage.js";
+// normalizeUsage removed — Sonnet usage is recorded by pi-embedded-subscribe hook
 
 const EVALUATOR_MODEL = "claude-sonnet-4-6";
 
@@ -67,6 +67,8 @@ async function callOllama(
       tokensIn: ollamaData.prompt_eval_count ?? 0,
       tokensOut: ollamaData.eval_count ?? 0,
       cached: 0,
+      pid: String(process.pid),
+      channel: "router-eval",
     });
     return data.response ?? "";
   } finally {
@@ -197,21 +199,9 @@ async function verifySonnet(
     timeoutMs,
   });
 
-  // Record token usage for the Router Evaluator
+  // Token usage is already recorded by the pi-embedded-subscribe hook
+  // inside callGateway's agent run — no need to record again here.
   const resultObj = response?.result as Record<string, unknown> | undefined;
-  const usage = (resultObj as any)?.usage;
-  if (usage && typeof usage === "object") {
-    const normalized = normalizeUsage(usage as UsageLike);
-    if (normalized) {
-      record({
-        agentId: "router-evaluator",
-        model: EVALUATOR_MODEL,
-        tokensIn: normalized.input ?? 0,
-        tokensOut: normalized.output ?? 0,
-        cached: normalized.cacheRead ?? 0,
-      });
-    }
-  }
 
   // Extract text from gateway response (shape: result.payloads[0].text)
   const payloads = resultObj?.payloads as Array<{ text?: string }> | undefined;
