@@ -22,6 +22,7 @@ import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedd
 import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
 import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 import { resolveAgentIdFromSessionKey } from "../config/sessions.js";
+import { getCurrentExecutorTaskLabel } from "../router/gateway-integration.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
 const FINAL_TAG_SCAN_RE = /<\s*(\/?)\s*final\s*>/gi;
@@ -278,10 +279,10 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     const agentId = params.sessionKey ? resolveAgentIdFromSessionKey(params.sessionKey) : "unknown";
     // For router-executor tasks, use session key as unique ID and show T:<taskId> as PID.
     // For persistent agents, use process PID.
-    const isRouterTask = params.sessionKey?.includes(":router-executor:task:");
+    const isRouterTask = params.sessionKey?.includes(":router-executor:task:") || params.sessionKey?.includes(":router-executor:subagent:");
     const isRouterEval = params.sessionKey?.includes(":router-evaluator:");
     const taskUuid = isRouterTask
-      ? params.sessionKey!.split(":task:")[1]?.slice(0, 8)
+      ? (params.sessionKey!.split(":task:")[1] ?? params.sessionKey!.split(":subagent:")[1])?.slice(0, 8)
       : undefined;
     const PERSISTENT_AGENTS = new Set(["main", "cortex"]);
     // Derive task label from session context
@@ -295,6 +296,10 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       else if (sk.includes("discord")) taskLabel = "Discord";
       else if (sk.includes("signal")) taskLabel = "Signal";
       else taskLabel = "Live session";
+    } else if (isRouterTask) {
+      // Router executor: read task label from globalThis (set by worker before exec)
+      // Falls back to "Sub-agent task" for sessions_spawn sub-agents
+      taskLabel = getCurrentExecutorTaskLabel() ?? "Sub-agent task";
     } else if (isRouterEval) {
       taskLabel = "Sonnet verification";
     }

@@ -76,7 +76,7 @@ function getCurrentExecutorJobId(): string | null {
   return ((globalThis as Record<string, unknown>)[CURRENT_JOB_KEY] as string) ?? null;
 }
 
-function getCurrentExecutorTaskLabel(): string | null {
+export function getCurrentExecutorTaskLabel(): string | null {
   return ((globalThis as Record<string, unknown>)[CURRENT_TASK_KEY] as string) ?? null;
 }
 
@@ -93,11 +93,9 @@ export function createGatewayExecutor(): AgentExecutor {
       registerJobSession(jobId, sessionKey);
     }
 
-    // Set task label on the ledger row (passed from dispatcher → worker → globalThis)
-    const taskLabel = getCurrentExecutorTaskLabel();
-    if (taskLabel) {
-      updateTaskBySession(sessionKey, taskLabel);
-    }
+    // Task label is passed via globalThis (setCurrentExecutorTaskLabel) and read by
+    // pi-embedded-subscribe.ts when the first record() fires — no need to call
+    // updateTaskBySession here (the row doesn't exist yet).
 
     // Patch the model selected by the Router's Dispatcher
     if (model) {
