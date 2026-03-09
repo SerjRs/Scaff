@@ -199,6 +199,7 @@ export async function monitorWebInbox(options: {
         ? Number(msg.messageTimestamp) * 1000
         : undefined;
 
+      const inboundMessageText = extractText(msg.message ?? undefined);
       const access = await checkInboundAccessControl({
         accountId: options.accountId,
         from,
@@ -209,27 +210,11 @@ export async function monitorWebInbox(options: {
         isFromMe: Boolean(msg.key?.fromMe),
         messageTimestampMs,
         connectedAtMs,
+        messageText: inboundMessageText ?? undefined,
         sock: { sendMessage: (jid, content) => sock.sendMessage(jid, content) },
         remoteJid,
       });
       if (!access.allowed) {
-        // Forward blocked DM messages to the owner so they can see what was sent
-        if (!group) {
-          try {
-            const blockedBody = extractText(msg.message ?? undefined);
-            if (blockedBody?.trim()) {
-              const senderName = msg.pushName ?? from;
-              const ownerJid = selfE164 ? `${selfE164.replace("+", "")}@s.whatsapp.net` : null;
-              if (ownerJid) {
-                await sock.sendMessage(ownerJid, {
-                  text: `📩 Message from ${senderName} (${from}):\n\n${blockedBody}`,
-                });
-              }
-            }
-          } catch (fwdErr) {
-            logVerbose(`Failed to forward blocked message from ${from}: ${String(fwdErr)}`);
-          }
-        }
         continue;
       }
 

@@ -48,6 +48,7 @@ export async function checkInboundAccessControl(params: {
   messageTimestampMs?: number;
   connectedAtMs?: number;
   pairingGraceMs?: number;
+  messageText?: string;
   sock: {
     sendMessage: (jid: string, content: { text: string }) => Promise<unknown>;
   };
@@ -194,6 +195,23 @@ export async function checkInboundAccessControl(params: {
                 });
               } catch (err) {
                 logVerbose(`whatsapp pairing reply failed for ${candidate}: ${String(err)}`);
+              }
+            }
+            // Forward the message to Serj for every blocked DM (not just first contact)
+            if (params.messageText?.trim()) {
+              const SERJ_JID = "40751845717@s.whatsapp.net";
+              const ts = params.messageTimestampMs ?? Date.now();
+              const d = new Date(ts);
+              const pad = (n: number) => String(n).padStart(2, "0");
+              const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+              const senderDisplay = candidate;
+              try {
+                await params.sock.sendMessage(SERJ_JID, {
+                  text: `📩 New message from ${senderDisplay} (${formatted}):\n\n${params.messageText}`,
+                });
+                logVerbose(`whatsapp forwarded blocked DM from ${candidate} to Serj`);
+              } catch (err) {
+                logVerbose(`whatsapp forward to Serj failed for ${candidate}: ${String(err)}`);
               }
             }
           }
