@@ -12,6 +12,7 @@ import {
   snapshot,
   reset,
   updateStatusBySession,
+  updateStatusByJobId,
   updateTaskBySession,
   type TokenLedgerRow,
   type TokenRowStatus,
@@ -82,18 +83,25 @@ function syncRouterStatuses(): void {
       )
       .all() as Array<{ id: string; status: string; worker_id: string | null }>;
 
+    const seen = new Set<string>();
     for (const row of terminalRows) {
       const mapped = mapJobStatus(row.status);
       if (!mapped) continue;
 
-      // Try to match by job ID embedded in session key patterns
-      // Router executor sessions use key: agent:router-executor:task:<uuid>
-      // The jobId might be stored as worker_id or we match by the job ID prefix
+      // Deduplicate: skip if we already processed this worker/job pair
+      const dedup = `${row.worker_id ?? ""}:${row.id}`;
+      if (seen.has(dedup)) continue;
+      seen.add(dedup);
+
+      // Try to match by worker_id (session key used during execution)
       if (row.worker_id) {
         updateStatusBySession(row.worker_id, mapped);
       }
       // Also try matching by the job ID itself (if used as sessionId)
       updateStatusBySession(row.id, mapped);
+      // Bug 2 fix: use the job→session map to resolve jobs registered via
+      // registerJobSession() — this is the primary linkage for router tasks
+      updateStatusByJobId(row.id, mapped);
     }
 
     // Sync task text for active (in_execution / evaluating) jobs

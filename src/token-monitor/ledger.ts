@@ -70,8 +70,9 @@ function isTerminalStatus(status: TokenRowStatus): boolean {
 }
 
 export function record(event: TokenLedgerEvent): void {
-  const keyId = event.sessionId ?? event.agentId;
-  const key = rowKey(keyId, event.model);
+  // Bug 1 fix: when sessionId is provided, key on sessionId alone to prevent
+  // duplicate rows when the same session reports with varying model strings.
+  const key = event.sessionId ?? rowKey(event.agentId, event.model);
   const existing = ledger.get(key);
   const now = Date.now();
 
@@ -81,6 +82,7 @@ export function record(event: TokenLedgerEvent): void {
     existing.cached += event.cached;
     existing.calls += 1;
     existing.lastCallAt = now;
+    existing.model = event.model; // keep model current for session rows
     if (event.pid) existing.pid = event.pid;
     if (event.channel) existing.channel = event.channel;
     if (event.task) existing.task = event.task;
@@ -113,6 +115,8 @@ export function updateStatus(sessionIdOrAgent: string, model: string, status: To
   const key = rowKey(sessionIdOrAgent, model);
   const row = ledger.get(key);
   if (row) {
+    // Bug 3 fix: idempotent — don't reset statusChangedAt if already in the same state
+    if (row.status === status) return;
     row.status = status;
     if (isTerminalStatus(status)) {
       row.statusChangedAt = Date.now();
@@ -123,7 +127,8 @@ export function updateStatus(sessionIdOrAgent: string, model: string, status: To
 /** Update task description for ALL rows whose key starts with a given sessionId. */
 export function updateTaskBySession(sessionId: string, task: string): void {
   for (const [key, row] of ledger) {
-    if (key.startsWith(sessionId + "\0")) {
+    // Bug 1 fix: match both bare sessionId keys and legacy sessionId\0model keys
+    if (key === sessionId || key.startsWith(sessionId + "\0")) {
       row.task = task;
     }
   }
@@ -133,7 +138,10 @@ export function updateTaskBySession(sessionId: string, task: string): void {
 export function updateStatusBySession(sessionId: string, status: TokenRowStatus): void {
   const now = Date.now();
   for (const [key, row] of ledger) {
-    if (key.startsWith(sessionId + "\0")) {
+    // Bug 1 fix: match both bare sessionId keys and legacy sessionId\0model keys
+    if (key === sessionId || key.startsWith(sessionId + "\0")) {
+      // Bug 3 fix: idempotent — don't reset statusChangedAt if already in same state
+      if (row.status === status) continue;
       row.status = status;
       if (isTerminalStatus(status)) {
         row.statusChangedAt = now;
