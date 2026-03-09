@@ -42,9 +42,9 @@ Cortex dynamically assembles its context window from four distinct layers. The C
 
 ### Layer 2: Foreground (Active Conversation)
 * **What it is:** The verbatim conversation history of the channel currently triggering Cortex.
-* **Token Guardrails (Soft Caps):** Instead of expanding to fill the entire remaining context window, Foreground uses a **Soft Cap** (e.g., the last 20 messages or 4,000 tokens) from the `cortex_session` table.
-* **Semantic Fetch:** If Cortex needs older verbatim context, it uses an internal tool (e.g., `fetch_chat_history`) to actively pull older records into the current turn.
-* **Retention:** Ephemeral in the LLM's context window, but permanent in the SQLite database.
+* **Token Guardrails (Shard-Based Cap):** Foreground is bounded by a configurable token budget, but context is cut at **shard boundaries** — coherent topic blocks — never mid-conversation. Shards are the atomic unit: fully included or fully excluded. The active shard (current topic) is always included. See **`foreground-sharding-architecture.md`** for the full shard-based context management design.
+* **Semantic Fetch:** If Cortex needs older verbatim context, it uses `fetch_chat_history` to pull back excluded shards by ID into the current turn.
+* **Retention:** Ephemeral in the LLM's context window, but permanent in the SQLite database. Raw messages in `cortex_session` are never deleted — shards are metadata layered on top.
 
 ### Layer 3: Background (Peripheral Awareness)
 * **What it is:** Highly compressed, 1-to-2 sentence summaries of *other* recently active channels (stored in `cortex_channel_states`).

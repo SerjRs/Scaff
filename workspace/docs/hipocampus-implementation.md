@@ -67,7 +67,7 @@ This phase rewrites the prompt assembly logic to transition from a static file-l
     * `Completed:` `[TASK_ID]=<id>, Message='<task>', Status=Completed, Channel=<ch>, Result='<full result>', CompletedAt=<ts>`
     * `Failed:` `[TASK_ID]=<id>, Message='<task>', Status=Failed, Channel=<ch>, Error='<error>', CompletedAt=<ts>`
   Acknowledged completed/failed ops are excluded by `getPendingOps()` (§6.5.1). A behavioral instruction preamble is included when results or failures are present, directing the LLM to act on them.
-* **Task 2.2: Foreground Soft Caps (Layer 2).** Update the session loader to apply a soft cap (e.g., last 20 messages or 4,000 tokens) for the active channel's verbatim history.
+* **Task 2.2: Foreground Shard-Based Cap (Layer 2).** Update the session loader to apply a shard-based token budget for the active channel's verbatim history. Context is cut at shard boundaries — coherent topic blocks — never mid-conversation. See **`foreground-sharding-architecture.md`** for the full design, including shard detection, assembly algorithm, mega-shard splitting, and Gardener integration.
 * **Task 2.3: Background Awareness (Layer 3).** Implement logic to inject 1-to-2 sentence summaries of recently active channels from `cortex_channel_states`. Ensure channels idle for >24 hours are excluded.
 
 ### Unit Tests
