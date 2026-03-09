@@ -652,3 +652,45 @@ Bind: loopback
     at listOnTimeout (node:internal/timers:605:17)
     at processTimers (node:internal/timers:541:7)
 
+[2026-03-09T15:10:40.071Z] sonnet failed: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+Error: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+    at Timeout.<anonymous> (file:///C:/Users/Temp%20User/.openclaw/dist/call-CIEm0uxg.js:452:9)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)
+
+[2026-03-09T15:16:34.098Z] sonnet failed: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+Error: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+    at Timeout.<anonymous> (file:///C:/Users/Temp%20User/.openclaw/dist/call-CIEm0uxg.js:452:9)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)
+
+[2026-03-09T15:20:56.913Z] sonnet failed: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+Error: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+    at Timeout.<anonymous> (file:///C:/Users/Temp%20User/.openclaw/dist/call-CIEm0uxg.js:452:9)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)
+

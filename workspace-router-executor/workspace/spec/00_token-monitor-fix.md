@@ -1,153 +1,87 @@
 # TokenMonitor Fix Spec
 
 **Created:** 2026-03-09
-**Last Updated:** 2026-03-09 16:15
-**Author:** Scaff (Cortex)
+**Last Updated:** 2026-03-09 17:45
+**Status:** ✅ All Issues Complete
+**Author:** Scaff (Cortex + Main Agent)
 
 ---
 
-## Current State
+## Final State
 
-TokenMonitor has 8 columns: PID | MODEL | TASK | CHANNEL | TOKENS-IN | TOKENS-OUT | DURATION | STATUS
+TokenMonitor: `PID | MODEL | TASK | CHANNEL | TOKENS-IN | TOKENS-OUT | DURATION | STATUS`
 
-### What works
-- PID column shows gateway PID or T:taskId for executor tasks
-- Status column shows Active/InProgress/Finished
-- Finished executor rows auto-cleanup after 30s
-- Single TOTAL row (fixed)
-- Column layout and alignment correct
-- Cortex shows "Live session" in Task column
-
-### What's broken — 3 remaining bugs
+All features working:
+- **PID**: Gateway PID for persistent agents, `T:<8-char-uuid>` for executor tasks
+- **Task**: Actual task text for router executors, "Sub-agent task" for spawned sub-agents, "Sonnet verification" for evaluators, "Live session" for persistent agents, "Ollama scoring" for local eval
+- **Status**: Active (persistent), InProgress → Finished/Failed/Canceled (tasks), with 30s auto-cleanup
+- **Stale cleanup**: InProgress rows with no LLM activity for 2+ minutes auto-mark as Failed
+- **No duplicates**: Single recording path via `pi-embedded-subscribe.ts`
+- **Column alignment**: Clean terminal rendering with color-coded status
 
 ---
 
-## Bug 1: Task Column Empty for All Rows Except Cortex
+## Completed Issues
 
-**Priority:** HIGH
-**Status:** ✅ Complete — 2026-03-09 16:21
+### Phase 1: Structure
 
-**Symptom:** Every row except Cortex shows blank in the TASK column. Executors, evaluators, and Main Agent all show empty.
+| # | Feature | Status | Commits |
+|---|---------|--------|---------|
+| 1 | PID column | ✅ | 8cd4b6e44 |
+| 2 | Status column (Active/InProgress/Finished/Canceled/Failed) | ✅ | 8cd4b6e44 |
+| 3 | Auto-cleanup of Finished rows (30s) | ✅ | 8cd4b6e44 |
+| 4 | 8-column layout with color-coded status | ✅ | 58a76de71 |
 
-**Root cause analysis:**
-- `resolveTaskLabel()` in `cli.ts` returns "Live session" only for Active rows with no task set — only Cortex qualifies
-- `syncRouterStatuses()` in `gateway-methods.ts` should read the `request` column from router/queue.sqlite jobs table and call `updateTaskBySession()` — but the session ID mapping (jobToSession map) likely doesn't resolve
-- `extractTaskSummary()` in `gateway-methods.ts` should parse and truncate task descriptions to 40 chars — but may never be called
-- There are 184 uncommitted lines in gateway-integration.ts (+22), worker.ts (+13), stream-hook.ts (+12) that may contain wiring fixes not yet built/deployed
-- Evaluators are not router jobs so syncRouterStatuses() doesn't see them at all
+### Phase 2: Bugs
 
-**Fix plan:**
-1. Check if uncommitted changes in src/router/gateway-integration.ts and src/router/worker.ts contain the jobToSession registration. If yes, commit and build first
-2. Verify extractTaskSummary() is being called during syncRouterStatuses() with the job request text
-3. Ensure updateTaskBySession() correctly matches the ledger row by session ID
-4. For executors: show first 40 chars of task request with "..." if truncated
-5. For evaluators: show "Evaluating task" — requires hooking into evaluator lifecycle (not router jobs)
-6. For Main Agent: show "Live session" — requires recognizing Main Agent as persistent (see Bug 2)
+| # | Bug | Root Cause | Fix | Commits |
+|---|-----|-----------|-----|---------|
+| 5 | Duplicate rows | Two recording paths: `attempt.ts` + `pi-embedded-subscribe.ts` used different sessionId values → different Map keys | Removed `attempt.ts` hook, centralized in `pi-embedded-subscribe.ts` | cb099cfab |
+| 6 | Main agent "InProgress" instead of "Active" | `isTask = Boolean(sessionId)` — main agent has a sessionId | Added `persistent` flag to `TokenLedgerEvent`, set by `pi-embedded-subscribe.ts` for main/cortex | 4a713cacf |
+| 7 | Evaluator rows stuck InProgress forever | No status update after Sonnet verification; evaluators not in router job table | `verifySonnet()` now returns sessionKey; caller marks Finished/Failed. 2-min stale InProgress cleanup as safety net | 4a713cacf, 7eef46f33 |
+| 8 | Task column empty for all rows | `updateTaskBySession()` called before row exists; `pi-embedded-subscribe.ts` didn't pass task | Moved task label to `record()` time via globalThis. Router tasks read from `getCurrentExecutorTaskLabel()`, sub-agents default to "Sub-agent task" | 6c1724740, 7eef46f33 |
 
-**Source files:** src/token-monitor/gateway-methods.ts, src/token-monitor/ledger.ts, src/token-monitor/cli.ts, src/router/gateway-integration.ts, src/router/worker.ts
+### Verified Test Results
 
-**Test:** Spawn a task via Router. Verify executor row shows truncated task description. Verify evaluator shows "Evaluating task". Verify Main Agent shows "Live session".
+**Persistent agents:**
+- Main agent: `pid=19296, task=Live session, status=Active` ✅
+- Cortex: `pid=19296, task=(Live session via CLI fallback), status=Active` ✅
 
----
+**Router dispatcher tasks (Cortex webchat):**
+- Executor: `pid=T:c8300a95, task=In the OpenClaw project at ~/.openclaw, run:..., status=Finished` ✅
+- Evaluator: `pid=19296, task=Sonnet verification, status=Finished` ✅
 
-## Bug 2: Main Agent Stuck as InProgress (Should Be Active)
+**Sub-agent tasks (sessions_spawn):**
+- Executor: `pid=T:3d735c69, task=Sub-agent task, status=InProgress` ✅
 
-**Priority:** MEDIUM
-**Status:** ✅ Complete — 2026-03-09 16:21
-
-**Symptom:** Main Agent row shows InProgress forever with unchanging token counts (3 in, 189 out). It should show Active like Cortex since it's a persistent session.
-
-**Root cause analysis:**
-- The code that assigns Active status only recognizes Cortex (channel === "cortex")
-- Main Agent channel shows as "main" — not included in the persistent agent check
-- Main Agent is a long-lived session, not a one-shot task
-
-**Fix plan:**
-1. In ledger.ts record() or wherever status is assigned, add "main" to the list of channels that get Active status
-2. This should be a simple check: if channel is "cortex" OR "main", status = Active
-3. Once Active, resolveTaskLabel() will also return "Live session" for Main Agent
-
-**Source files:** src/token-monitor/ledger.ts, src/token-monitor/stream-hook.ts
-
-**Test:** After restart, verify Main Agent row shows Active status and "Live session" in Task column.
+**Auto-cleanup:**
+- Evaluator Finished row disappeared after ~30s ✅
+- Stale InProgress rows auto-mark Failed after 2 minutes ✅
 
 ---
 
-## Bug 3: Evaluator Rows Accumulate as Stale InProgress
+## Files Modified (complete list)
 
-**Priority:** MEDIUM
-**Status:** ✅ Complete — 2026-03-09 16:21
+- `src/token-monitor/ledger.ts` — Core: persistent flag, stale cleanup, task field
+- `src/token-monitor/stream-hook.ts` — Pass task/persistent through recordRunResultUsage
+- `src/token-monitor/cli.ts` — 8-column layout, resolveTaskLabel, color-coded status
+- `src/token-monitor/gateway-methods.ts` — Router status sync on snapshot
+- `src/token-monitor/index.ts` — Exports
+- `src/agents/pi-embedded-subscribe.ts` — Centralized recording with task labels, persistent flag
+- `src/agents/pi-embedded-runner/run/attempt.ts` — Removed duplicate recording hook
+- `src/router/evaluator.ts` — Status lifecycle for Sonnet verification sessions
+- `src/router/dispatcher.ts` — Pass task label to worker
+- `src/router/worker.ts` — Forward task label via globalThis
+- `src/router/gateway-integration.ts` — Export getCurrentExecutorTaskLabel, registerJobSession
+- `src/agents/cli-runner.ts` — CLI runner recording
+- `src/cortex/llm-caller.ts` — Cortex recording
 
-**Symptom:** Evaluator rows pile up over time. Old evaluators stay as InProgress forever. New evaluator runs add new rows instead of replacing old ones. They never transition to Finished and never get cleaned up.
+## Key Commits
 
-**Root cause analysis:**
-- Evaluators are NOT router jobs — they run as part of the evaluation stage before a job is created
-- syncRouterStatuses() only checks the router queue jobs table — evaluators are invisible to it
-- Evaluator sessions complete but nothing calls updateStatus() to mark them as Finished
-- Without Finished status, the 30s auto-cleanup never fires
-- Each new evaluation creates a new session ID, so old rows are orphaned
-
-**Fix plan:**
-1. Hook into evaluator completion in src/router/evaluator.ts — when evaluation finishes (success or failure), call updateStatusBySession() to mark the evaluator ledger row as Finished
-2. Alternatively, add evaluator lifecycle tracking in gateway-methods.ts syncRouterStatuses() — check if evaluator sessions have been idle for >60s and mark them Finished
-3. Ensure evaluator rows properly dedup — if evaluator uses same session pattern, key should upsert
-
-**Source files:** src/router/evaluator.ts, src/token-monitor/gateway-methods.ts, src/token-monitor/ledger.ts
-
-**Test:** Run a task through the router. Verify evaluator shows as InProgress during evaluation, transitions to Finished when done, disappears after 30s.
-
----
-
-## Completed Tasks (for reference)
-
-### Task 1: Add PID Column ✅
-Commit: Part of Main Agent implementation
-33/33 tests passing
-
-### Task 2: Add Status Column ✅
-Commit: Part of Main Agent implementation
-Status values: Active, InProgress, Finished, Canceled, Failed
-
-### Task 3: Auto-cleanup of Finished Rows ✅
-30s cleanup delay working for rows that reach Finished status
-
-### Task 4: Column Layout Update ✅
-8-column layout with color-coded status
-
-### Task 5: Add Task Column ✅
-Commit: 58a76de71
-Task column renders between Model and Channel. Only populates for Cortex currently.
-
-### Previous fix attempts:
-- Commit bf70d9e6f: dedup + status transitions + stale cleanup (partially effective)
-- Commit cb099cfab: remove duplicate recording paths (partially effective)
-- 184 uncommitted lines may contain additional fixes not yet built
-
----
-
-## Progress Log
-
-| Task | Started | Completed | Notes |
-|------|---------|-----------|-------|
-| 1 - PID Column | 2026-03-09 | 2026-03-09 | ✅ Working |
-| 2 - Status Column | 2026-03-09 | 2026-03-09 | ✅ Working |
-| 3 - Auto-cleanup | 2026-03-09 | 2026-03-09 | ✅ Working |
-| 4 - Layout | 2026-03-09 | 2026-03-09 | ✅ Working |
-| 5 - Task Column | 2026-03-09 | 2026-03-09 | ⚠️ Only Cortex populates |
-| 6 - Task Labels | 2026-03-09 | 2026-03-09 | ✅ Evaluator records "Evaluating task"; executors via syncRouterStatuses; Active rows → "Live session" |
-| 7 - Main Agent Active | 2026-03-09 | 2026-03-09 | ✅ channel "main" now treated as persistent → Active status |
-| 8 - Evaluator Cleanup | 2026-03-09 | 2026-03-09 | ✅ verifySonnet marks session Finished/Failed → 30s auto-cleanup |
-
-## Files Modified (all changes)
-
-- src/token-monitor/ledger.ts
-- src/token-monitor/stream-hook.ts
-- src/token-monitor/cli.ts
-- src/token-monitor/gateway-methods.ts
-- src/token-monitor/index.ts
-- src/router/worker.ts
-- src/router/gateway-integration.ts
-- src/router/evaluator.ts (pending)
-- src/agents/cli-runner.ts
-- src/agents/pi-embedded-subscribe.ts
-- src/cortex/llm-caller.ts
+- `8cd4b6e44` — feat: token monitor with PID, status, cleanup
+- `58a76de71` — feat: Task column
+- `bf70d9e6f` — fix: dedup, status transitions, stale cleanup
+- `cb099cfab` — fix: remove duplicate recording paths
+- `4a713cacf` — fix: task labels, main agent active, evaluator cleanup
+- `6c1724740` — fix: pass task label from dispatcher to worker
+- `7eef46f33` — fix: executor Task column — set label during record()

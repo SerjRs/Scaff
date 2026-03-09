@@ -126,8 +126,8 @@ export function startRouterLoop(
         const updatedJob = getJob(db, job.id);
         if (!updatedJob) return; // Job disappeared (shouldn't happen)
 
-        // Dispatch the job
-        dispatch(db, updatedJob, config, executor);
+        // Dispatch the job with evaluator-generated summary for token monitor
+        dispatch(db, updatedJob, config, executor, result.summary);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         updateJob(db, job.id, {

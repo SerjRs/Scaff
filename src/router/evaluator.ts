@@ -20,7 +20,7 @@ Scoring criteria:
 - 8-10: Complex — architecture design, deep research, large code review, multi-file refactoring
 
 Respond with ONLY a JSON object, no markdown fencing, no extra text:
-{"weight": <number 1-10>, "reasoning": "<brief one-sentence explanation>"}`;
+{"weight": <number 1-10>, "reasoning": "<brief one-sentence explanation>", "summary": "<3-5 word task label>"}`;
 
 const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
 const OLLAMA_MODEL = "llama3.2:3b";
@@ -129,6 +129,7 @@ export function parseEvaluatorResponse(
       const parsed = JSON.parse(jsonMatch[0]) as {
         weight?: unknown;
         reasoning?: unknown;
+        summary?: unknown;
       };
       if (typeof parsed.weight === "number" && !Number.isNaN(parsed.weight)) {
         return {
@@ -137,6 +138,10 @@ export function parseEvaluatorResponse(
             typeof parsed.reasoning === "string"
               ? parsed.reasoning
               : "no reasoning provided",
+          summary:
+            typeof parsed.summary === "string"
+              ? parsed.summary.slice(0, 40)
+              : undefined,
         };
       }
     } catch {

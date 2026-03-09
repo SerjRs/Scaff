@@ -69,6 +69,8 @@ export function dispatch(
   job: RouterJob,
   config: RouterConfig,
   executor?: AgentExecutor,
+  /** Short evaluator-generated task summary for the token monitor Task column. */
+  evaluatorSummary?: string,
 ): void {
   // 1. Resolve weight → tier
   const weight = job.weight ?? config.evaluator.fallback_weight;
@@ -104,6 +106,7 @@ export function dispatch(
 
   // 5. Fire-and-forget — worker manages its own lifecycle.
   //    Executor runs in isolated router-executor session — no parent context.
-  const taskLabel = (payload.message ?? "").slice(0, 60);
+  // Prefer evaluator-generated summary over raw truncated text
+  const taskLabel = evaluatorSummary || (payload.message ?? "").slice(0, 60);
   void run(db, job.id, prompt, model, executor, taskLabel);
 }
