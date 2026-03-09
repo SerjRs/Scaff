@@ -1,8 +1,7 @@
 import { callGateway } from "../gateway/call.js";
 import { getTemplate, renderTemplate } from "./templates/index.js";
 import type { EvaluatorConfig, EvaluatorResult } from "./types.js";
-import { record } from "../token-monitor/ledger.js";
-// normalizeUsage removed — Sonnet usage is recorded by pi-embedded-subscribe hook
+import { record, updateStatusBySession } from "../token-monitor/ledger.js";
 
 const EVALUATOR_MODEL = "claude-sonnet-4-6";
 
@@ -69,6 +68,7 @@ async function callOllama(
       cached: 0,
       pid: String(process.pid),
       channel: "router-eval",
+      task: "Ollama scoring",
     });
     return data.response ?? "";
   } finally {
@@ -179,36 +179,42 @@ export function parseEvaluatorResponse(
 async function verifySonnet(
   userMessage: string,
   timeoutMs: number,
-): Promise<string> {
+): Promise<{ text: string; sessionKey: string }> {
   const idempotencyKey = crypto.randomUUID();
   const sessionKey = `agent:router-evaluator:eval:${idempotencyKey}`;
 
-  const response = await callGateway<{
-    result?: unknown;
-    summary?: string;
-  }>({
-    method: "agent",
-    params: {
-      message: `${EVALUATOR_SYSTEM_PROMPT}\n\n${userMessage}`,
-      sessionKey,
-      deliver: false,
-      model: EVALUATOR_MODEL,
-      idempotencyKey,
-    },
-    expectFinal: true,
-    timeoutMs,
-  });
+  try {
+    const response = await callGateway<{
+      result?: unknown;
+      summary?: string;
+    }>({
+      method: "agent",
+      params: {
+        message: `${EVALUATOR_SYSTEM_PROMPT}\n\n${userMessage}`,
+        sessionKey,
+        deliver: false,
+        model: EVALUATOR_MODEL,
+        idempotencyKey,
+      },
+      expectFinal: true,
+      timeoutMs,
+    });
 
-  // Token usage is already recorded by the pi-embedded-subscribe hook
-  // inside callGateway's agent run — no need to record again here.
-  const resultObj = response?.result as Record<string, unknown> | undefined;
+    // Token usage is already recorded by the pi-embedded-subscribe hook
+    // inside callGateway's agent run — no need to record again here.
+    const resultObj = response?.result as Record<string, unknown> | undefined;
 
-  // Extract text from gateway response (shape: result.payloads[0].text)
-  const payloads = resultObj?.payloads as Array<{ text?: string }> | undefined;
-  if (payloads?.[0]?.text) return payloads[0].text;
-  if (typeof response?.result === "string") return response.result;
-  if (typeof response?.summary === "string") return response.summary;
-  return JSON.stringify(response ?? "");
+    // Extract text from gateway response (shape: result.payloads[0].text)
+    const payloads = resultObj?.payloads as Array<{ text?: string }> | undefined;
+    if (payloads?.[0]?.text) return { text: payloads[0].text, sessionKey };
+    if (typeof response?.result === "string") return { text: response.result, sessionKey };
+    if (typeof response?.summary === "string") return { text: response.summary, sessionKey };
+    return { text: JSON.stringify(response ?? ""), sessionKey };
+  } catch (err) {
+    // Bug 3 fix: mark evaluator session as Failed so 30s auto-cleanup fires
+    updateStatusBySession(sessionKey, "Failed");
+    throw err;
+  }
 }
 
 /**
@@ -271,14 +277,17 @@ export async function evaluate(
     console.log(`[router/evaluator] ${reason}, verifying with sonnet...`);
     console.log(`[router/evaluator] sessionKey will use agent=router-evaluator, config.model=${config.model}`);
     try {
-      const sonnetText = await verifySonnet(userMessage, timeoutMs * 3);
-      console.log(`[router/evaluator] sonnet raw response: ${String(sonnetText).slice(0, 200)}`);
-      const sonnetResult = parseEvaluatorResponse(sonnetText, config.fallback_weight);
+      const sonnetResult$ = await verifySonnet(userMessage, timeoutMs * 3);
+      console.log(`[router/evaluator] sonnet raw response: ${String(sonnetResult$.text).slice(0, 200)}`);
+      updateStatusBySession(sonnetResult$.sessionKey, "Finished");
+      const sonnetResult = parseEvaluatorResponse(sonnetResult$.text, config.fallback_weight);
       console.log(`[router/evaluator] sonnet verified: w=${sonnetResult.weight} (${sonnetResult.reasoning})`);
       console.log(`[router/evaluator] ===== EVALUATE END: w=${sonnetResult.weight} tier=${sonnetResult.weight <= 3 ? 'haiku' : sonnetResult.weight <= 7 ? 'sonnet' : 'opus'} =====`);
-      // Token usage is already recorded by callGateway session
       return sonnetResult;
     } catch (sonnetErr) {
+      // Mark any evaluator sessions as failed (best-effort — sessionKey may not be available)
+      // The verifySonnet function returns sessionKey on success; on throw we don't have it,
+      // but the row will be cleaned up by the stale-InProgress sweep below in snapshot().
       const detail = sonnetErr instanceof Error ? sonnetErr.message : String(sonnetErr);
       const stack = sonnetErr instanceof Error ? sonnetErr.stack : undefined;
       console.error(`[router/evaluator] sonnet verification failed: ${detail}`);

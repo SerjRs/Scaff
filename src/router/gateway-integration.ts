@@ -19,6 +19,7 @@ import { startRouter, type RouterInstance, type AgentExecutor } from "./index.js
 import type { OnDeliveredCallback } from "./notifier.js";
 import type { RouterConfig, RouterJob } from "./types.js";
 import { getCortexSessionKey } from "../cortex/session.js";
+import { registerJobSession, updateTaskBySession } from "../token-monitor/ledger.js";
 
 // ---------------------------------------------------------------------------
 // Global singleton - use globalThis to survive bundler chunk splitting.
@@ -55,12 +56,48 @@ function setRouterInstance(instance: RouterInstance | null): void {
  * The returned function signature matches what the Router worker expects:
  *   `(prompt: string, model: string) => Promise<string>`
  */
+// ---------------------------------------------------------------------------
+// Current job context — set by worker before calling executor, read by executor
+// to register the job→session mapping for token monitor status tracking.
+// ---------------------------------------------------------------------------
+
+const CURRENT_JOB_KEY = "__openclaw_current_executor_jobId__" as const;
+const CURRENT_TASK_KEY = "__openclaw_current_executor_taskLabel__" as const;
+
+export function setCurrentExecutorJobId(jobId: string | null): void {
+  (globalThis as Record<string, unknown>)[CURRENT_JOB_KEY] = jobId;
+}
+
+export function setCurrentExecutorTaskLabel(label: string | null): void {
+  (globalThis as Record<string, unknown>)[CURRENT_TASK_KEY] = label;
+}
+
+function getCurrentExecutorJobId(): string | null {
+  return ((globalThis as Record<string, unknown>)[CURRENT_JOB_KEY] as string) ?? null;
+}
+
+function getCurrentExecutorTaskLabel(): string | null {
+  return ((globalThis as Record<string, unknown>)[CURRENT_TASK_KEY] as string) ?? null;
+}
+
 export function createGatewayExecutor(): AgentExecutor {
   return async (prompt: string, model: string): Promise<string> => {
     // Always create an isolated session under the router-executor agent.
     // This agent has an empty workspace - no context files are injected.
     const sessionKey = `agent:${EXECUTOR_AGENT_ID}:task:${crypto.randomUUID()}`;
     const idempotencyKey = crypto.randomUUID();
+
+    // Register job→session mapping for token monitor PID/status tracking
+    const jobId = getCurrentExecutorJobId();
+    if (jobId) {
+      registerJobSession(jobId, sessionKey);
+    }
+
+    // Set task label on the ledger row (passed from dispatcher → worker → globalThis)
+    const taskLabel = getCurrentExecutorTaskLabel();
+    if (taskLabel) {
+      updateTaskBySession(sessionKey, taskLabel);
+    }
 
     // Patch the model selected by the Router's Dispatcher
     if (model) {

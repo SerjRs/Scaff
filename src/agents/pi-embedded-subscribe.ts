@@ -276,10 +276,37 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     // This fires for ALL surfaces (webchat, TUI, channels).
     const lastMsg = state.lastAssistant as { model?: string; provider?: string } | undefined;
     const agentId = params.sessionKey ? resolveAgentIdFromSessionKey(params.sessionKey) : "unknown";
+    // For router-executor tasks, use session key as unique ID and show T:<taskId> as PID.
+    // For persistent agents, use process PID.
+    const isRouterTask = params.sessionKey?.includes(":router-executor:task:");
+    const isRouterEval = params.sessionKey?.includes(":router-evaluator:");
+    const taskUuid = isRouterTask
+      ? params.sessionKey!.split(":task:")[1]?.slice(0, 8)
+      : undefined;
+    const PERSISTENT_AGENTS = new Set(["main", "cortex"]);
+    // Derive task label from session context
+    let taskLabel: string | undefined;
+    if (agentId === "main") {
+      // Main agent: show channel from session key (e.g. "WhatsApp DM" / "Webchat")
+      const sk = params.sessionKey ?? "";
+      if (sk.includes("whatsapp")) taskLabel = "WhatsApp DM";
+      else if (sk.includes("webchat")) taskLabel = "Webchat";
+      else if (sk.includes("telegram")) taskLabel = "Telegram";
+      else if (sk.includes("discord")) taskLabel = "Discord";
+      else if (sk.includes("signal")) taskLabel = "Signal";
+      else taskLabel = "Live session";
+    } else if (isRouterEval) {
+      taskLabel = "Sonnet verification";
+    }
     recordRunResultUsage({
       usage: usageLike,
       agentId,
       model: lastMsg?.model ?? "unknown",
+      pid: isRouterTask ? `T:${taskUuid}` : String(process.pid),
+      channel: agentId,
+      sessionId: params.sessionKey ?? undefined,
+      persistent: PERSISTENT_AGENTS.has(agentId),
+      task: taskLabel,
     });
   };
   const getUsageTotals = () => {

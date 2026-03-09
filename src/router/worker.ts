@@ -1,6 +1,9 @@
 import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
 import { updateJob } from "./queue.js";
+import { updateStatusByJobId } from "../token-monitor/ledger.js";
+import { setCurrentExecutorTaskLabel } from "./gateway-integration.js";
+import { setCurrentExecutorJobId } from "./gateway-integration.js";
 
 // ---------------------------------------------------------------------------
 // Shared lifecycle event emitter - other modules (Notifier) listen on this.
@@ -90,6 +93,7 @@ export async function run(
   prompt: string,
   model: string,
   executor: AgentExecutor = defaultExecuteAgent,
+  taskLabel?: string,
 ): Promise<void> {
   const now = nowTimestamp();
 
@@ -110,7 +114,12 @@ export async function run(
 
   try {
     // 3. Execute the agent (isolated session - no parent context)
+    // Set job context so the executor can register the job→session mapping
+    setCurrentExecutorJobId(jobId);
+    setCurrentExecutorTaskLabel(taskLabel ?? null);
     const result = await executor(prompt, model);
+    setCurrentExecutorJobId(null);
+    setCurrentExecutorTaskLabel(null);
 
     // 4. Success - stop heartbeat first
     clearInterval(heartbeatTimer);
@@ -119,6 +128,10 @@ export async function run(
       result,
       finished_at: nowTimestamp(),
     });
+
+    // Update token monitor status for this job's ledger row(s)
+    updateStatusByJobId(jobId, "Finished");
+
     routerEvents.emit("job:completed", { jobId });
   } catch (err) {
     // 5. Failure - stop heartbeat first
@@ -130,6 +143,10 @@ export async function run(
       error: errorMessage,
       finished_at: nowTimestamp(),
     });
+
+    // Update token monitor status for this job's ledger row(s)
+    updateStatusByJobId(jobId, "Failed");
+
     routerEvents.emit("job:failed", { jobId, error: errorMessage });
   }
 }

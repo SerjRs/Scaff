@@ -20,6 +20,9 @@ export type TokenLedgerHook = {
 export function createTokenLedgerHook(params: {
   agentId: string;
   modelId: string;
+  pid?: string;
+  channel?: string;
+  sessionId?: string;
 }): TokenLedgerHook {
   const { agentId, modelId } = params;
 
@@ -35,6 +38,9 @@ export function createTokenLedgerHook(params: {
           tokensIn: normalized.input ?? 0,
           tokensOut: normalized.output ?? 0,
           cached: normalized.cacheRead ?? 0,
+          pid: params.pid,
+          channel: params.channel,
+          sessionId: params.sessionId,
         };
         record(event);
         return;
@@ -54,6 +60,11 @@ export function recordRunResultUsage(params: {
   usage: unknown;
   agentId: string;
   model: string;
+  pid?: string;
+  channel?: string;
+  sessionId?: string;
+  task?: string;
+  persistent?: boolean;
 }): void {
   if (!params.usage || typeof params.usage !== "object") return;
   const normalized = normalizeUsage(params.usage as UsageLike);
@@ -64,5 +75,10 @@ export function recordRunResultUsage(params: {
     tokensIn: normalized.input ?? 0,
     tokensOut: normalized.output ?? 0,
     cached: normalized.cacheRead ?? 0,
+    pid: params.pid,
+    channel: params.channel,
+    sessionId: params.sessionId,
+    task: params.task,
+    persistent: params.persistent,
   });
 }

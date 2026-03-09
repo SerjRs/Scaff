@@ -540,6 +540,8 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
               usage: resultUsage,
               agentId: "cortex",
               model: params.modelId,
+              pid: String(process.pid),
+              channel: "cortex",
             });
           }
 

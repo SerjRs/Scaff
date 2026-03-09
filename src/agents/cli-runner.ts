@@ -330,6 +330,8 @@ export async function runCliAgent(params: {
         usage: output.usage,
         agentId: params.sessionKey ?? "cli",
         model: modelId,
+        pid: String(process.pid),
+        channel: "cli",
       });
     }
 

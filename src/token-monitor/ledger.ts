@@ -36,6 +36,8 @@ export type TokenLedgerEvent = {
   sessionId?: string;
   /** Short description of what this agent/task is doing (max 40 chars displayed). */
   task?: string;
+  /** If true, this is a persistent agent (main, cortex) — status defaults to Active. */
+  persistent?: boolean;
 };
 
 type LedgerMap = Map<string, TokenLedgerRow>;
@@ -59,6 +61,9 @@ const jobToSession: Map<string, string> = _global[JOB_MAP_KEY] as Map<string, st
 
 /** Auto-cleanup delay for terminal rows (ms). */
 const CLEANUP_DELAY_MS = 30_000;
+
+/** Stale InProgress cleanup — rows with no activity for this long are marked Failed. */
+const STALE_INPROGRESS_MS = 120_000;
 
 function rowKey(sessionIdOrAgent: string, model: string): string {
   return `${sessionIdOrAgent}\0${model}`;
@@ -87,7 +92,12 @@ export function record(event: TokenLedgerEvent): void {
     if (event.channel) existing.channel = event.channel;
     if (event.task) existing.task = event.task;
   } else {
-    const isTask = Boolean(event.sessionId);
+    // Bug 2 fix: persistent agents (cortex, main) should always be Active
+    const isPersistent =
+      event.persistent ||
+      event.channel === "cortex" ||
+      event.channel === "main";
+    const isTask = !isPersistent && Boolean(event.sessionId);
     ledger.set(key, {
       pid: event.pid ?? String(process.pid),
       agentId: event.agentId,
@@ -186,6 +196,16 @@ export function snapshot(): TokenLedgerRow[] {
       now - row.statusChangedAt > CLEANUP_DELAY_MS
     ) {
       ledger.delete(key);
+      continue;
+    }
+    // Stale InProgress cleanup: non-persistent rows with no LLM activity for 2+ minutes
+    // are likely orphaned (evaluator sessions, crashed tasks). Mark as Failed for cleanup.
+    if (
+      row.status === "InProgress" &&
+      now - row.lastCallAt > STALE_INPROGRESS_MS
+    ) {
+      row.status = "Failed";
+      row.statusChangedAt = now;
     }
   }
 
