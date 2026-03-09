@@ -1,6 +1,8 @@
 /**
  * CLI command: `openclaw tokens`
  * Connects to the gateway and displays a live token usage table.
+ *
+ * Column layout: PID | Model | Task | Channel | Tokens In | Tokens Out | Duration | Status
  */
 
 import type { Command } from "commander";
@@ -17,48 +19,103 @@ function formatNumber(n: number): string {
 }
 
 function pad(str: string, width: number, align: "left" | "right" = "left"): string {
-  if (str.length >= width) return str;
+  if (str.length >= width) return str.slice(0, width);
   const padding = " ".repeat(width - str.length);
   return align === "right" ? padding + str : str + padding;
+}
+
+/**
+ * Format a duration in milliseconds as a human-readable string.
+ * < 60s  → "12s"
+ * < 60m  → "5m 12s"
+ * >= 60m → "1h 23m"
+ */
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return `${hours}h ${remainMinutes}m`;
 }
 
 // Stable sort so rows don't jump around — alphabetical by agentId then model.
 function sortRowsStable(rows: TokensSnapshotResult["rows"]): TokensSnapshotResult["rows"] {
   return rows.toSorted((a, b) => {
+    // Sort by status priority: Active/InProgress first, terminal last
+    const statusOrder = { Active: 0, InProgress: 1, Finished: 2, Canceled: 3, Failed: 4 };
+    const sa = statusOrder[a.status] ?? 2;
+    const sb = statusOrder[b.status] ?? 2;
+    if (sa !== sb) return sa - sb;
     const agentCmp = a.agentId.localeCompare(b.agentId);
     if (agentCmp !== 0) return agentCmp;
     return a.model.localeCompare(b.model);
   });
 }
 
+/** Color a status string based on its value. */
+function colorStatus(status: string, rich: boolean): string {
+  if (!rich) return status;
+  switch (status) {
+    case "Active":
+      return theme.accent ? theme.accent(status) : status;
+    case "InProgress":
+      return theme.heading ? theme.heading(status) : status;
+    case "Finished":
+      return theme.muted ? theme.muted(status) : status;
+    case "Failed":
+      return `\x1B[31m${status}\x1B[0m`; // red
+    case "Canceled":
+      return `\x1B[33m${status}\x1B[0m`; // yellow
+    default:
+      return status;
+  }
+}
+
+/** Resolve the task label for a row. Persistent agents show "Live session". */
+function resolveTaskLabel(row: TokensSnapshotResult["rows"][number]): string {
+  if (row.task) return row.task;
+  // Persistent agents (Active status, no task set) get a generic label
+  if (row.status === "Active") return "Live session";
+  return "";
+}
+
 function renderTable(result: TokensSnapshotResult, rich: boolean): string {
-  const colAgent = 14;
+  const colPid = 12;
   const colModel = 24;
+  const colTask = 42;
+  const colChannel = 16;
   const colIn = 12;
   const colOut = 12;
-  const colCached = 12;
-  const colCalls = 7;
+  const colDuration = 10;
+  const colStatus = 12;
 
   const sep = rich ? "\u2502" : "|";
   const hline = rich ? "\u2500" : "-";
   const cross = rich ? "\u253c" : "+";
 
   const header = [
-    pad("AGENT-ID", colAgent),
+    pad("PID", colPid),
     pad("MODEL", colModel),
+    pad("TASK", colTask),
+    pad("CHANNEL", colChannel),
     pad("TOKENS-IN", colIn, "right"),
     pad("TOKENS-OUT", colOut, "right"),
-    pad("CACHED", colCached, "right"),
-    pad("CALLS", colCalls, "right"),
+    pad("DURATION", colDuration, "right"),
+    pad("STATUS", colStatus),
   ].join(` ${sep} `);
 
   const divider = [
-    hline.repeat(colAgent),
+    hline.repeat(colPid),
     hline.repeat(colModel),
+    hline.repeat(colTask),
+    hline.repeat(colChannel),
     hline.repeat(colIn),
     hline.repeat(colOut),
-    hline.repeat(colCached),
-    hline.repeat(colCalls),
+    hline.repeat(colDuration),
+    hline.repeat(colStatus),
   ].join(`${hline}${cross}${hline}`);
 
   const lines: string[] = [];
@@ -66,18 +123,26 @@ function renderTable(result: TokensSnapshotResult, rich: boolean): string {
   lines.push(divider);
 
   const sortedRows = sortRowsStable(result.rows);
+  const now = Date.now();
 
   if (sortedRows.length === 0) {
     lines.push(rich ? theme.muted("  (no API calls recorded yet)") : "  (no API calls recorded yet)");
   } else {
     for (const row of sortedRows) {
+      const durationMs = now - (row.startedAt ?? now);
+      const statusText = row.status ?? "Active";
+      const statusDisplay = colorStatus(pad(statusText, colStatus), rich);
+      const taskLabel = resolveTaskLabel(row);
+
       const line = [
-        pad(row.agentId, colAgent),
+        pad(row.pid ?? String(process.pid), colPid),
         pad(row.model, colModel),
+        pad(taskLabel, colTask),
+        pad(row.channel ?? row.agentId, colChannel),
         pad(formatNumber(row.tokensIn), colIn, "right"),
         pad(formatNumber(row.tokensOut), colOut, "right"),
-        pad(formatNumber(row.cached), colCached, "right"),
-        pad(formatNumber(row.calls), colCalls, "right"),
+        pad(formatDuration(durationMs), colDuration, "right"),
+        statusDisplay,
       ].join(` ${sep} `);
       lines.push(line);
     }
@@ -85,12 +150,14 @@ function renderTable(result: TokensSnapshotResult, rich: boolean): string {
     lines.push(divider);
 
     const totalsLine = [
-      pad("TOTAL", colAgent),
+      pad("TOTAL", colPid),
       pad("", colModel),
+      pad("", colTask),
+      pad("", colChannel),
       pad(formatNumber(result.totals.tokensIn), colIn, "right"),
       pad(formatNumber(result.totals.tokensOut), colOut, "right"),
-      pad(formatNumber(result.totals.cached), colCached, "right"),
-      pad(formatNumber(result.totals.calls), colCalls, "right"),
+      pad("", colDuration, "right"),
+      pad("", colStatus),
     ].join(` ${sep} `);
     lines.push(rich ? theme.accent(totalsLine) : totalsLine);
   }

@@ -1,16 +1,27 @@
 /**
  * TokenLedger — in-memory singleton that accumulates per-agent/model token usage.
  * Lives as long as the gateway process; resets on restart.
+ *
+ * Tracks individual sessions/tasks with PID, channel, status, and duration.
+ * Terminal rows (Finished/Canceled/Failed) auto-cleanup after 30 seconds.
  */
 
+export type TokenRowStatus = "Active" | "InProgress" | "Finished" | "Canceled" | "Failed";
+
 export type TokenLedgerRow = {
+  pid: string;
   agentId: string;
   model: string;
+  task?: string;
+  channel: string;
   tokensIn: number;
   tokensOut: number;
   cached: number;
   calls: number;
   lastCallAt: number;
+  startedAt: number;
+  status: TokenRowStatus;
+  statusChangedAt: number | null;
 };
 
 export type TokenLedgerEvent = {
@@ -19,6 +30,12 @@ export type TokenLedgerEvent = {
   tokensIn: number;
   tokensOut: number;
   cached: number;
+  pid?: string;
+  channel?: string;
+  /** Unique session/task ID. When provided, each session gets its own row. */
+  sessionId?: string;
+  /** Short description of what this agent/task is doing (max 40 chars displayed). */
+  task?: string;
 };
 
 type LedgerMap = Map<string, TokenLedgerRow>;
@@ -28,39 +45,142 @@ type LedgerMap = Map<string, TokenLedgerRow>;
 // separate entrypoints (gateway vs pi-embedded), causing record() and
 // snapshot() to operate on different Map instances.
 const LEDGER_KEY = "__openclawTokenLedger";
+const JOB_MAP_KEY = "__openclawTokenLedgerJobMap";
 const _global = globalThis as unknown as Record<string, unknown>;
 if (!_global[LEDGER_KEY]) {
   _global[LEDGER_KEY] = new Map();
 }
+if (!_global[JOB_MAP_KEY]) {
+  _global[JOB_MAP_KEY] = new Map();
+}
 const ledger: LedgerMap = _global[LEDGER_KEY] as LedgerMap;
+/** Maps router jobId → sessionId for status update linkage. */
+const jobToSession: Map<string, string> = _global[JOB_MAP_KEY] as Map<string, string>;
 
-function rowKey(agentId: string, model: string): string {
-  return `${agentId}\0${model}`;
+/** Auto-cleanup delay for terminal rows (ms). */
+const CLEANUP_DELAY_MS = 30_000;
+
+function rowKey(sessionIdOrAgent: string, model: string): string {
+  return `${sessionIdOrAgent}\0${model}`;
+}
+
+/** Determine if a status is terminal (eligible for auto-cleanup). */
+function isTerminalStatus(status: TokenRowStatus): boolean {
+  return status === "Finished" || status === "Canceled" || status === "Failed";
 }
 
 export function record(event: TokenLedgerEvent): void {
-  const key = rowKey(event.agentId, event.model);
+  const keyId = event.sessionId ?? event.agentId;
+  const key = rowKey(keyId, event.model);
   const existing = ledger.get(key);
+  const now = Date.now();
+
   if (existing) {
     existing.tokensIn += event.tokensIn;
     existing.tokensOut += event.tokensOut;
     existing.cached += event.cached;
     existing.calls += 1;
-    existing.lastCallAt = Date.now();
+    existing.lastCallAt = now;
+    if (event.pid) existing.pid = event.pid;
+    if (event.channel) existing.channel = event.channel;
+    if (event.task) existing.task = event.task;
   } else {
+    const isTask = Boolean(event.sessionId);
     ledger.set(key, {
+      pid: event.pid ?? String(process.pid),
       agentId: event.agentId,
       model: event.model,
+      task: event.task,
+      channel: event.channel ?? event.agentId,
       tokensIn: event.tokensIn,
       tokensOut: event.tokensOut,
       cached: event.cached,
       calls: 1,
-      lastCallAt: Date.now(),
+      lastCallAt: now,
+      startedAt: now,
+      status: isTask ? "InProgress" : "Active",
+      statusChangedAt: null,
     });
   }
 }
 
+// ---------------------------------------------------------------------------
+// Status management
+// ---------------------------------------------------------------------------
+
+/** Update the status of a specific ledger row (by sessionId/agentId + model). */
+export function updateStatus(sessionIdOrAgent: string, model: string, status: TokenRowStatus): void {
+  const key = rowKey(sessionIdOrAgent, model);
+  const row = ledger.get(key);
+  if (row) {
+    row.status = status;
+    if (isTerminalStatus(status)) {
+      row.statusChangedAt = Date.now();
+    }
+  }
+}
+
+/** Update task description for ALL rows whose key starts with a given sessionId. */
+export function updateTaskBySession(sessionId: string, task: string): void {
+  for (const [key, row] of ledger) {
+    if (key.startsWith(sessionId + "\0")) {
+      row.task = task;
+    }
+  }
+}
+
+/** Update status for ALL rows whose key starts with a given sessionId. */
+export function updateStatusBySession(sessionId: string, status: TokenRowStatus): void {
+  const now = Date.now();
+  for (const [key, row] of ledger) {
+    if (key.startsWith(sessionId + "\0")) {
+      row.status = status;
+      if (isTerminalStatus(status)) {
+        row.statusChangedAt = now;
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Router job ↔ session mapping
+// ---------------------------------------------------------------------------
+
+/** Register a mapping from router jobId to session identifier. */
+export function registerJobSession(jobId: string, sessionId: string): void {
+  jobToSession.set(jobId, sessionId);
+}
+
+/** Update ledger status using a router jobId (resolves via the job-session map). */
+export function updateStatusByJobId(jobId: string, status: TokenRowStatus): void {
+  const sessionId = jobToSession.get(jobId);
+  if (sessionId) {
+    updateStatusBySession(sessionId, status);
+    if (isTerminalStatus(status)) {
+      // Clean up the mapping after a delay (after the row will be removed)
+      setTimeout(() => jobToSession.delete(jobId), CLEANUP_DELAY_MS + 5_000);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot & reset
+// ---------------------------------------------------------------------------
+
 export function snapshot(): TokenLedgerRow[] {
+  const now = Date.now();
+
+  // Auto-cleanup: remove terminal rows older than 30s
+  for (const [key, row] of ledger) {
+    if (
+      isTerminalStatus(row.status) &&
+      row.statusChangedAt != null &&
+      now - row.statusChangedAt > CLEANUP_DELAY_MS
+    ) {
+      ledger.delete(key);
+    }
+  }
+
   return Array.from(ledger.values()).toSorted(
     (a, b) => b.tokensIn + b.tokensOut - (a.tokensIn + a.tokensOut),
   );
@@ -68,4 +188,5 @@ export function snapshot(): TokenLedgerRow[] {
 
 export function reset(): void {
   ledger.clear();
+  jobToSession.clear();
 }
