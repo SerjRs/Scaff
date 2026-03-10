@@ -235,6 +235,47 @@ describe("validateToolPairing", () => {
     expect(textBlocks).toHaveLength(1);
   });
 
+  it("deduplicates tool_result blocks referencing the same tool_use_id", () => {
+    // Two tool_result blocks for the same tool_use_id — API rejects duplicates
+    const context = makeContext([
+      { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user", content: "search", timestamp: "2026-03-10T10:00:00Z" },
+      {
+        id: 2, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex",
+        content: JSON.stringify([
+          { type: "tool_use", id: "tc-dup", name: "sessions_spawn", input: { task: "do stuff" } },
+        ]),
+        timestamp: "2026-03-10T10:00:01Z",
+      },
+      {
+        id: 3, envelopeId: "e1", role: "user", channel: "internal", senderId: "cortex",
+        content: JSON.stringify([
+          { type: "tool_result", tool_use_id: "tc-dup", content: "[async: dispatching to router]" },
+          { type: "tool_result", tool_use_id: "tc-dup", content: "Task dispatched. [TASK_ID]=abc" },
+        ]),
+        timestamp: "2026-03-10T10:00:02Z",
+      },
+      { id: 4, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex", content: "Done.", timestamp: "2026-03-10T10:00:03Z" },
+    ]);
+
+    const { messages } = contextToMessages(context);
+
+    // Find the user message with tool_results
+    const userWithResults = messages.find(
+      (m) => m.role === "user" && Array.isArray(m.content) &&
+        (m.content as any[]).some((b: any) => b.type === "tool_result"),
+    );
+    expect(userWithResults).toBeDefined();
+    const toolResults = (userWithResults!.content as any[]).filter((b: any) => b.type === "tool_result");
+    // Exactly ONE tool_result should remain — the duplicate should be converted to text
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0].tool_use_id).toBe("tc-dup");
+    // The duplicate should be text now
+    const dupText = (userWithResults!.content as any[]).filter(
+      (b: any) => b.type === "text" && b.text.includes("Duplicate tool result"),
+    );
+    expect(dupText).toHaveLength(1);
+  });
+
   it("converts orphaned tool_result with no preceding assistant", () => {
     // tool_result at the start of conversation — no preceding assistant with tool_use
     const context = makeContext([
@@ -360,9 +401,10 @@ describe("E2E: Mixed sync+async tool pairing", () => {
       .filter((b) => b.type === "tool_result")
       .map((b) => b.tool_use_id);
 
-    // Every tool_use should have at least one matching tool_result
+    // Every tool_use should have exactly ONE matching tool_result (not zero, not duplicates)
     for (const id of toolUseIds) {
-      expect(toolResultRefs).toContain(id);
+      const count = toolResultRefs.filter((ref) => ref === id).length;
+      expect(count).toBe(1);
     }
   });
 

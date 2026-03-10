@@ -337,7 +337,10 @@ function validateToolPairing(messages: AnthropicMessage[]): void {
         }
       }
 
-      // Validate each tool_result block
+      // Validate each tool_result block + deduplicate.
+      // Anthropic API requires exactly ONE tool_result per tool_use_id.
+      // Duplicates cause 400: "each tool_use must have a single result"
+      const seenResultIds = new Set<string>();
       msg.content = (msg.content as any[]).map((block: any) => {
         if (block.type === "tool_result") {
           if (!block.tool_use_id || !validIds.has(block.tool_use_id)) {
@@ -347,6 +350,14 @@ function validateToolPairing(messages: AnthropicMessage[]): void {
               : JSON.stringify(block.content ?? "").substring(0, 200);
             return { type: "text", text: `[Tool result: ${summary}]` };
           }
+          if (seenResultIds.has(block.tool_use_id)) {
+            // Duplicate tool_result for same tool_use_id - convert to text
+            const summary = typeof block.content === "string"
+              ? block.content.substring(0, 200)
+              : JSON.stringify(block.content ?? "").substring(0, 200);
+            return { type: "text", text: `[Duplicate tool result: ${summary}]` };
+          }
+          seenResultIds.add(block.tool_use_id);
         }
         return block;
       });

@@ -404,14 +404,23 @@ Rewrote the orphaned `tool_use` check to handle ALL cases — not just when the 
 Before (gap): `if (i + 1 < messages.length && messages[i + 1].role === "user")` — skipped when last message or next was assistant.
 After: Always checks, always converts orphans.
 
-### Fix 2: Mixed sync+async tool handling — DONE
+### Fix 2: Mixed sync+async tool handling — DONE (revised after post-deploy failure)
 
 **File:** `src/cortex/loop.ts`
 
-Three changes:
+**Initial attempt (broken):** Stored synthetic `[async: dispatching to router]` tool_results for async tools during the sync loop. This caused a NEW 400 error — the async dispatch handler ALSO stored a tool_result for the same tool_use_id, creating duplicates. Anthropic API rejects duplicate tool_results: `"each tool_use must have a single result"`.
+
+**Corrected approach:** Two changes only:
 1. **Capture before sync loop:** `originalAsyncCalls` and `originalRawContent` saved from the first LLM result before the sync re-call loop overwrites `llmResult`
-2. **Synthetic tool_results:** In round 0 of the sync loop, stores `[async: dispatching to router]` tool_results for all async tool calls, so every `tool_use` in `_rawContent` has a matching `tool_result` in the DB
-3. **Dispatch from original:** Async dispatch (line 287+) uses `originalAsyncCalls` instead of stale `llmResult.toolCalls`; raw content storage uses `originalRawContent` and skips if sync loop already stored it
+2. **Dispatch from original:** Async dispatch uses `originalAsyncCalls` instead of stale `llmResult.toolCalls`; raw content storage uses `originalRawContent` and skips if sync loop already stored it
+
+No synthetic tool_results. The async dispatch handler stores the single, authoritative tool_result. For the brief window where the async tool_use has no result in the DB (between sync loop storage and async dispatch), `validateToolPairing()` handles it at context assembly time by converting the orphan to text.
+
+### Fix 2b: `validateToolPairing()` deduplication — DONE
+
+**File:** `src/cortex/llm-caller.ts`
+
+Defense-in-depth: if multiple `tool_result` blocks reference the same `tool_use_id` (from any cause — bugs, race conditions, duplicate DB rows after consolidation), keep only the first and convert the rest to `[Duplicate tool result: ...]` text. This prevents the "each tool_use must have a single result" 400 error even if a future code change accidentally introduces duplicates again.
 
 ### Fix 3: Circuit breaker — DONE
 
@@ -422,15 +431,19 @@ Three changes:
 - Reset to 0 on successful processing or different error types
 - At count >= 3: logs `[cortex] CIRCUIT BREAKER` error, marks message as failed, skips processing, continues to next message
 
-### Tests — DONE
+### Tests — DONE (12 tests)
 
-**File:** `src/cortex/__tests__/e2e-tool-pairing.test.ts` — 11 tests, all passing
+**File:** `src/cortex/__tests__/e2e-tool-pairing.test.ts` — 12 tests, all passing
 
 | Suite | Tests | Status |
 |-------|-------|--------|
-| `validateToolPairing` (unit) | 6 | PASS |
+| `validateToolPairing` (unit) | 7 | PASS |
 | `E2E: Mixed sync+async tool pairing` | 3 | PASS |
 | `E2E: Circuit breaker` | 2 | PASS |
+
+Key test addition: "deduplicates tool_result blocks referencing the same tool_use_id" — reproduces the exact post-deploy failure (two tool_results for same ID) and verifies only one survives.
+
+The mixed sync+async E2E test now asserts **exactly one** tool_result per tool_use_id (not just "at least one").
 
 ### Regression — VERIFIED
 
@@ -451,7 +464,15 @@ Three changes:
 
 | File | Change |
 |------|--------|
-| `src/cortex/llm-caller.ts` | `validateToolPairing()` — handle last-message and non-user-next cases |
-| `src/cortex/loop.ts` | Capture `originalAsyncCalls` before sync loop, synthetic tool_results, circuit breaker |
-| `src/cortex/__tests__/e2e-tool-pairing.test.ts` | New — 11 tests covering all fixes |
+| `src/cortex/llm-caller.ts` | `validateToolPairing()` — handle last-message, non-user-next, and duplicate tool_result cases |
+| `src/cortex/loop.ts` | Capture `originalAsyncCalls` before sync loop, use for async dispatch, circuit breaker |
+| `src/cortex/__tests__/e2e-tool-pairing.test.ts` | New — 12 tests covering all fixes (including dedup) |
 | `cortex/bus.sqlite` | DB cleanup — 37 corrupted messages deleted (backup saved) |
+
+### Post-Deploy Failure & Fix
+
+The initial fix introduced synthetic `[async: dispatching to router]` tool_results in the sync loop for async tools. This created **duplicate** tool_results for the same tool_use_id (synthetic + real from async dispatch). The Anthropic API rejects this with: `"each tool_use must have a single result. Found multiple tool_result blocks with id: ..."`.
+
+**Root cause of the secondary failure:** The doc analysis incorrectly stated duplicates were "redundant but not harmful." The API enforces exactly-one cardinality on tool_result per tool_use.
+
+**Fix:** Removed synthetic tool_results entirely. Added deduplication to `validateToolPairing()` as defense-in-depth. Updated test to assert exactly-one cardinality instead of at-least-one.

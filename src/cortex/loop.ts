@@ -299,16 +299,6 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
           }
 
-          // Store synthetic tool_results for async tools in the same response, so every
-          // tool_use in the stored _rawContent has a matching tool_result in the DB.
-          // Without this, async tool_use blocks become orphans that corrupt the session.
-          if (round === 0) {
-            for (const ac of originalAsyncCalls) {
-              appendStructuredContent(db, msg.envelope.id, "user", "internal",
-                [{ type: "tool_result", tool_use_id: ac.id, content: "[async: dispatching to router]" }], issuer, assignedShardId);
-            }
-          }
-
           // Re-call LLM with tool results appended
           context = {
             ...context,
