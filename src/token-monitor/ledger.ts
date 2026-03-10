@@ -14,6 +14,8 @@ export type TokenLedgerRow = {
   model: string;
   task?: string;
   channel: string;
+  /** Total context tokens (input/prompt) from the most recent API call. Updated per call, not cumulative. */
+  ctxTokens?: number;
   tokensIn: number;
   tokensOut: number;
   cached: number;
@@ -38,6 +40,8 @@ export type TokenLedgerEvent = {
   task?: string;
   /** If true, this is a persistent agent (main, cortex) — status defaults to Active. */
   persistent?: boolean;
+  /** Context tokens (input/prompt) from the current API call. Overwrites previous value (not cumulative). */
+  ctxTokens?: number;
 };
 
 type LedgerMap = Map<string, TokenLedgerRow>;
@@ -88,6 +92,7 @@ export function record(event: TokenLedgerEvent): void {
     existing.calls += 1;
     existing.lastCallAt = now;
     existing.model = event.model; // keep model current for session rows
+    if (event.ctxTokens != null) existing.ctxTokens = event.ctxTokens; // latest, not cumulative
     if (event.pid) existing.pid = event.pid;
     if (event.channel) existing.channel = event.channel;
     if (event.task) existing.task = event.task;
@@ -104,6 +109,7 @@ export function record(event: TokenLedgerEvent): void {
       model: event.model,
       task: event.task,
       channel: event.channel ?? event.agentId,
+      ctxTokens: event.ctxTokens,
       tokensIn: event.tokensIn,
       tokensOut: event.tokensOut,
       cached: event.cached,

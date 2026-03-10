@@ -2,7 +2,7 @@
  * CLI command: `openclaw tokens`
  * Connects to the gateway and displays a live token usage table.
  *
- * Column layout: PID | Model | Task | Channel | Tokens In | Tokens Out | Duration | Status
+ * Column layout: PID | Model | Task | Channel | CTX | Tokens In | Tokens Out | Duration | Status
  */
 
 import type { Command } from "commander";
@@ -82,11 +82,19 @@ function resolveTaskLabel(row: TokensSnapshotResult["rows"][number]): string {
   return "";
 }
 
+/** Format context tokens as compact "k" notation (e.g. 148k, 12k, 200k). */
+function formatCtx(tokens?: number): string {
+  if (tokens == null || tokens <= 0) return "";
+  if (tokens < 1000) return String(tokens);
+  return `${Math.round(tokens / 1000)}k`;
+}
+
 function renderTable(result: TokensSnapshotResult, rich: boolean): string {
   const colPid = 12;
   const colModel = 24;
   const colTask = 42;
   const colChannel = 16;
+  const colCtx = 8;
   const colIn = 12;
   const colOut = 12;
   const colDuration = 10;
@@ -101,6 +109,7 @@ function renderTable(result: TokensSnapshotResult, rich: boolean): string {
     pad("MODEL", colModel),
     pad("TASK", colTask),
     pad("CHANNEL", colChannel),
+    pad("CTX", colCtx, "right"),
     pad("TOKENS-IN", colIn, "right"),
     pad("TOKENS-OUT", colOut, "right"),
     pad("DURATION", colDuration, "right"),
@@ -112,6 +121,7 @@ function renderTable(result: TokensSnapshotResult, rich: boolean): string {
     hline.repeat(colModel),
     hline.repeat(colTask),
     hline.repeat(colChannel),
+    hline.repeat(colCtx),
     hline.repeat(colIn),
     hline.repeat(colOut),
     hline.repeat(colDuration),
@@ -139,6 +149,7 @@ function renderTable(result: TokensSnapshotResult, rich: boolean): string {
         pad(row.model, colModel),
         pad(taskLabel, colTask),
         pad(row.channel ?? row.agentId, colChannel),
+        pad(formatCtx(row.ctxTokens), colCtx, "right"),
         pad(formatNumber(row.tokensIn), colIn, "right"),
         pad(formatNumber(row.tokensOut), colOut, "right"),
         pad(formatDuration(durationMs), colDuration, "right"),
@@ -154,6 +165,7 @@ function renderTable(result: TokensSnapshotResult, rich: boolean): string {
       pad("", colModel),
       pad("", colTask),
       pad("", colChannel),
+      pad("", colCtx, "right"),
       pad(formatNumber(result.totals.tokensIn), colIn, "right"),
       pad(formatNumber(result.totals.tokensOut), colOut, "right"),
       pad("", colDuration, "right"),

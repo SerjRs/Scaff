@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "mcp__plugin_qmd_qmd__status",
+      "mcp__plugin_qmd_qmd__search"
     ]
   }
 }

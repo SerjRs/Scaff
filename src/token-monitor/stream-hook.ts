@@ -10,7 +10,7 @@
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { normalizeUsage, type UsageLike } from "../agents/usage.js";
+import { normalizeUsage, derivePromptTokens, type UsageLike } from "../agents/usage.js";
 import { record, type TokenLedgerEvent } from "./ledger.js";
 
 export type TokenLedgerHook = {
@@ -75,6 +75,7 @@ export function recordRunResultUsage(params: {
     tokensIn: normalized.input ?? 0,
     tokensOut: normalized.output ?? 0,
     cached: normalized.cacheRead ?? 0,
+    ctxTokens: derivePromptTokens(normalized),
     pid: params.pid,
     channel: params.channel,
     sessionId: params.sessionId,

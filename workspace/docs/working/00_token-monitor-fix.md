@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-09
 **Last Updated:** 2026-03-09 17:45
-**Status:** ✅ All Issues Complete
+**Status:** ✅ All Issues Complete (including CTX column)
 **Author:** Scaff (Cortex + Main Agent)
 
 ---
@@ -18,6 +18,29 @@ All features working:
 - **Stale cleanup**: InProgress rows with no LLM activity for 2+ minutes auto-mark as Failed
 - **No duplicates**: Single recording path via `pi-embedded-subscribe.ts`
 - **Column alignment**: Clean terminal rendering with color-coded status
+
+---
+
+## Open Requirements
+
+### Context Tokens Column
+
+| # | Feature | Status |
+|---|---------|--------|
+| 9 | `CTX` column — show total context window tokens per agent | ✅ Done |
+
+**Requirement:** Add a `CTX` column to the token monitor display showing the **input tokens sent to the LLM API** on the most recent call for each agent. This is the `prompt_tokens` (or equivalent) returned by the provider API — the full context payload (system prompt + conversation history + tool results) that was actually transmitted to the model.
+
+**Why:** With the foreground token cap at 8K and sharding active, we need real-time visibility into how much context each agent is sending per API call. This number climbs as conversation grows and should drop when sharding trims old shards. Watching it live confirms sharding works and catches agents approaching their context limit before they die.
+
+**Source:** The LLM API response includes `usage.prompt_tokens` (Anthropic) / `usage.input_tokens` / equivalent. The token monitor already tracks per-call token usage — this column surfaces the input side. Value updates on every API call for that agent (shows the latest, not cumulative).
+
+**Display:**
+```
+PID | MODEL | TASK | CHANNEL | CTX | TOKENS-IN | TOKENS-OUT | DURATION | STATUS
+```
+
+`CTX` shows the value in `k` format (e.g., `148k`, `12k`, `200k`) for readability.
 
 ---
 
