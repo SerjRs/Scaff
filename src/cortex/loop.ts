@@ -97,6 +97,12 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
   // Semantic check counter — tracks messages per channel since last Tier 2 check
   const semanticCheckCounters = new Map<string, number>();
 
+  // Circuit breaker: track consecutive tool_use/tool_result 400 errors.
+  // After 3 consecutive failures with the same error pattern, stop retrying
+  // to prevent infinite API call burn on corrupted sessions.
+  // @see workspace/docs/working/03_cortex-session-corruption.md
+  let consecutiveToolPairingErrors = 0;
+
   let running = true;
   let processed = 0;
   let currentPromise: Promise<void> | null = null;
@@ -206,6 +212,21 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         });
       }
 
+      // Circuit breaker check — skip processing if we've hit too many consecutive
+      // tool_use/tool_result errors (session is likely corrupted)
+      if (consecutiveToolPairingErrors >= 3) {
+        onError(new Error(
+          `[cortex] CIRCUIT BREAKER: ${consecutiveToolPairingErrors} consecutive tool pairing errors. ` +
+          `Session likely corrupted. Manual DB cleanup required.`,
+        ));
+        markFailed(db, msg.envelope.id, "Circuit breaker: session corrupted");
+        onMessageComplete?.(msg.envelope.id, msg.envelope.replyContext, true);
+        if (running) {
+          timer = setTimeout(() => { void tick(); }, 0);
+        }
+        return;
+      }
+
       try {
         // 4. Assemble context
         let context = await assembleContext({
@@ -227,6 +248,17 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // 5. Call LLM (with sync tool round-trip loop)
         const MAX_TOOL_ROUNDS = 5;
         let llmResult = await callLLM(context);
+
+        // Capture async tool calls from the ORIGINAL response before sync re-call loop.
+        // After sync tools are processed, llmResult is overwritten with the re-call result
+        // which no longer contains these async calls. Without this, async tools from mixed
+        // sync+async responses are silently lost.
+        // @see workspace/docs/working/03_cortex-session-corruption.md
+        const originalAsyncCalls = llmResult.toolCalls.filter(
+          (tc) => !SYNC_TOOL_NAMES.has(tc.name),
+        );
+        // Also capture the original raw content for async dispatch storage
+        const originalRawContent = llmResult._rawContent;
 
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           // Check for sync tool calls
@@ -267,6 +299,16 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
           }
 
+          // Store synthetic tool_results for async tools in the same response, so every
+          // tool_use in the stored _rawContent has a matching tool_result in the DB.
+          // Without this, async tool_use blocks become orphans that corrupt the session.
+          if (round === 0) {
+            for (const ac of originalAsyncCalls) {
+              appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                [{ type: "tool_result", tool_use_id: ac.id, content: "[async: dispatching to router]" }], issuer, assignedShardId);
+            }
+          }
+
           // Re-call LLM with tool results appended
           context = {
             ...context,
@@ -283,11 +325,18 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // 5b. Handle async tool calls (sessions_spawn → Router delegation)
         // Skip for ops triggers — the LLM should only relay results, not dispatch.
         // Even if the LLM sneaks a tool call through, we ignore it on trigger turns.
-        // Handle async tool calls (sessions_spawn)
-        const asyncCalls = isOpsTrigger ? [] : llmResult.toolCalls.filter((tc) => tc.name === "sessions_spawn");
-        if (asyncCalls.length > 0 && llmResult._rawContent) {
-          // Store the assistant's raw response with tool_use blocks as structured content
-          appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, llmResult._rawContent, issuer, assignedShardId);
+        // IMPORTANT: Use originalAsyncCalls captured before the sync re-call loop,
+        // NOT llmResult.toolCalls which is from the stale round-2 re-call.
+        const asyncCalls = isOpsTrigger ? [] : originalAsyncCalls.filter((tc) => tc.name === "sessions_spawn");
+        if (asyncCalls.length > 0 && originalRawContent) {
+          // Store the original assistant response with tool_use blocks as structured content.
+          // Only store if there were NO sync calls (otherwise it was already stored in the sync loop).
+          const hadSyncCalls = originalAsyncCalls.length < (originalRawContent as any[]).filter(
+            (b: any) => b.type === "toolCall" || b.type === "tool_use",
+          ).length;
+          if (!hadSyncCalls) {
+            appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, originalRawContent, issuer, assignedShardId);
+          }
         }
         for (const tc of asyncCalls) {
           if (tc.name === "sessions_spawn" && onSpawn) {
@@ -404,12 +453,23 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           channelStates: getChannelStates(db),
         });
 
+        // Success — reset circuit breaker counter
+        consecutiveToolPairingErrors = 0;
         processed++;
       } catch (err) {
         // LLM or processing failure
         const error = err instanceof Error ? err : new Error(String(err));
         markFailed(db, msg.envelope.id, error.message);
         onError(error);
+
+        // Circuit breaker: track consecutive tool_use/tool_result pairing errors
+        if (error.message.includes("tool_use") && error.message.includes("tool_result")) {
+          consecutiveToolPairingErrors++;
+        } else {
+          // Different error type — reset counter
+          consecutiveToolPairingErrors = 0;
+        }
+
         // Still notify completion so live-mode clients don't hang
         onMessageComplete?.(msg.envelope.id, msg.envelope.replyContext, true);
       }

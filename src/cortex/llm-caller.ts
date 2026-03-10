@@ -370,19 +370,23 @@ function validateToolPairing(messages: AnthropicMessage[]): void {
 
       // Check that every tool_use in this assistant message has a matching
       // tool_result in the NEXT user message. Remove orphaned tool_use blocks.
-      if (i + 1 < messages.length && messages[i + 1].role === "user") {
-        const nextContent = messages[i + 1].content;
+      // Also handles: last message in array, or next message is not a user message.
+      const hasToolUse = (msg.content as any[]).some((b: any) => b.type === "tool_use");
+      if (hasToolUse) {
         const resultIds = new Set<string>();
-        if (Array.isArray(nextContent)) {
-          for (const block of nextContent as any[]) {
-            if (block.type === "tool_result" && block.tool_use_id) {
-              resultIds.add(block.tool_use_id);
+        if (i + 1 < messages.length && messages[i + 1].role === "user") {
+          const nextContent = messages[i + 1].content;
+          if (Array.isArray(nextContent)) {
+            for (const block of nextContent as any[]) {
+              if (block.type === "tool_result" && block.tool_use_id) {
+                resultIds.add(block.tool_use_id);
+              }
             }
           }
         }
+        // Any tool_use without a matching tool_result is orphaned — convert to text
         msg.content = (msg.content as any[]).map((block: any) => {
           if (block.type === "tool_use" && !resultIds.has(block.id)) {
-            // No matching tool_result - convert to text
             return { type: "text", text: `[Tool call: ${block.name}(${block.id})]` };
           }
           return block;
