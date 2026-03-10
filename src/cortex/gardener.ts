@@ -17,6 +17,8 @@ import {
   deleteHotFact,
   insertHotFact,
   insertColdFact,
+  searchHotFacts,
+  updateHotFact,
   type HotFact,
 } from "./hippocampus.js";
 import {
@@ -168,15 +170,21 @@ function formatCompactorTimeAgo(now: number, timestamp: string): string {
  *
  * Fallback mode: for channels with no shards, falls back to raw session history.
  */
+/** L2 distance threshold for near-duplicate detection (nomic-embed-text normalized vectors).
+ *  cosine_similarity ≈ 1 - (distance² / 2); threshold 0.55 ≈ cosine sim > 0.85 */
+export const DEDUP_SIMILARITY_THRESHOLD = 0.55;
+
 export async function runFactExtractor(params: {
   db: DatabaseSync;
   extractLLM: FactExtractorLLM;
+  /** Embedding function for dedup — when provided, enables near-duplicate detection */
+  embedFn?: EmbedFunction;
   /** Only process messages newer than this ISO timestamp (fallback mode) */
   since?: string;
   /** Max messages to process per channel (fallback mode) */
   maxMessages?: number;
 }): Promise<GardenerRunResult> {
-  const { db, extractLLM, maxMessages = 100 } = params;
+  const { db, extractLLM, embedFn, maxMessages = 100 } = params;
   const result: GardenerRunResult = { task: "fact_extractor", processed: 0, errors: [] };
 
   // --- Shard-aware extraction: process unextracted closed shards ---
@@ -205,14 +213,9 @@ export async function runFactExtractor(params: {
 
       for (const factText of facts) {
         if (typeof factText === "string" && factText.trim().length > 0) {
-          const existing = db.prepare(
-            `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
-          ).get(factText.trim()) as { id: string } | undefined;
-
-          if (!existing) {
-            insertHotFact(db, { factText: factText.trim() });
-            result.processed++;
-          }
+          const trimmed = factText.trim();
+          const dedupResult = await dedupAndInsertFact(db, trimmed, embedFn);
+          if (dedupResult) result.processed++;
         }
       }
 
@@ -246,14 +249,9 @@ export async function runFactExtractor(params: {
 
       for (const factText of facts) {
         if (typeof factText === "string" && factText.trim().length > 0) {
-          const existing = db.prepare(
-            `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
-          ).get(factText.trim()) as { id: string } | undefined;
-
-          if (!existing) {
-            insertHotFact(db, { factText: factText.trim() });
-            result.processed++;
-          }
+          const trimmed = factText.trim();
+          const dedupResult = await dedupAndInsertFact(db, trimmed, embedFn);
+          if (dedupResult) result.processed++;
         }
       }
     } catch (err) {
@@ -297,6 +295,70 @@ ${transcript}`;
     const match = response.match(/\[[\s\S]*?\]/);
     return match ? JSON.parse(match[0]) : [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dedup Helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Check for exact or near-duplicate before inserting a new fact into hot memory.
+ * Returns true if the fact was inserted or replaced an existing one, false if skipped.
+ */
+async function dedupAndInsertFact(
+  db: DatabaseSync,
+  factText: string,
+  embedFn?: EmbedFunction,
+): Promise<boolean> {
+  // 1. Exact match first (fast, no embedding needed)
+  const exactMatch = db.prepare(
+    `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
+  ).get(factText) as { id: string } | undefined;
+
+  if (exactMatch) return false; // Skip exact duplicate
+
+  // 2. If no embedFn, fall back to exact-match-only (backward compatible)
+  if (!embedFn) {
+    insertHotFact(db, { factText });
+    return true;
+  }
+
+  // 3. Embed the new fact
+  let embedding: Float32Array;
+  try {
+    embedding = await embedFn(factText);
+  } catch (err) {
+    // Embedding failed — insert without embedding, log warning
+    console.log(`[gardener] Embed failed for "${factText.slice(0, 60)}...": ${err instanceof Error ? err.message : String(err)}`);
+    insertHotFact(db, { factText });
+    return true;
+  }
+
+  // 4. Search hot memory vec for similar facts (top-1 nearest)
+  let similar: (HotFact & { distance: number })[];
+  try {
+    similar = searchHotFacts(db, embedding, 1);
+  } catch {
+    // Vec table may be empty or not initialized — insert with embedding
+    insertHotFact(db, { factText, embedding });
+    return true;
+  }
+
+  if (similar.length > 0 && similar[0].distance < DEDUP_SIMILARITY_THRESHOLD) {
+    // Near-duplicate found — replace if newer is longer/more specific, else skip
+    console.log(`[gardener] Dedup: "${factText.slice(0, 60)}..." similar to existing (dist=${similar[0].distance.toFixed(3)})`);
+
+    if (factText.length > similar[0].factText.length) {
+      updateHotFact(db, similar[0].id, factText, embedding);
+      return true;
+    }
+    // Existing fact is good enough — skip
+    return false;
+  }
+
+  // 5. New unique fact
+  insertHotFact(db, { factText, embedding });
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +449,7 @@ export function startGardener(params: {
   const runExtractor = async () => {
     try {
       console.log(`[gardener] Fact extractor starting (interval: ${extractorIntervalMs}ms)`);
-      const result = await runFactExtractor({ db, extractLLM });
+      const result = await runFactExtractor({ db, extractLLM, embedFn });
       console.log(`[gardener] Fact extractor done: processed=${result.processed}, errors=${result.errors.length}`);
     } catch (err) {
       console.log(`[gardener] Fact extractor FAILED: ${err}`);
@@ -416,7 +478,7 @@ export function startGardener(params: {
     async runAll() {
       const results: GardenerRunResult[] = [];
       results.push(await runChannelCompactor({ db, summarize }));
-      results.push(await runFactExtractor({ db, extractLLM }));
+      results.push(await runFactExtractor({ db, extractLLM, embedFn }));
       results.push(await runVectorEvictor({ db, embedFn }));
       return results;
     },

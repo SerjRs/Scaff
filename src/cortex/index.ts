@@ -12,7 +12,7 @@ import { initBus, enqueue, countPending } from "./bus.js";
 import { createAdapterRegistry, type AdapterRegistry, type ChannelAdapter } from "./channel-adapter.js";
 import type { AssembledContext } from "./context.js";
 import { startGardener, type GardenerInstance, type FactExtractorLLM } from "./gardener.js";
-import { initHotMemoryTable, initColdStorage } from "./hippocampus.js";
+import { initHotMemoryTable, initHotMemoryVecTable, initColdStorage } from "./hippocampus.js";
 import type { CortexLLMResult } from "./llm-caller.js";
 import { startLoop, type CortexLoop, type SpawnParams } from "./loop.js";
 import type { ForegroundConfig } from "./shards.js";
@@ -101,6 +101,7 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
   // 1b. Hippocampus memory subsystem (gated)
   if (config.hippocampusEnabled) {
     initHotMemoryTable(db);
+    await initHotMemoryVecTable(db);
     await initColdStorage(db);
   }
 

@@ -124,7 +124,7 @@ This phase implements the automated background workers that manage the lifecycle
 ### Tasks
 
 * **Task 4.1: Channel Compactor.** Create an hourly cron task that compresses inactive Foreground sessions into 1-line Background summaries.
-* **Task 4.2: Fact Extractor.** Create a 6-hour cron task that uses a Sonnet-tier LLM to extract persistent facts from recent logs and inserts them into `cortex_hot_memory`.
+* **Task 4.2: Fact Extractor.** Create a 6-hour cron task that uses a ~~Sonnet-tier~~ **Haiku** LLM (changed 2026-03-07 for cost, configurable via `hippocampus.gardenerModel`) to extract persistent facts from recent logs and inserts them into `cortex_hot_memory`. Implementation is shard-aware: processes unextracted closed shards with topic labels for scoped extraction, marks `extracted_at`.
 * **Task 4.3: Vector Evictor.** Create a weekly cron task that sweeps `cortex_hot_memory` for facts older than 14 days with a `hit_count` < 3. Move these facts to the Vector DB and delete the hot rows.
 
 ### Unit Tests
@@ -139,6 +139,8 @@ This phase implements the automated background workers that manage the lifecycle
 ---
 
 ## Phase 5: Async Tool Provenance — Single-Path Result Delivery
+
+> **⚠️ IMPLEMENTATION DIVERGENCE:** The implementation took a simpler path than specced below. `cortex_pending_ops` was removed entirely. Results are delivered directly: `gateway-bridge.ts` receives `job:delivered` → enqueues ops-trigger with result in metadata → `loop.ts` writes result to `cortex_session` via `appendTaskResult()`. No System Floor ops injection, no `[DISPATCHED]` evidence, no `acknowledged_at`, no `copyAndDeleteCompletedOps()`. Structured tool_use/tool_result content blocks handle provenance. See `ACTIVE-ISSUES.md` D1-D2.
 
 This phase fixes the async tool provenance gap: results from `sessions_spawn` currently enter the LLM's context via two paths (System Floor + Foreground bus envelope), causing the LLM to not recognize its own dispatched results. The fix routes results exclusively through the System Floor.
 

@@ -18,7 +18,7 @@ import { loadSqliteVecExtension } from "../memory/sqlite-vec.js";
 // Hot Memory Schema
 // ---------------------------------------------------------------------------
 
-/** Initialize the cortex_hot_memory table */
+/** Initialize the cortex_hot_memory table + companion vec table for dedup */
 export function initHotMemoryTable(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS cortex_hot_memory (
@@ -28,6 +28,18 @@ export function initHotMemoryTable(db: DatabaseSync): void {
       last_accessed_at TEXT NOT NULL,
       hit_count        INTEGER NOT NULL DEFAULT 0
     )
+  `);
+}
+
+/** Initialize the hot memory vector table (requires sqlite-vec loaded) */
+export async function initHotMemoryVecTable(db: DatabaseSync): Promise<void> {
+  const result = await loadSqliteVecExtension({ db });
+  if (!result.ok) {
+    throw new Error(`Failed to load sqlite-vec extension: ${result.error}`);
+  }
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS cortex_hot_memory_vec
+    USING vec0(embedding float[768])
   `);
 }
 
@@ -70,10 +82,10 @@ export interface HotFact {
   hitCount: number;
 }
 
-/** Insert a fact into hot memory */
+/** Insert a fact into hot memory (optionally with embedding for dedup) */
 export function insertHotFact(
   db: DatabaseSync,
-  fact: { id?: string; factText: string },
+  fact: { id?: string; factText: string; embedding?: Float32Array },
 ): string {
   const id = fact.id ?? randomUUID();
   const now = new Date().toISOString();
@@ -81,6 +93,17 @@ export function insertHotFact(
     INSERT INTO cortex_hot_memory (id, fact_text, created_at, last_accessed_at, hit_count)
     VALUES (?, ?, ?, ?, 0)
   `).run(id, fact.factText, now, now);
+
+  // If embedding provided, insert into vec table for similarity search
+  if (fact.embedding) {
+    const row = db.prepare(`SELECT rowid FROM cortex_hot_memory WHERE id = ?`).get(id) as { rowid: number | bigint };
+    const rowidNum = Number(row.rowid);
+    db.prepare(`
+      INSERT INTO cortex_hot_memory_vec (rowid, embedding)
+      VALUES (CAST(? AS INTEGER), ?)
+    `).run(rowidNum, new Uint8Array(fact.embedding.buffer));
+  }
+
   return id;
 }
 
@@ -125,9 +148,67 @@ export function getStaleHotFacts(
   return rows.map(rowToHotFact);
 }
 
-/** Delete a fact from hot memory */
+/** Delete a fact from hot memory (and its vec embedding if present) */
 export function deleteHotFact(db: DatabaseSync, id: string): void {
+  // Clean up vec table first (best-effort — table may not exist yet)
+  try {
+    const row = db.prepare(`SELECT rowid FROM cortex_hot_memory WHERE id = ?`).get(id) as { rowid: number } | undefined;
+    if (row) {
+      db.prepare(`DELETE FROM cortex_hot_memory_vec WHERE rowid = ?`).run(row.rowid);
+    }
+  } catch {
+    // Vec table may not exist — ignore
+  }
   db.prepare(`DELETE FROM cortex_hot_memory WHERE id = ?`).run(id);
+}
+
+/** Search hot memory by vector similarity (KNN) */
+export function searchHotFacts(
+  db: DatabaseSync,
+  queryEmbedding: Float32Array,
+  limit = 5,
+): (HotFact & { distance: number })[] {
+  const rows = db.prepare(`
+    SELECT v.rowid, v.distance, m.id, m.fact_text, m.created_at, m.last_accessed_at, m.hit_count
+    FROM cortex_hot_memory_vec v
+    JOIN cortex_hot_memory m ON m.rowid = v.rowid
+    WHERE v.embedding MATCH ? AND k = ?
+    ORDER BY v.distance
+  `).all(new Uint8Array(queryEmbedding.buffer), limit) as Record<string, unknown>[];
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    factText: row.fact_text as string,
+    createdAt: row.created_at as string,
+    lastAccessedAt: row.last_accessed_at as string,
+    hitCount: row.hit_count as number,
+    distance: row.distance as number,
+  }));
+}
+
+/** Update an existing hot fact's text and embedding (for dedup replacement) */
+export function updateHotFact(
+  db: DatabaseSync,
+  id: string,
+  newFactText: string,
+  newEmbedding: Float32Array,
+): void {
+  // Update text
+  db.prepare(`
+    UPDATE cortex_hot_memory
+    SET fact_text = ?, last_accessed_at = ?
+    WHERE id = ?
+  `).run(newFactText, new Date().toISOString(), id);
+
+  // Update embedding — need the rowid
+  const row = db.prepare(`SELECT rowid FROM cortex_hot_memory WHERE id = ?`).get(id) as { rowid: number } | undefined;
+  if (row) {
+    db.prepare(`DELETE FROM cortex_hot_memory_vec WHERE rowid = ?`).run(row.rowid);
+    db.prepare(`
+      INSERT INTO cortex_hot_memory_vec (rowid, embedding)
+      VALUES (CAST(? AS INTEGER), ?)
+    `).run(row.rowid, new Uint8Array(newEmbedding.buffer));
+  }
 }
 
 // ---------------------------------------------------------------------------

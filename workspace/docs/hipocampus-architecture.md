@@ -112,6 +112,10 @@ Complex synthesis across months of data is delegated via `sessions_spawn` to a s
 
 ## 6. Long-Running Tasks & Result Arrival
 
+> **⚠️ IMPLEMENTATION DIVERGENCE:** The `cortex_pending_ops` table described below was **removed** during implementation. The actual implementation uses a simpler direct-delivery path: `gateway-bridge.ts` receives `job:delivered` → enqueues an ops-trigger envelope with the result inline in metadata → `loop.ts` detects the trigger and writes the result directly to `cortex_session` via `appendTaskResult()`. There is no System Floor ops injection, no `[DISPATCHED]` evidence records, no `acknowledged_at` column, and no `copyAndDeleteCompletedOps()`. Structured tool_use/tool_result content blocks provide provenance instead. See `ACTIVE-ISSUES.md` divergences D1-D2 for details.
+>
+> The spec below is preserved for historical context.
+
 When Cortex delegates a task via `sessions_spawn` (e.g., research, file ops, computation), the operation follows a durable lifecycle. Completed/failed ops are **copied to `cortex_session`** and then **deleted** from `cortex_pending_ops`. The Fact Extractor picks them up from `cortex_session` during its regular scan — no separate Op Harvester needed.
 
 ### 6.1 Pending Operation Lifecycle

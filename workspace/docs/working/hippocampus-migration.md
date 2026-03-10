@@ -186,26 +186,6 @@ Query → Top result (distance):
 
 ---
 
-## Gate H5 — Markdown Memory Retirement
-
-**Goal:** Hippocampus is the sole memory system. Markdown files retired.
-
-**Exit criteria:**
-- [x] All critical long-term context from `memory/long-term/*.md` captured in Hippocampus — 366 sections seeded, 1,061 facts extracted, 687 in cold / 374 in hot
-- [ ] `architecture-state.md` moved to a non-memory location (it's a reference doc, not episodic memory)
-- [ ] Main agent startup no longer reads MEMORY.md for context
-- [ ] 1 week stable operation without markdown memory
-- [ ] Serj confirms no regression in context quality
-
-**Status (2026-03-09):**
-- NOT READY TO EXECUTE. Facts are seeded and searchable, but:
-  1. MEMORY.md is the vehicle for Hippocampus facts (can't remove it)
-  2. Reference docs (architecture-state, preferences) serve a different purpose than episodic memory — they're curated summaries, not raw facts
-  3. Need observation time to confirm no context loss
-- **Recommended approach:** Keep markdown shards as curated reference docs. Let Hippocampus handle episodic/conversational memory. They serve different purposes — don't force retirement.
-
----
-
 ## Risks
 
 - **Hippocampus extraction quality**: The prompt was just fixed (2026-03-07). May still hallucinate under edge cases.
@@ -219,4 +199,3 @@ Query → Top result (distance):
 - Gates are sequential. Don't skip.
 - H1 can start immediately — shadow mode is already running.
 - H2 requires a code change in the gateway. Scope TBD.
-- H5 is the scary one. Don't rush it.
