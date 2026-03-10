@@ -83,12 +83,27 @@ But `msg.senderId` is not used in the prefix. Cortex sees `agent:main:cortex` fo
 
 ### Fix
 
-Replace `msg.issuer` with actual sender identity:
+Replace `msg.issuer` with actual sender identity. Sender IDs are aliased to avoid leaking PII (phone numbers) into the LLM context:
+
+```typescript
+// Module-level alias map — consistent aliases within a context assembly call
+const senderAliases = new Map<string, string>();
+let aliasCounter = 0;
+
+function aliasedSender(senderId: string | undefined, channel: string): string {
+  if (!senderId) return "user";
+  const key = `${senderId}:${channel}`;
+  if (!senderAliases.has(key)) {
+    senderAliases.set(key, `user-${++aliasCounter}`);
+  }
+  return senderAliases.get(key)!;
+}
+```
 
 ```typescript
 if (typeof content === "string") {
   const ts = msg.timestamp?.replace("T", " ").replace(/\.\d+Z$/, "") ?? "";
-  const sender = msg.role === "assistant" ? "cortex" : (msg.senderId || "user");
+  const sender = msg.role === "assistant" ? "cortex" : aliasedSender(msg.senderId, msg.channel);
   content = `[${ts}:${sender}:${msg.channel}] ${content}`;
 }
 ```
@@ -101,11 +116,11 @@ if (typeof content === "string") {
 
 **After:**
 ```
-[2026-03-10 10:45:41:+40751845717:whatsapp] hey Scaff
+[2026-03-10 10:45:41:user-1:whatsapp] hey Scaff
 [2026-03-10 10:45:43:cortex:whatsapp] Here's what I found
 ```
 
-Now Cortex can distinguish who said what at a glance, even without relying on the API role field.
+Now Cortex can distinguish who said what at a glance, without relying on the API role field. Raw phone numbers never reach the LLM — same sender always gets the same alias within a conversation.
 
 ---
 
@@ -141,17 +156,36 @@ No timestamp, no channel, no sender context. Cortex cannot reason about:
 
 ### Fix
 
-The Anthropic API allows mixing `text` and `tool_use`/`tool_result` blocks in the same message. Inject the metadata as a text block at the start of the array:
+**Important API constraint (verified 2026-03-10):** The Anthropic API handles `text` + `tool_use` blocks differently from `text` + `tool_result` blocks:
+
+| Mix | Role | API result |
+|-----|------|------------|
+| `text` + `tool_use` | assistant | **Works** |
+| `text` before `tool_result` | user | **Rejected** — API requires `tool_result` immediately after `tool_use` |
+| `text` after `tool_result` | user | Works but confuses model |
+| metadata inside `tool_result.content` | user | **Works** — cleanest approach |
+
+Therefore, the injection strategy must be **split by role**:
 
 ```typescript
-// After parsing JSON array, inject metadata text block
 if (Array.isArray(content)) {
   const ts = msg.timestamp?.replace("T", " ").replace(/\.\d+Z$/, "") ?? "";
-  const sender = msg.role === "assistant" ? "cortex" : (msg.senderId || "user");
-  content = [
-    { type: "text", text: `[${ts}:${sender}:${msg.channel}]` },
-    ...content,
-  ];
+  const sender = msg.role === "assistant" ? "cortex" : aliasedSender(msg.senderId, msg.channel);
+  const meta = `[${ts}:${sender}:${msg.channel}]`;
+
+  if (msg.role === "assistant") {
+    // tool_use: prepend text block (API supports text + tool_use in assistant messages)
+    content = [{ type: "text", text: meta }, ...content];
+  } else {
+    // tool_result: embed metadata INTO each tool_result's content string
+    // (API rejects text blocks before/between tool_result blocks)
+    content = content.map((block: any) => {
+      if (block.type === "tool_result" && typeof block.content === "string") {
+        return { ...block, content: `${meta}\n${block.content}` };
+      }
+      return block;
+    });
+  }
 }
 ```
 
@@ -171,8 +205,7 @@ if (Array.isArray(content)) {
 {
   "role": "user",
   "content": [
-    {"type": "text", "text": "[2026-03-10 10:45:42:+40751845717:whatsapp]"},
-    {"type": "tool_result", "tool_use_id": "toolu_01...", "content": "Found 5 results..."}
+    {"type": "tool_result", "tool_use_id": "toolu_01...", "content": "[2026-03-10 10:45:42:user-1:whatsapp]\nFound 5 results..."}
   ]
 }
 ```
@@ -183,9 +216,23 @@ if (Array.isArray(content)) {
 
 ### Changes in `src/cortex/llm-caller.ts`, function `contextToMessages()`
 
-Replace the current prefix logic (lines ~230-235) with unified metadata injection that handles both strings and arrays:
+Replace the current prefix logic (lines ~230-235) with role-aware metadata injection:
 
 ```typescript
+// Module-level (reset per contextToMessages call)
+const senderAliases = new Map<string, string>();
+let aliasCounter = 0;
+
+function aliasedSender(senderId: string | undefined, channel: string): string {
+  if (!senderId) return "user";
+  const key = `${senderId}:${channel}`;
+  if (!senderAliases.has(key)) {
+    senderAliases.set(key, `user-${++aliasCounter}`);
+  }
+  return senderAliases.get(key)!;
+}
+
+// Inside contextToMessages():
 .map((msg) => {
   let content: string | unknown[] = msg.content;
 
@@ -206,15 +253,25 @@ Replace the current prefix logic (lines ~230-235) with unified metadata injectio
 
   // Build metadata prefix — same format for both string and array content
   const ts = msg.timestamp?.replace("T", " ").replace(/\.\d+Z$/, "") ?? "";
-  const sender = msg.role === "assistant" ? "cortex" : (msg.senderId || "user");
+  const sender = msg.role === "assistant" ? "cortex" : aliasedSender(msg.senderId, msg.channel);
   const meta = `[${ts}:${sender}:${msg.channel}]`;
 
   if (typeof content === "string") {
     // Text messages: prepend as before
     content = `${meta} ${content}`;
   } else if (Array.isArray(content)) {
-    // Tool messages: inject as text block at start of array
-    content = [{ type: "text", text: meta }, ...content];
+    if (msg.role === "assistant") {
+      // tool_use: prepend text block (API supports text + tool_use in assistant messages)
+      content = [{ type: "text", text: meta }, ...content];
+    } else {
+      // tool_result: embed metadata INTO content string (API rejects text blocks alongside tool_result)
+      content = content.map((block: any) => {
+        if (block.type === "tool_result" && typeof block.content === "string") {
+          return { ...block, content: `${meta}\n${block.content}` };
+        }
+        return block;
+      });
+    }
   }
 
   return { role: msg.role as "user" | "assistant", content };
@@ -227,7 +284,7 @@ Replace the current prefix logic (lines ~230-235) with unified metadata injectio
 
 | File | Change |
 |------|--------|
-| `src/cortex/llm-caller.ts` | `contextToMessages()` — replace `msg.issuer` with sender identity, add metadata text block to tool message arrays |
+| `src/cortex/llm-caller.ts` | `contextToMessages()` — replace `msg.issuer` with aliased sender identity, add metadata to tool messages (text block for assistant/tool_use, inline content for user/tool_result) |
 
 Single file change. No schema changes. No DB changes.
 
@@ -235,17 +292,37 @@ Single file change. No schema changes. No DB changes.
 
 ## Test Criteria
 
-1. **Text message prefix uses sender, not issuer:** User message shows `senderId`, assistant message shows `cortex`
-2. **Tool message arrays include metadata text block:** First element is `{type: "text", text: "[ts:sender:channel]"}`
-3. **Mixed content (text + tool_use) gets single metadata block:** No duplicate prefix
-4. **Empty/null senderId falls back to `"user"`:** Graceful handling of missing sender
-5. **Empty/null timestamp shows empty string:** `[:cortex:whatsapp]` instead of crash
-6. **Existing `validateToolPairing()` still works:** Metadata text block doesn't break tool_use/tool_result pairing validation
-7. **API accepts the format:** End-to-end test — Cortex makes a successful LLM call with metadata text blocks in tool messages
-8. **No regression:** Existing cortex tests pass
+1. **Text message prefix uses aliased sender, not issuer:** User message shows `user-N`, assistant message shows `cortex`
+2. **Sender aliasing is consistent:** Same `senderId` + `channel` always maps to the same alias within a context assembly
+3. **No PII in LLM context:** Raw phone numbers / sender IDs never appear in API payloads
+4. **Assistant tool_use arrays include metadata text block:** First element is `{type: "text", text: "[ts:cortex:channel]"}`
+5. **User tool_result blocks embed metadata in content string:** `tool_result.content` starts with `[ts:user-N:channel]\n`
+6. **No text block alongside tool_result:** API rejects `text` + `tool_result` mixing in user messages (verified 2026-03-10)
+7. **Mixed content (text + tool_use) gets single metadata block:** No duplicate prefix
+8. **Empty/null senderId falls back to `"user"`:** Graceful handling of missing sender
+9. **Empty/null timestamp shows empty string:** `[:cortex:whatsapp]` instead of crash
+10. **Existing `validateToolPairing()` still works:** Metadata text block doesn't break tool_use/tool_result pairing validation
+11. **API accepts the format:** End-to-end test — Cortex makes a successful LLM call with both metadata strategies
+12. **No regression:** Existing cortex tests pass
 
 ---
 
 ## Priority
 
-Low complexity, high value. Can be done independently of the unified context work (doc `02`) and the session corruption fix (doc `03`). Single file, ~20 lines changed.
+Low complexity, high value. Can be done independently of the unified context work (doc `02`) and the session corruption fix (doc `03`). Single file, ~30 lines changed.
+
+---
+
+## API Validation (2026-03-10)
+
+Tested against `claude-haiku-4-5-20251001` with OAuth token:
+
+| Test | Result |
+|------|--------|
+| `text` block before `tool_result` in user message | **Rejected** — `tool_use ids were found without tool_result blocks immediately after` |
+| `text` block after `tool_result` in user message | Accepted but model confused by trailing metadata |
+| `text` + `tool_use` in assistant message | **Accepted** — model handles naturally |
+| Metadata embedded inside `tool_result.content` string | **Accepted** — model handles naturally |
+| Multiple `tool_result` blocks with text before them | **Rejected** — same error as single |
+
+Conclusion: metadata injection must be role-aware. Assistant messages can use a sibling `text` block; user messages must embed metadata inside `tool_result.content`.

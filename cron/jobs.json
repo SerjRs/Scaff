@@ -6,7 +6,7 @@
       "name": "hippocampus-refresh",
       "enabled": true,
       "createdAtMs": 1773004822487,
-      "updatedAtMs": 1773136037392,
+      "updatedAtMs": 1773156042865,
       "schedule": {
         "kind": "every",
         "everyMs": 7200000,
@@ -19,11 +19,11 @@
         "text": "HIPPOCAMPUS_REFRESH"
       },
       "state": {
-        "nextRunAtMs": 1773148822487,
-        "lastRunAtMs": 1773136018444,
+        "nextRunAtMs": 1773163222542,
+        "lastRunAtMs": 1773156022542,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 18948,
+        "lastDurationMs": 20323,
         "lastDeliveryStatus": "not-requested",
         "consecutiveErrors": 0
       }

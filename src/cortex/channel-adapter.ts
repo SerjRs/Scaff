@@ -58,15 +58,16 @@ export interface SenderResolver {
 /**
  * Create a SenderResolver from a map of partner IDs per channel.
  * @param partnerIds - Map of channelId → partner's sender ID on that channel
+ * @param partnerName - The partner's display name (e.g. "Serj"), used when no displayName is provided by the adapter
  */
-export function createSenderResolver(partnerIds: Map<ChannelId, string>): SenderResolver {
+export function createSenderResolver(partnerIds: Map<ChannelId, string>, partnerName?: string): SenderResolver {
   return {
     resolve(channelId: ChannelId, rawSenderId: string, displayName?: string): Sender {
       const relationship = classifyRelationship(channelId, rawSenderId, partnerIds);
 
       return {
         id: rawSenderId,
-        name: displayName ?? deriveDisplayName(relationship, rawSenderId),
+        name: displayName ?? deriveDisplayName(relationship, rawSenderId, partnerName),
         relationship,
       };
     },
@@ -112,10 +113,10 @@ export function createAdapterRegistry(): AdapterRegistry {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function deriveDisplayName(relationship: SenderRelationship, rawId: string): string {
+function deriveDisplayName(relationship: SenderRelationship, rawId: string, partnerName?: string): string {
   switch (relationship) {
     case "partner":
-      return "Partner";
+      return partnerName ?? "Partner";
     case "system":
       return "System";
     case "internal": {

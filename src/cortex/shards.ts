@@ -218,9 +218,9 @@ export function getRecentClosedShards(db: DatabaseSync, channelOrFilter: string 
 }
 
 /** Get messages belonging to a specific shard. */
-export function getShardMessages(db: DatabaseSync, shardId: string): { id: number; content: string; timestamp: string; role: string; channel: string; senderId: string }[] {
+export function getShardMessages(db: DatabaseSync, shardId: string): { id: number; content: string; timestamp: string; role: string; channel: string; senderId: string; senderName?: string; issuer?: string }[] {
   const rows = db.prepare(`
-    SELECT id, content, timestamp, role, channel, sender_id
+    SELECT id, content, timestamp, role, channel, sender_id, sender_name, issuer
     FROM cortex_session
     WHERE shard_id = ?
     ORDER BY timestamp ASC, id ASC
@@ -233,6 +233,8 @@ export function getShardMessages(db: DatabaseSync, shardId: string): { id: numbe
     role: r.role as string,
     channel: r.channel as string,
     senderId: r.sender_id as string,
+    senderName: (r.sender_name as string) ?? undefined,
+    issuer: (r.issuer as string) ?? undefined,
   }));
 }
 

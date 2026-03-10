@@ -951,7 +951,7 @@ export const chatHandlers: GatewayRequestHandlers = {
             }
             cortexFeed(cortexMkEnvelope({
               channel: "webchat",
-              sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
+              sender: { id: "webchat-user", name: (globalThis as any).__openclaw_cortex_partner_name__ ?? "Partner", relationship: "partner" },
               content: cortexContent,
               priority: "urgent",
               replyContext: { channel: "webchat", messageId: clientRunId },
@@ -991,7 +991,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         try {
           cortexFeed(cortexMkEnvelope({
             channel: "webchat",
-            sender: { id: "webchat-user", name: "Partner", relationship: "partner" },
+            sender: { id: "webchat-user", name: (globalThis as any).__openclaw_cortex_partner_name__ ?? "Partner", relationship: "partner" },
             content: parsedMessage,
             priority: "urgent",
           }));

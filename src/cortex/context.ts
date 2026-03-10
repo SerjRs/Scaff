@@ -248,11 +248,18 @@ export function buildShardedForeground(
         role: msg.role as "user" | "assistant",
         channel: msg.channel as ChannelId,
         senderId: msg.senderId,
+        senderName: msg.senderName,
         content: msg.content,
         timestamp: msg.timestamp,
+        issuer: msg.issuer,
       });
     }
   }
+
+  // 5. Global sort by timestamp — shards decide what's included, but within the
+  //    context window all messages must be in strict chronological order regardless
+  //    of which shard they came from.
+  allMessages.sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id - b.id);
 
   const content = lines.join("\n");
   return {
@@ -273,7 +280,7 @@ export function buildShardedForeground(
 function getUnshardedMessages(
   db: DatabaseSync,
   opts: { channel?: string; issuer?: string },
-): { id: number; content: string; timestamp: string; role: string; channel: string; senderId: string }[] {
+): { id: number; content: string; timestamp: string; role: string; channel: string; senderId: string; senderName?: string; issuer?: string }[] {
   const filterCol = opts.issuer ? "issuer" : "channel";
   const filterVal = opts.issuer ?? opts.channel ?? "";
 
@@ -288,7 +295,7 @@ function getUnshardedMessages(
   const afterId = lastShardedRow?.last_id ?? 0;
 
   const rows = db.prepare(`
-    SELECT id, content, timestamp, role, channel, sender_id
+    SELECT id, content, timestamp, role, channel, sender_id, sender_name, issuer
     FROM cortex_session
     WHERE ${filterCol} = ? AND shard_id IS NULL AND id > ?
     ORDER BY timestamp ASC, id ASC
@@ -301,6 +308,8 @@ function getUnshardedMessages(
     role: r.role as string,
     channel: r.channel as string,
     senderId: r.sender_id as string,
+    senderName: (r.sender_name as string) ?? undefined,
+    issuer: (r.issuer as string) ?? undefined,
   }));
 }
 

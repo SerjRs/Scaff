@@ -92,9 +92,12 @@ describe("contextToMessages", () => {
     };
 
     const result = contextToMessages(context);
-    expect(result.system).toBe("You are Scaff.");
+    expect(result.system).toContain("You are Scaff.");
     expect(result.messages).toHaveLength(1);
-    expect(result.messages[0]).toEqual({ role: "user", content: "hello" });
+    expect(result.messages[0].role).toBe("user");
+    // Metadata prefix: [timestamp:aliased-sender:channel] content
+    expect(result.messages[0].content).toContain("hello");
+    expect(result.messages[0].content).toContain(":user-1:webchat]");
   });
 
   it("includes background summaries in system", () => {
@@ -131,20 +134,26 @@ describe("contextToMessages", () => {
       foregroundChannel: "webchat",
       foregroundMessages: [
         { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "webchat-user", content: "hello", timestamp: "2026-02-27T10:00:00Z" },
-        { id: 2, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex", content: "Hi there!", timestamp: "2026-02-27T10:00:01Z" },
+        { id: 2, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex", content: "Hi there!", timestamp: "2026-02-27T10:00:01Z", issuer: "agent:main:cortex" },
         { id: 3, envelopeId: "e2", role: "user", channel: "webchat", senderId: "webchat-user", content: "how are you?", timestamp: "2026-02-27T10:00:02Z" },
-        { id: 4, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "I'm doing well.", timestamp: "2026-02-27T10:00:03Z" },
+        { id: 4, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "I'm doing well.", timestamp: "2026-02-27T10:00:03Z", issuer: "agent:main:cortex" },
       ],
       backgroundSummaries: new Map(),
     };
 
     const result = contextToMessages(context);
-    expect(result.messages).toEqual([
-      { role: "user", content: "hello" },
-      { role: "assistant", content: "Hi there!" },
-      { role: "user", content: "how are you?" },
-      { role: "assistant", content: "I'm doing well." },
-    ]);
+    expect(result.messages).toHaveLength(4);
+    // Verify roles alternate correctly
+    expect(result.messages.map(m => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    // Verify metadata prefixes: user messages use aliased sender, assistant uses "cortex"
+    expect(result.messages[0].content).toContain(":user-1:webchat] hello");
+    expect(result.messages[1].content).toContain(":Scaff[cortex]:webchat] Hi there!");
+    expect(result.messages[2].content).toContain(":user-1:webchat] how are you?");
+    expect(result.messages[3].content).toContain(":Scaff[cortex]:webchat] I'm doing well.");
+    // Same senderId ("webchat-user") always gets the same alias
+    const m0 = result.messages[0].content as string;
+    const m2 = result.messages[2].content as string;
+    expect(m0.match(/user-\d+/)?.[0]).toBe(m2.match(/user-\d+/)?.[0]);
   });
 
   it("consolidates consecutive same-role messages", () => {
@@ -160,17 +169,23 @@ describe("contextToMessages", () => {
       foregroundMessages: [
         { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user1", content: "hello", timestamp: "2026-02-27T10:00:00Z" },
         { id: 2, envelopeId: "e2", role: "user", channel: "webchat", senderId: "user2", content: "world", timestamp: "2026-02-27T10:00:01Z" },
-        { id: 3, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "Hi!", timestamp: "2026-02-27T10:00:02Z" },
+        { id: 3, envelopeId: "e2", role: "assistant", channel: "webchat", senderId: "cortex", content: "Hi!", timestamp: "2026-02-27T10:00:02Z", issuer: "agent:main:cortex" },
       ],
       backgroundSummaries: new Map(),
     };
 
     const result = contextToMessages(context);
-    // After consolidation, merged same-role messages become arrays of text blocks
-    expect(result.messages).toEqual([
-      { role: "user", content: [{ type: "text", text: "hello" }, { type: "text", text: "world" }] },
-      { role: "assistant", content: "Hi!" },
-    ]);
+    // After consolidation, merged same-role messages become arrays of text blocks (with metadata prefixes)
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].role).toBe("user");
+    const userBlocks = result.messages[0].content as any[];
+    expect(userBlocks).toHaveLength(2);
+    expect(userBlocks[0].text).toContain(":user-1:webchat] hello");
+    expect(userBlocks[1].text).toContain(":user-2:webchat] world");
+    // Different senderIds get different aliases
+    expect(userBlocks[0].text).not.toBe(userBlocks[1].text);
+    expect(result.messages[1].role).toBe("assistant");
+    expect(result.messages[1].content).toContain(":Scaff[cortex]:webchat] Hi!");
   });
 
   it("handles empty foreground with fallback user message", () => {
@@ -205,21 +220,28 @@ describe("contextToMessages", () => {
       foregroundChannel: "webchat",
       foregroundMessages: [
         { id: 1, envelopeId: "e1", role: "user", channel: "webchat", senderId: "user", content: "tell me something", timestamp: "2026-02-27T10:00:00Z" },
-        { id: 2, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex", content: multiLineResponse, timestamp: "2026-02-27T10:00:01Z" },
+        { id: 2, envelopeId: "e1", role: "assistant", channel: "webchat", senderId: "cortex", content: multiLineResponse, timestamp: "2026-02-27T10:00:01Z", issuer: "agent:main:cortex" },
         { id: 3, envelopeId: "e2", role: "user", channel: "webchat", senderId: "user", content: "thanks", timestamp: "2026-02-27T10:00:02Z" },
       ],
       backgroundSummaries: new Map(),
     };
 
     const result = contextToMessages(context);
-    expect(result.messages).toEqual([
-      { role: "user", content: "tell me something" },
-      { role: "assistant", content: multiLineResponse },
-      { role: "user", content: "thanks" },
-    ]);
-    // The entire multi-line response stays as ONE assistant message
-    expect(result.messages[1].content).toContain("\n");
-    expect(result.messages[1].content.split("\n")).toHaveLength(3);
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages.map(m => m.role)).toEqual(["user", "assistant", "user"]);
+    // User messages have aliased sender prefix
+    expect(result.messages[0].content).toContain(":user-1:webchat] tell me something");
+    expect(result.messages[2].content).toContain(":user-1:webchat] thanks");
+    // Assistant message has cortex prefix + multi-line content preserved
+    const assistantContent = result.messages[1].content as string;
+    expect(assistantContent).toContain(":Scaff[cortex]:webchat]");
+    expect(assistantContent).toContain("Line 1 of my response.");
+    expect(assistantContent).toContain("\n");
+    // Prefix is on first line only — multi-line body stays intact
+    const lines = assistantContent.split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("Line 2 continues here.");
+    expect(lines[2]).toBe("Line 3 finishes.");
   });
 });
 

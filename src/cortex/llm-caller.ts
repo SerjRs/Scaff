@@ -142,6 +142,55 @@ You may attach resources (workspace files or inline text) so the executor can ac
 };
 
 // ---------------------------------------------------------------------------
+// Sender aliasing — avoids leaking PII (phone numbers) into LLM context
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a sender label function scoped to one contextToMessages() call.
+ * Uses display name when available (e.g. "Serj"), falls back to aliased ID
+ * (e.g. "user-1") to avoid leaking PII like phone numbers into LLM context.
+ */
+function createSenderLabeler(): (senderId: string | undefined, senderName: string | undefined, channel: string) => string {
+  const aliases = new Map<string, string>();
+  let counter = 0;
+  return (senderId: string | undefined, senderName: string | undefined, channel: string): string => {
+    // Prefer display name when available (no PII concern)
+    if (senderName) return senderName;
+    if (!senderId) return "user";
+    const key = `${senderId}:${channel}`;
+    if (!aliases.has(key)) {
+      aliases.set(key, `user-${++counter}`);
+    }
+    return aliases.get(key)!;
+  };
+}
+
+/**
+ * Derive a readable label from an issuer string for assistant messages.
+ * Every message in cortex_session has an issuer (column DEFAULT 'agent:main:cortex',
+ * every INSERT sets it explicitly), so undefined should never occur.
+ *
+ * Examples:
+ *   "agent:main:cortex"              → "Scaff[cortex]"
+ *   "router-evaluator"               → "router-evaluator"
+ *   "agent:router-executor:session"   → "router-executor"
+ */
+function issuerLabel(issuer: string | undefined): string {
+  if (!issuer) {
+    // Should never happen — indicates a bug in context assembly.
+    // Return a noticeable label so it's easy to spot and trace.
+    return "UNKNOWN_ISSUER";
+  }
+  // Main cortex agent → persona name + role
+  if (issuer === "agent:main:cortex") return "Scaff[cortex]";
+  // Other agent:X:Y patterns → extract the agent name (middle segment)
+  const agentMatch = issuer.match(/^agent:([^:]+):/);
+  if (agentMatch) return agentMatch[1];
+  // Bare identifiers like "router-evaluator" → use as-is
+  return issuer;
+}
+
+// ---------------------------------------------------------------------------
 // Context → Messages
 // ---------------------------------------------------------------------------
 
@@ -186,6 +235,7 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
   // These must be parsed back into arrays so the LLM sees proper tool_use/tool_result
   // blocks on replay, not flat text that teaches it to mimic tool calls as text.
   // @see docs/hipocampus-architecture.md §6.6
+  const labelSender = createSenderLabeler();
   const messages: AnthropicMessage[] = context.foregroundMessages
     .filter((msg) => {
       // Skip [silence] entries - these are from failed Cortex calls and pollute context
@@ -227,10 +277,32 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
           }
         } catch { /* not JSON — keep as string */ }
       }
-      // Prefix context metadata so the LLM knows when, who, and which channel for every message
+      // Prefix context metadata so the LLM knows when, who, and which channel for every message.
+      // Uses aliased sender IDs to avoid leaking PII (phone numbers) into LLM context.
+      // Strategy differs by role due to API constraints:
+      //   - assistant (tool_use): prepend text block (API supports text + tool_use mixing)
+      //   - user (tool_result): embed metadata in tool_result.content string
+      //     (API rejects text blocks alongside tool_result blocks)
+      const ts = msg.timestamp?.replace("T", " ").replace(/\.\d+Z$/, "") ?? "";
+      const sender = msg.role === "assistant" ? issuerLabel(msg.issuer) : labelSender(msg.senderId, msg.senderName, msg.channel);
+      const meta = `[${ts}:${sender}:${msg.channel}]`;
+
       if (typeof content === "string") {
-        const ts = msg.timestamp?.replace("T", " ").replace(/\.\d+Z$/, "") ?? "";
-        content = `[${ts}:${msg.issuer ?? "unknown"}:${msg.channel}] ${content}`;
+        content = `${meta} ${content}`;
+      } else if (Array.isArray(content)) {
+        if (msg.role === "assistant") {
+          // tool_use: prepend text block (API supports text + tool_use in assistant messages)
+          content = [{ type: "text", text: meta }, ...content];
+        } else {
+          // tool_result: embed metadata INTO content string
+          // (API rejects text blocks before/between tool_result blocks — verified 2026-03-10)
+          content = content.map((block: any) => {
+            if (block.type === "tool_result" && typeof block.content === "string") {
+              return { ...block, content: `${meta}\n${block.content}` };
+            }
+            return block;
+          });
+        }
       }
       return { role: msg.role as "user" | "assistant", content };
     });

@@ -400,6 +400,13 @@ export async function initGatewayCortex(params: {
   (globalThis as any).__openclaw_cortex_appendMainReply__ = appendMainAgentReply;
   (globalThis as any).__openclaw_cortex_debug__ = config.debugContext;
 
+  // Expose partner name from USER.md so channel handlers can tag sender identity
+  const partnerName = readPartnerName(workspaceDir);
+  if (partnerName) {
+    (globalThis as any).__openclaw_cortex_partner_name__ = partnerName;
+    params.log.warn(`[cortex] Partner name: ${partnerName}`);
+  }
+
   params.log.warn(`[cortex] Started. Channels: ${channelModes || "(all default: " + config.defaultMode + ")"}`);
 
   return handle;
@@ -482,3 +489,20 @@ export function appendMainAgentReply(params: {
 }
 
 // LLM callers moved to llm-caller.ts (Task 23)
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Read partner name from USER.md in the workspace directory. */
+function readPartnerName(workspaceDir: string): string | undefined {
+  try {
+    const userMdPath = path.join(workspaceDir, "USER.md");
+    if (!fs.existsSync(userMdPath)) return undefined;
+    const content = fs.readFileSync(userMdPath, "utf-8");
+    const match = content.match(/\*\*Name:\*\*\s*(.+)/);
+    return match?.[1]?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}

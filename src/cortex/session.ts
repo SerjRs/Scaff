@@ -90,6 +90,8 @@ export interface SessionMessage {
   role: "user" | "assistant";
   channel: ChannelId;
   senderId: string;
+  /** Display name of the sender (e.g. "Serj"), if known at write time */
+  senderName?: string;
   content: string;
   timestamp: string;
   metadata?: Record<string, unknown>;
@@ -102,13 +104,14 @@ export interface SessionMessage {
 /** Append an inbound message to the unified session */
 export function appendToSession(db: DatabaseSync, envelope: CortexEnvelope, issuer = "agent:main:cortex"): void {
   const stmt = db.prepare(`
-    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
-    VALUES (?, 'user', ?, ?, ?, ?, ?, ?)
+    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, sender_name, content, timestamp, metadata, issuer)
+    VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     envelope.id,
     envelope.channel,
     envelope.sender.id,
+    envelope.sender.name || null,
     envelope.content,
     envelope.timestamp,
     envelope.metadata ? JSON.stringify(envelope.metadata) : null,
@@ -220,7 +223,7 @@ export function getSessionHistory(
   opts?: { channel?: ChannelId; issuer?: string; limit?: number },
 ): SessionMessage[] {
   let sql = `
-    SELECT id, envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer, shard_id
+    SELECT id, envelope_id, role, channel, sender_id, sender_name, content, timestamp, metadata, issuer, shard_id
     FROM cortex_session
   `;
   const params: import("node:sqlite").SQLInputValue[] = [];
@@ -255,6 +258,7 @@ export function getSessionHistory(
     role: row.role as "user" | "assistant",
     channel: row.channel as ChannelId,
     senderId: row.sender_id as string,
+    senderName: (row.sender_name as string) ?? undefined,
     content: row.content as string,
     timestamp: row.timestamp as string,
     metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
@@ -344,6 +348,9 @@ function _migrateSchema(db: DatabaseSync): void {
     }
     if (!colNames.has("shard_id")) {
       db.exec(`ALTER TABLE cortex_session ADD COLUMN shard_id TEXT`);
+    }
+    if (!colNames.has("sender_name")) {
+      db.exec(`ALTER TABLE cortex_session ADD COLUMN sender_name TEXT`);
     }
   } catch {
     // Table doesn't exist yet or migration already done — no-op

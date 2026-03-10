@@ -5,7 +5,7 @@
   "defaultMode": "off",
   "channels": {
     "webchat": "live",
-    "whatsapp": "live"
+    "whatsapp": "off"
   },
   "hippocampus": {
     "enabled": true,
