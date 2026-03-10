@@ -24,6 +24,12 @@ import {
   getSessionHistory,
   updateChannelState,
 } from "./session.js";
+import {
+  getUnextractedShards,
+  getShardMessages,
+  getRecentClosedShards,
+  markShardExtracted,
+} from "./shards.js";
 import type { EmbedFunction } from "./tools.js";
 import type { ChannelId } from "./types.js";
 
@@ -70,6 +76,10 @@ export async function compactChannel(
 /**
  * Run the Channel Compactor: find foreground channels idle for >threshold,
  * summarize their history, and demote them to background layer.
+ *
+ * When shards are available, builds background summary from recent closed shard
+ * topic labels (one line per shard) instead of LLM-summarizing raw messages.
+ * Falls back to LLM summarization when no shards exist.
  */
 export async function runChannelCompactor(params: {
   db: DatabaseSync;
@@ -90,13 +100,28 @@ export async function runChannelCompactor(params: {
     if (now - lastMsg < thresholdMs) continue; // Still active
 
     try {
-      const messages = getSessionHistory(db, { channel: state.channel });
-      if (messages.length === 0) continue;
+      // Try shard-based summary first
+      const recentShards = getRecentClosedShards(db, state.channel, 5);
 
-      const summary = await compactChannel(
-        messages.map((m) => ({ role: m.role, content: m.content, senderId: m.senderId })),
-        summarize,
-      );
+      let summary: string;
+      if (recentShards.length > 0) {
+        // Build summary from shard topic labels — no LLM call needed
+        summary = recentShards
+          .map((s) => {
+            const timeAgo = formatCompactorTimeAgo(now, s.endedAt ?? s.startedAt);
+            return `- ${s.topic} (${timeAgo})`;
+          })
+          .join("\n");
+      } else {
+        // Fallback: LLM summarization of raw messages
+        const messages = getSessionHistory(db, { channel: state.channel });
+        if (messages.length === 0) continue;
+
+        summary = await compactChannel(
+          messages.map((m) => ({ role: m.role, content: m.content, senderId: m.senderId })),
+          summarize,
+        );
+      }
 
       if (summary) {
         updateChannelState(db, state.channel, {
@@ -113,37 +138,96 @@ export async function runChannelCompactor(params: {
   return result;
 }
 
+function formatCompactorTimeAgo(now: number, timestamp: string): string {
+  const diffMs = now - new Date(timestamp).getTime();
+  const diffMin = Math.floor(diffMs / (1000 * 60));
+  if (diffMin < 60) return `${diffMin}min ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
 // ---------------------------------------------------------------------------
 // Task 4.2: Fact Extractor
 // ---------------------------------------------------------------------------
 
 /**
- * Extract persistent facts from recent session messages using an LLM.
- * Inserts extracted facts into cortex_hot_memory.
+ * Extract persistent facts from closed shards (shard-aware) or recent session
+ * messages (fallback for unsharded history).
+ *
+ * Shard-aware mode: processes each unextracted closed shard individually,
+ * including its topic label for scoped extraction. Marks shards as extracted
+ * via `extracted_at` to avoid reprocessing.
+ *
+ * Fallback mode: for channels with no shards, falls back to raw session history.
  */
 export async function runFactExtractor(params: {
   db: DatabaseSync;
   extractLLM: FactExtractorLLM;
-  /** Only process messages newer than this ISO timestamp */
+  /** Only process messages newer than this ISO timestamp (fallback mode) */
   since?: string;
-  /** Max messages to process per channel */
+  /** Max messages to process per channel (fallback mode) */
   maxMessages?: number;
 }): Promise<GardenerRunResult> {
   const { db, extractLLM, maxMessages = 100 } = params;
   const result: GardenerRunResult = { task: "fact_extractor", processed: 0, errors: [] };
 
-  // Default: last 6 hours
-  const since = params.since ?? new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  // --- Shard-aware extraction: process unextracted closed shards ---
+  const unextracted = getUnextractedShards(db);
+  const shardsProcessed = new Set<string>();
 
-  const states = getChannelStates(db);
-  const channelsToProcess: ChannelId[] = states.map((s) => s.channel);
-
-  for (const channel of channelsToProcess) {
+  for (const shard of unextracted) {
     try {
-      const messages = getSessionHistory(db, { channel });
-      // Filter to recent messages
+      const messages = getShardMessages(db, shard.id);
+      if (messages.length === 0) {
+        markShardExtracted(db, shard.id);
+        continue;
+      }
+
+      const transcript = messages
+        .map((m) => `${m.role === "assistant" ? "Cortex" : m.senderId}: ${m.content}`)
+        .join("\n");
+
+      console.log(`[gardener] Shard "${shard.topic}" (${shard.id.slice(0, 8)}): ${messages.length} messages, ${transcript.length} chars`);
+
+      const topicContext = shard.topic !== "Continued conversation"
+        ? `\nThis conversation is about: "${shard.topic}". Extract facts relevant to this topic.\n`
+        : "";
+
+      const facts = await extractFactsFromTranscript(extractLLM, transcript, topicContext);
+
+      for (const factText of facts) {
+        if (typeof factText === "string" && factText.trim().length > 0) {
+          const existing = db.prepare(
+            `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
+          ).get(factText.trim()) as { id: string } | undefined;
+
+          if (!existing) {
+            insertHotFact(db, { factText: factText.trim() });
+            result.processed++;
+          }
+        }
+      }
+
+      markShardExtracted(db, shard.id);
+      shardsProcessed.add(shard.channel);
+    } catch (err) {
+      result.errors.push(`shard:${shard.id.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // --- Fallback: process channels with no shards via raw session history ---
+  const since = params.since ?? new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const states = getChannelStates(db);
+
+  for (const state of states) {
+    if (shardsProcessed.has(state.channel)) continue; // Already processed via shards
+
+    try {
+      const messages = getSessionHistory(db, { channel: state.channel });
       const recent = messages.filter((m) => m.timestamp >= since).slice(0, maxMessages);
-      console.log(`[gardener] Channel "${channel}": ${messages.length} total, ${recent.length} recent (since ${since})`);
+      console.log(`[gardener] Channel "${state.channel}": ${messages.length} total, ${recent.length} recent (since ${since})`);
       if (recent.length === 0) continue;
 
       const transcript = recent
@@ -152,10 +236,38 @@ export async function runFactExtractor(params: {
 
       console.log(`[gardener] Transcript length: ${transcript.length} chars, sending to LLM...`);
 
-      const prompt = `Extract ONLY facts that are EXPLICITLY stated in this conversation. \
+      const facts = await extractFactsFromTranscript(extractLLM, transcript);
+
+      for (const factText of facts) {
+        if (typeof factText === "string" && factText.trim().length > 0) {
+          const existing = db.prepare(
+            `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
+          ).get(factText.trim()) as { id: string } | undefined;
+
+          if (!existing) {
+            insertHotFact(db, { factText: factText.trim() });
+            result.processed++;
+          }
+        }
+      }
+    } catch (err) {
+      result.errors.push(`${state.channel}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return result;
+}
+
+/** Shared extraction logic — builds prompt, calls LLM, parses JSON array of facts. */
+async function extractFactsFromTranscript(
+  extractLLM: FactExtractorLLM,
+  transcript: string,
+  topicContext = "",
+): Promise<string[]> {
+  const prompt = `Extract ONLY facts that are EXPLICITLY stated in this conversation. \
 Facts are things like user preferences, personal details, project decisions, \
 technical choices, system configurations, or relationships.
-
+${topicContext}
 RULES:
 - ONLY extract what is directly said or clearly demonstrated. Do NOT infer, assume, or fabricate.
 - If the user says "I live in Bucharest" → extract that. If they don't mention where they live → extract nothing about location.
@@ -169,39 +281,16 @@ Return ONLY a JSON array of strings, one fact per entry.
 Conversation:
 ${transcript}`;
 
-      const response = await extractLLM(prompt);
-      console.log(`[gardener] LLM response: ${response.substring(0, 200)}`);
+  const response = await extractLLM(prompt);
+  console.log(`[gardener] LLM response: ${response.substring(0, 200)}`);
 
-      // Parse the JSON array of facts
-      let facts: string[];
-      try {
-        facts = JSON.parse(response);
-        if (!Array.isArray(facts)) facts = [];
-      } catch {
-        // Try extracting JSON from markdown code block
-        const match = response.match(/\[[\s\S]*?\]/);
-        facts = match ? JSON.parse(match[0]) : [];
-      }
-
-      for (const factText of facts) {
-        if (typeof factText === "string" && factText.trim().length > 0) {
-          // Skip duplicates (exact match in hot memory)
-          const existing = db.prepare(
-            `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
-          ).get(factText.trim()) as { id: string } | undefined;
-
-          if (!existing) {
-            insertHotFact(db, { factText: factText.trim() });
-            result.processed++;
-          }
-        }
-      }
-    } catch (err) {
-      result.errors.push(`${channel}: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  try {
+    const parsed = JSON.parse(response);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    const match = response.match(/\[[\s\S]*?\]/);
+    return match ? JSON.parse(match[0]) : [];
   }
-
-  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import { startGardener, type GardenerInstance, type FactExtractorLLM } from "./g
 import { initHotMemoryTable, initColdStorage } from "./hippocampus.js";
 import type { CortexLLMResult } from "./llm-caller.js";
 import { startLoop, type CortexLoop, type SpawnParams } from "./loop.js";
+import type { ForegroundConfig } from "./shards.js";
 import type { EmbedFunction } from "./tools.js";
 import { repairBusState } from "./recovery.js";
 import { initSessionTables, getCortexSessionKey, getChannelStates } from "./session.js";
@@ -40,6 +41,10 @@ export interface CortexConfig {
   onSpawn?: (params: SpawnParams) => string | null;
   /** Embedding function for Hippocampus (memory_query + evictor). Default: Ollama nomic-embed-text */
   embedFn?: EmbedFunction;
+  /** Foreground sharding config — when provided, enables shard-based context management */
+  foregroundConfig?: ForegroundConfig;
+  /** LLM function for shard operations (topic labeling, semantic detection). Uses Haiku. */
+  shardLLMFn?: (prompt: string) => Promise<string>;
   /** LLM function for Gardener summarization (channel compactor) */
   gardenerSummarizeLLM?: FactExtractorLLM;
   /** LLM function for Gardener fact extraction */
@@ -126,11 +131,13 @@ export async function startCortex(config: CortexConfig): Promise<CortexInstance>
         pollIntervalMs: config.pollIntervalMs ?? 500,
         hippocampusEnabled: config.hippocampusEnabled,
         embedFn: config.embedFn,
+        foregroundConfig: config.foregroundConfig,
         issuer,
         callLLM: config.callLLM,
         onError,
         onMessageComplete: config.onMessageComplete,
         onSpawn: config.onSpawn,
+        shardLLMFn: config.shardLLMFn,
       });
     }
     return loop;

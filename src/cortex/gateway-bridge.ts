@@ -61,6 +61,7 @@ function loadCortexConfig(): CortexModeConfig | null {
         gardenerCompactorIntervalMs: raw.hippocampus?.gardenerCompactorIntervalMs,
         gardenerExtractorIntervalMs: raw.hippocampus?.gardenerExtractorIntervalMs,
         gardenerEvictorIntervalMs: raw.hippocampus?.gardenerEvictorIntervalMs,
+        foreground: raw.hippocampus?.foreground ?? undefined,
       },
       debugContext: raw.debugContext === true,
     };
@@ -134,6 +135,18 @@ export async function initGatewayCortex(params: {
   const { getGatewayRouter } = await import("../router/gateway-integration.js");
   const { getCortexSessionKey } = await import("./session.js");
 
+  // Build foreground sharding config from hippocampus.foreground (if configured)
+  let foregroundConfig: import("./shards.js").ForegroundConfig | undefined;
+  if (config.hippocampus?.enabled) {
+    const { DEFAULT_FOREGROUND_CONFIG } = await import("./shards.js");
+    const fgRaw = (config.hippocampus as any).foreground;
+    foregroundConfig = {
+      ...DEFAULT_FOREGROUND_CONFIG,
+      ...(fgRaw ?? {}),
+    };
+    params.log.warn(`[cortex] Foreground sharding: tokenCap=${foregroundConfig.tokenCap}, maxShardTokens=${foregroundConfig.maxShardTokens}, timeGapMinutes=${foregroundConfig.timeGapMinutes}`);
+  }
+
   const instance = await startCortex({
     agentId: "main",
     workspaceDir,
@@ -141,6 +154,8 @@ export async function initGatewayCortex(params: {
     maxContextTokens: 200_000,
     pollIntervalMs: 500,
     hippocampusEnabled: config.hippocampus?.enabled === true,
+    foregroundConfig,
+    shardLLMFn: foregroundConfig ? gardenerLLM : undefined,
     gardenerSummarizeLLM: config.hippocampus?.enabled ? gardenerLLM : undefined,
     gardenerExtractLLM: config.hippocampus?.enabled ? gardenerLLM : undefined,
     // Gardener interval overrides from config (for testing)

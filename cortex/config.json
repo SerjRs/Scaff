@@ -4,15 +4,23 @@
   "thinking": "high",
   "defaultMode": "off",
   "channels": {
-    "webchat": "live",
-    "whatsapp": "live"
+    "webchat": "false",
+    "whatsapp": "false"
   },
   "hippocampus": {
     "enabled": true,
     "gardenerCompactorIntervalMs": 3600000,
     "gardenerExtractorIntervalMs": 21600000,
     "gardenerEvictorIntervalMs": 604800000,
-    "gardenerModel": "claude-haiku-4-5"
+    "gardenerModel": "claude-haiku-4-5",
+    "foreground": {
+      "tokenCap": 8000,
+      "tolerancePct": 20,
+      "maxShardTokens": 8000,
+      "timeGapMinutes": 25,
+      "semanticCheckInterval": 8,
+      "semanticModel": "claude-haiku-4-5"
+    }
   },
   "debugContext": true
 }

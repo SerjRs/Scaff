@@ -18,6 +18,12 @@
 
 - Gateway config patch prepared at _tmp/cortex-config-patch.json pending review
 - cortex-startup-check.ps1 was refactored from hardcoded models to dynamic config loading
+- User is now communicating through a single channel directly with Cortex
+- The issue likely involves per-turn tool call limit
+- Cortex dual-live is a Gate 4 blocker
+- Adapter gating and tool_use fixes work individually but fail when processing both channels simultaneously
+- Cortex dual-channel live is broken due to fetch_chat_history loop issue
+- User was previously discussing with Scaff through WhatsApp
 - WhatsApp channel lacks auto-restart mechanism; exited completely with no recovery during 2026-02-10 outage.
 - Communication channel for reminders/pings: WhatsApp
 - Context window configuration verified at 182k/1.0m in session_status on 2026-02-09
@@ -210,11 +216,5 @@
 - Without inline tools, Cortex cannot answer simple questions without spawning tasks
 - Last update to the system documentation was on 2026-03-08
 - Issues #11 and #14 (auth sync + resource-passing API) were completed in an overnight session on 2026-03-05
-- Commit ca63a03 implements auth sync + resource-passing API across 8 files with 394 insertions
-- 14 new tests are passing; 12 pre-existing test failures exist
-- All work from overnight session was pushed to GitHub
-- openclaw.json config file was wiped during overnight session by Claude Code sessions spawned in ~/.openclaw directory
-- Daily log must be written before any rebuild or restart
-- Progress updates should be written during long sessions, not just at the end
 
 <!-- END HIPPOCAMPUS -->

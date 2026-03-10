@@ -95,6 +95,8 @@ export interface SessionMessage {
   metadata?: Record<string, unknown>;
   /** Cognitive owner — which agent session owns this message */
   issuer?: string;
+  /** Shard this message belongs to (foreground sharding) */
+  shardId?: string;
 }
 
 /** Append an inbound message to the unified session */
@@ -215,7 +217,7 @@ export function getSessionHistory(
   opts?: { channel?: ChannelId; issuer?: string; limit?: number },
 ): SessionMessage[] {
   let sql = `
-    SELECT id, envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer
+    SELECT id, envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer, shard_id
     FROM cortex_session
   `;
   const params: import("node:sqlite").SQLInputValue[] = [];
@@ -254,6 +256,7 @@ export function getSessionHistory(
     timestamp: row.timestamp as string,
     metadata: row.metadata ? JSON.parse(row.metadata as string) : undefined,
     issuer: (row.issuer as string) ?? undefined,
+    shardId: (row.shard_id as string) ?? undefined,
   }));
 }
 
@@ -336,7 +339,41 @@ function _migrateSchema(db: DatabaseSync): void {
     if (!colNames.has("issuer")) {
       db.exec(`ALTER TABLE cortex_session ADD COLUMN issuer TEXT NOT NULL DEFAULT 'agent:main:cortex'`);
     }
+    if (!colNames.has("shard_id")) {
+      db.exec(`ALTER TABLE cortex_session ADD COLUMN shard_id TEXT`);
+    }
   } catch {
     // Table doesn't exist yet or migration already done — no-op
+  }
+
+  // --- cortex_shards ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cortex_shards (
+      id                TEXT PRIMARY KEY,
+      channel           TEXT NOT NULL,
+      topic             TEXT NOT NULL DEFAULT 'Continued conversation',
+      first_message_id  INTEGER NOT NULL,
+      last_message_id   INTEGER NOT NULL,
+      token_count       INTEGER NOT NULL DEFAULT 0,
+      message_count     INTEGER NOT NULL DEFAULT 0,
+      started_at        TEXT NOT NULL,
+      ended_at          TEXT,
+      created_at        TEXT NOT NULL,
+      created_by        TEXT NOT NULL DEFAULT 'inline'
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_shards_channel ON cortex_shards(channel)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_shards_ended ON cortex_shards(ended_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_session_shard ON cortex_session(shard_id)`);
+
+  // --- extracted_at column for Gardener shard tracking ---
+  try {
+    const shardCols = db.prepare("PRAGMA table_info(cortex_shards)").all() as { name: string }[];
+    const shardColNames = new Set(shardCols.map((c) => c.name));
+    if (!shardColNames.has("extracted_at")) {
+      db.exec(`ALTER TABLE cortex_shards ADD COLUMN extracted_at TEXT`);
+    }
+  } catch {
+    // Already exists or table not ready
   }
 }

@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { HotFact } from "./hippocampus.js";
 import { getChannelStates, getSessionHistory, type SessionMessage } from "./session.js";
+import { getActiveShard, getClosedShards, getShardMessages, type Shard, type ForegroundConfig } from "./shards.js";
 import type { ChannelId, CortexEnvelope } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -161,6 +162,137 @@ export function buildForeground(
 }
 
 // ---------------------------------------------------------------------------
+// Shard-Based Foreground Assembly
+// ---------------------------------------------------------------------------
+
+/**
+ * Build foreground context using shard-based token budgeting.
+ *
+ * Algorithm (§4.2 of foreground-sharding-architecture.md):
+ * 1. Active shard is always included (even if it alone exceeds the cap)
+ * 2. Walk backward through closed shards, include while within budget
+ * 3. Stop when next shard would exceed cap × (1 + tolerance)
+ *
+ * Returns messages in chronological order with shard separators.
+ */
+export function buildShardedForeground(
+  db: DatabaseSync,
+  channel: string,
+  config: ForegroundConfig,
+): { layer: ContextLayer; messages: SessionMessage[] } {
+  const ceiling = config.tokenCap * (1 + config.tolerancePct / 100);
+  let runningTotal = 0;
+
+  // Collect shards to include (newest first, then reversed for chronological output)
+  const includedShards: { shard: Shard | null; messages: ReturnType<typeof getShardMessages>; isActive: boolean }[] = [];
+
+  // 1. Active shard — always included
+  const activeShard = getActiveShard(db, channel);
+  if (activeShard) {
+    const activeMessages = getShardMessages(db, activeShard.id);
+    const activeTokens = activeMessages.reduce((sum, m) => sum + estimateTokens(formatShardMessage(m)), 0);
+    runningTotal += activeTokens;
+    includedShards.push({ shard: activeShard, messages: activeMessages, isActive: true });
+  }
+
+  // Also include unsharded messages (tail messages not yet assigned to any shard)
+  const unshardedMessages = getUnshardedMessages(db, channel);
+  if (unshardedMessages.length > 0) {
+    const unshardedTokens = unshardedMessages.reduce((sum, m) => sum + estimateTokens(formatShardMessage(m)), 0);
+    runningTotal += unshardedTokens;
+    includedShards.push({ shard: null, messages: unshardedMessages, isActive: true });
+  }
+
+  // 2. Walk backward through closed shards
+  const closedShards = getClosedShards(db, channel);
+  for (const shard of closedShards) {
+    if (runningTotal + shard.tokenCount <= ceiling) {
+      const messages = getShardMessages(db, shard.id);
+      runningTotal += shard.tokenCount;
+      includedShards.push({ shard, messages, isActive: false });
+    } else {
+      break; // Stop — this shard and all older ones are excluded
+    }
+  }
+
+  // 3. Reverse to chronological order (we built newest-first)
+  includedShards.reverse();
+
+  // 4. Build output with shard separators
+  const lines: string[] = [];
+  const allMessages: SessionMessage[] = [];
+  const now = Date.now();
+
+  for (const { shard, messages, isActive } of includedShards) {
+    // Add separator for closed shards with topic labels
+    if (shard && !isActive) {
+      const timeAgo = formatTimeAgo(now, shard.endedAt ?? shard.startedAt);
+      lines.push(`--- [Topic: ${shard.topic} | ${timeAgo} | ${shard.messageCount} messages] ---`);
+    }
+
+    for (const msg of messages) {
+      lines.push(formatShardMessage(msg));
+      allMessages.push({
+        id: msg.id,
+        envelopeId: "",
+        role: msg.role as "user" | "assistant",
+        channel: msg.channel as ChannelId,
+        senderId: msg.senderId,
+        content: msg.content,
+        timestamp: msg.timestamp,
+      });
+    }
+  }
+
+  const content = lines.join("\n");
+  return {
+    layer: {
+      name: "foreground",
+      tokens: estimateTokens(content),
+      content,
+    },
+    messages: allMessages,
+  };
+}
+
+/** Get messages from a channel that have no shard_id assigned. */
+function getUnshardedMessages(
+  db: DatabaseSync,
+  channel: string,
+): { id: number; content: string; timestamp: string; role: string; channel: string; senderId: string }[] {
+  const rows = db.prepare(`
+    SELECT id, content, timestamp, role, channel, sender_id
+    FROM cortex_session
+    WHERE channel = ? AND shard_id IS NULL
+    ORDER BY timestamp ASC, id ASC
+  `).all(channel) as Record<string, unknown>[];
+
+  return rows.map((r) => ({
+    id: r.id as number,
+    content: r.content as string,
+    timestamp: r.timestamp as string,
+    role: r.role as string,
+    channel: r.channel as string,
+    senderId: r.sender_id as string,
+  }));
+}
+
+function formatShardMessage(msg: { role: string; channel: string; senderId: string; content: string }): string {
+  const prefix = msg.role === "assistant" ? "Cortex" : `[${msg.channel}] ${msg.senderId}`;
+  return `${prefix}: ${msg.content}`;
+}
+
+function formatTimeAgo(now: number, timestamp: string): string {
+  const diffMs = now - new Date(timestamp).getTime();
+  const diffMin = Math.floor(diffMs / (1000 * 60));
+  if (diffMin < 60) return `~${diffMin}min ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `~${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `~${diffDays}d ago`;
+}
+
+// ---------------------------------------------------------------------------
 // Background
 // ---------------------------------------------------------------------------
 
@@ -214,10 +346,12 @@ export async function assembleContext(params: {
   workspaceDir: string;
   maxTokens: number;
   hippocampusEnabled?: boolean;
+  /** Foreground sharding config — when set, uses shard-based context budgeting */
+  foregroundConfig?: ForegroundConfig;
   /** Cognitive owner — filters foreground + pending ops by issuer instead of channel */
   issuer?: string;
 }): Promise<AssembledContext> {
-  const { db, triggerEnvelope, workspaceDir, maxTokens, hippocampusEnabled, issuer } = params;
+  const { db, triggerEnvelope, workspaceDir, maxTokens, hippocampusEnabled, foregroundConfig, issuer } = params;
 
   // Load hot facts when hippocampus is enabled
   let hotFacts: HotFact[] | undefined;
@@ -234,12 +368,24 @@ export async function assembleContext(params: {
     idleCutoff: hippocampusEnabled === true,
   });
 
-  // 3. Foreground — gets remaining budget
-  //    When issuer is provided, filter by issuer (cross-channel) instead of channel
-  const remainingBudget = Math.max(0, maxTokens - systemFloor.tokens - background.tokens);
-  const { layer: foreground, messages: foregroundMessages } = issuer
-    ? buildForeground(db, issuer, remainingBudget)
-    : buildForeground(db, triggerEnvelope.channel, remainingBudget, { filterByChannel: true });
+  // 3. Foreground — shard-based or legacy
+  let foreground: ContextLayer;
+  let foregroundMessages: SessionMessage[];
+
+  if (foregroundConfig) {
+    // Shard-based foreground assembly — cuts at topic boundaries, respects token budget
+    const result = buildShardedForeground(db, triggerEnvelope.channel, foregroundConfig);
+    foreground = result.layer;
+    foregroundMessages = result.messages;
+  } else {
+    // Legacy: unbounded foreground with simple token budget
+    const remainingBudget = Math.max(0, maxTokens - systemFloor.tokens - background.tokens);
+    const result = issuer
+      ? buildForeground(db, issuer, remainingBudget)
+      : buildForeground(db, triggerEnvelope.channel, remainingBudget, { filterByChannel: true });
+    foreground = result.layer;
+    foregroundMessages = result.messages;
+  }
 
   // 4. Archived — not in context (zero cost)
   const archived: ContextLayer = { name: "archived", tokens: 0, content: "" };

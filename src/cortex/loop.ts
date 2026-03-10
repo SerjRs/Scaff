@@ -24,6 +24,16 @@ import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, type EmbedFunction } from "./tools.js";
+import {
+  assignMessageWithBoundaryDetection,
+  getActiveShard,
+  getShardMessages,
+  detectTopicShift,
+  applyTopicShift,
+  labelShardAsync,
+  type ForegroundConfig,
+  type ShardLLMFunction,
+} from "./shards.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,6 +67,8 @@ export interface CortexLoopOptions {
   hippocampusEnabled?: boolean;
   /** Embedding function for memory_query tool (default: Ollama nomic-embed-text) */
   embedFn?: EmbedFunction;
+  /** Foreground sharding config — when set, messages get shard_id on arrival */
+  foregroundConfig?: ForegroundConfig;
   /** Cognitive owner — filters foreground by issuer instead of channel */
   issuer?: string;
   callLLM: (context: AssembledContext) => Promise<CortexLLMResult>;
@@ -65,6 +77,8 @@ export interface CortexLoopOptions {
   onMessageComplete?: (envelopeId: string, replyContext: import("./types.js").ReplyContext | undefined, silent: boolean) => void;
   /** Called when the LLM calls sessions_spawn. Returns job ID or null on failure. */
   onSpawn?: (params: SpawnParams) => string | null;
+  /** LLM function for shard operations (topic labeling, semantic detection). Uses Haiku. */
+  shardLLMFn?: ShardLLMFunction;
 }
 
 export interface CortexLoop {
@@ -78,7 +92,10 @@ export interface CortexLoop {
 // ---------------------------------------------------------------------------
 
 export function startLoop(opts: CortexLoopOptions): CortexLoop {
-  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, hippocampusEnabled, embedFn, issuer, callLLM, onError, onMessageComplete, onSpawn } = opts;
+  const { db, registry, workspaceDir, maxContextTokens, pollIntervalMs, hippocampusEnabled, embedFn, foregroundConfig, issuer, callLLM, onError, onMessageComplete, onSpawn, shardLLMFn } = opts;
+
+  // Semantic check counter — tracks messages per channel since last Tier 2 check
+  const semanticCheckCounters = new Map<string, number>();
 
   let running = true;
   let processed = 0;
@@ -106,6 +123,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
       const isOpsTrigger = msg.envelope.metadata?.ops_trigger === true;
 
       // 2. Append to unified session
+      let appendedContent: string;
       if (isOpsTrigger) {
         // Ops triggers carry the task result inline (via metadata) so the LLM
         // doesn't have to search session history. This eliminates prompt-dependent
@@ -116,21 +134,64 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         const taskDesc = meta.taskDescription ?? "";
         const taskStatus = meta.taskStatus ?? "completed";
         const replyChannel = meta.replyChannel ?? "webchat";
-        let triggerContent: string;
         if (taskStatus === "completed") {
           const result = meta.taskResult ?? "(no result)";
-          triggerContent = `[Task completed] Task=${taskId}, Request='${taskDesc}', Channel=${replyChannel}\n\nResult:\n${result}\n\nDeliver this result to the user on the ${replyChannel} channel. Summarize key findings clearly.`;
+          appendedContent = `[Task completed] Task=${taskId}, Request='${taskDesc}', Channel=${replyChannel}\n\nResult:\n${result}\n\nDeliver this result to the user on the ${replyChannel} channel. Summarize key findings clearly.`;
         } else {
           const error = meta.taskError ?? "Unknown error";
-          triggerContent = `[Task failed] Task=${taskId}, Request='${taskDesc}', Channel=${replyChannel}, Error: ${error}\n\nInform the user that the task failed and explain the error.`;
+          appendedContent = `[Task failed] Task=${taskId}, Request='${taskDesc}', Channel=${replyChannel}, Error: ${error}\n\nInform the user that the task failed and explain the error.`;
         }
         appendToSession(db, {
           ...msg.envelope,
-          content: triggerContent,
+          content: appendedContent,
           sender: { id: "cortex:ops", name: "System", relationship: "system" as const },
         }, issuer);
       } else {
+        appendedContent = msg.envelope.content;
         appendToSession(db, msg.envelope, issuer);
+      }
+
+      // 2b. Inline shard assignment (foreground sharding)
+      if (foregroundConfig && !isOpsTrigger) {
+        const lastId = db.prepare(`SELECT last_insert_rowid() as id`).get() as { id: number | bigint };
+        const messageId = Number(lastId.id);
+        const assignedShardId = assignMessageWithBoundaryDetection(
+          db, messageId, msg.envelope.channel, appendedContent,
+          msg.envelope.timestamp, foregroundConfig,
+        );
+
+        // 2c. Tier 2: Semantic boundary detection (sliding window)
+        // Fire async every semanticCheckInterval messages — does not block the loop
+        if (shardLLMFn) {
+          const ch = msg.envelope.channel;
+          const count = (semanticCheckCounters.get(ch) ?? 0) + 1;
+          semanticCheckCounters.set(ch, count);
+
+          // Check if the shard was just closed by Tier 1 heuristics
+          const currentActive = getActiveShard(db, ch);
+          const shardWasClosed = !currentActive || currentActive.id !== assignedShardId;
+
+          if (shardWasClosed) {
+            // Tier 1 closed a shard — fire async labeling
+            semanticCheckCounters.set(ch, 0);
+            void labelShardAsync(db, assignedShardId, shardLLMFn).catch((err) => {
+              onError(new Error(`[cortex] Shard labeling failed: ${err instanceof Error ? err.message : String(err)}`));
+            });
+          } else if (count >= foregroundConfig.semanticCheckInterval) {
+            // Sliding window interval reached — fire semantic check
+            semanticCheckCounters.set(ch, 0);
+            const shardMsgs = getShardMessages(db, assignedShardId);
+            if (shardMsgs.length >= 3) {
+              void detectTopicShift(shardMsgs, shardLLMFn).then((result) => {
+                if (result.shifted && result.splitAtId != null && result.oldTopic && result.newTopic) {
+                  applyTopicShift(db, ch, assignedShardId, result.splitAtId, result.oldTopic, result.newTopic);
+                }
+              }).catch((err) => {
+                onError(new Error(`[cortex] Semantic detection failed: ${err instanceof Error ? err.message : String(err)}`));
+              });
+            }
+          }
+        }
       }
 
       // 3. Update channel state to foreground (skip for ops triggers)
@@ -149,6 +210,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           workspaceDir,
           maxTokens: maxContextTokens,
           hippocampusEnabled,
+          foregroundConfig,
           issuer,
         });
 

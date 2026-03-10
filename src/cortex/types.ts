@@ -213,6 +213,16 @@ export interface CheckpointData {
 /** Operating mode — off/shadow/live per the safety architecture */
 export type CortexMode = "off" | "shadow" | "live";
 
+/** Foreground sharding configuration */
+export interface ForegroundShardingConfig {
+  tokenCap?: number;
+  tolerancePct?: number;
+  maxShardTokens?: number;
+  timeGapMinutes?: number;
+  semanticCheckInterval?: number;
+  semanticModel?: string;
+}
+
 /** Hippocampus memory subsystem configuration */
 export interface HippocampusConfig {
   enabled: boolean;
@@ -220,6 +230,8 @@ export interface HippocampusConfig {
   gardenerCompactorIntervalMs?: number;
   gardenerExtractorIntervalMs?: number;
   gardenerEvictorIntervalMs?: number;
+  /** Foreground sharding config — topic-aware context budgeting */
+  foreground?: ForegroundShardingConfig;
 }
 
 /** Per-channel mode configuration */

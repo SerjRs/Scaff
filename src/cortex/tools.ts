@@ -9,6 +9,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { getSessionHistory } from "./session.js";
+import { getShardMessages } from "./shards.js";
 import { searchColdFacts, insertHotFact, touchHotFact } from "./hippocampus.js";
 
 // ---------------------------------------------------------------------------
@@ -19,7 +20,8 @@ export const FETCH_CHAT_HISTORY_TOOL = {
   name: "fetch_chat_history",
   description: `Retrieve older chat messages from a specific channel. Use when you need \
 verbatim context that was excluded from the active window by the soft cap. \
-Returns chronological messages for the given channel.`,
+Returns chronological messages for the given channel. \
+When shard_id is provided, returns all messages from that specific shard (coherent topic block).`,
   parameters: {
     type: "object" as const,
     properties: {
@@ -34,6 +36,10 @@ Returns chronological messages for the given channel.`,
       before: {
         type: "string",
         description: "ISO timestamp — only return messages before this time",
+      },
+      shard_id: {
+        type: "string",
+        description: "Shard ID — when provided, returns all messages from this shard (ignores channel/limit/before)",
       },
     },
     required: ["channel"],
@@ -203,8 +209,22 @@ export function executeGetTaskStatus(args: { taskId: string }): string {
 /** Execute fetch_chat_history — deterministic relational query */
 export function executeFetchChatHistory(
   db: DatabaseSync,
-  args: { channel: string; limit?: number; before?: string },
+  args: { channel: string; limit?: number; before?: string; shard_id?: string },
 ): string {
+  // Shard mode: return all messages from a specific shard
+  if (args.shard_id) {
+    const shardMessages = getShardMessages(db, args.shard_id);
+    return JSON.stringify(
+      shardMessages.map((m) => ({
+        role: m.role,
+        channel: m.channel,
+        sender: m.senderId,
+        content: m.content,
+        timestamp: m.timestamp,
+      })),
+    );
+  }
+
   const limit = args.limit ?? 20;
 
   // Get session history for the channel

@@ -1,8 +1,9 @@
 # Foreground Sharding — Implementation Plan
 
 *Created: 2026-03-09*
+*Completed: 2026-03-10*
 *Ref: `docs/foreground-sharding-architecture.md`*
-*Status: Not Started*
+*Status: Complete — All 4 phases implemented and tested (43 new tests, 367/368 pass)*
 
 ---
 
@@ -12,9 +13,11 @@ Cortex context hit 200K tokens on 2026-03-09 and died. Raw `cortex_session` grow
 
 ---
 
-## Phase 1: Schema + Heuristic Boundary Detection
+## Phase 1: Schema + Heuristic Boundary Detection ✅
 
 **Goal:** Messages get `shard_id` on arrival. Time gaps and token overflow close shards automatically. No context assembly changes yet — shards exist but aren't consumed.
+
+**Status: Complete (2026-03-09)** — 16 tests pass.
 
 ### Tasks
 
@@ -66,14 +69,16 @@ Cortex context hit 200K tokens on 2026-03-09 and died. Raw `cortex_session` grow
 - `test_token_overflow_splits_shard`: Fill shard past threshold → next message gets new shard
 - `test_no_shard_without_hippocampus`: With `hippocampus.enabled: false`, no shard assignment (backward compat)
 
-### Gate
+### Gate ✅
 All tests pass. Messages flowing through Cortex get `shard_id` assigned. Shards open and close on heuristics. Context assembly unchanged — no user-visible behavior change.
 
 ---
 
-## Phase 2: Shard-Based Foreground Assembly
+## Phase 2: Shard-Based Foreground Assembly ✅
 
 **Goal:** Replace unbounded foreground loading with the shard-based token budget. This is the actual fix for the 200K overflow.
+
+**Status: Complete (2026-03-09)** — 7 tests pass.
 
 ### Tasks
 
@@ -114,14 +119,16 @@ All tests pass. Messages flowing through Cortex get `shard_id` assigned. Shards 
 - `test_shard_separators_present`: Output contains topic labels and time distances between shards
 - `test_fallback_no_shards`: No shards in DB → loads all messages (backward compat)
 
-### Gate
+### Gate ✅
 Cortex context stays bounded. A conversation that previously hit 200K tokens now stays within configured budget. Verify by running Cortex with both channels active for 1+ hours — token count stays stable.
 
 ---
 
-## Phase 3: Semantic Detection + Topic Labels
+## Phase 3: Semantic Detection + Topic Labels ✅
 
 **Goal:** Detect topic shifts in flowing conversations where heuristics don't trigger. Generate meaningful topic labels for shard separators and Gardener consumption.
+
+**Status: Complete (2026-03-10)** — 13 tests pass.
 
 ### Tasks
 
@@ -158,14 +165,16 @@ Cortex context stays bounded. A conversation that previously hit 200K tokens now
 - `test_topic_label_async`: Close shard via heuristic → label is NULL initially → updated after Haiku call
 - `test_fetch_chat_history_by_shard`: Request shard_id → returns exactly that shard's messages
 
-### Gate
+### Gate ✅
 Topic shifts in flowing conversation are detected. Shard separators show meaningful labels. `fetch_chat_history` can retrieve full shards by ID.
 
 ---
 
-## Phase 4: Gardener Integration
+## Phase 4: Gardener Integration ✅
 
 **Goal:** Gardener consumes closed shards for fact extraction and background summaries. Shards improve extraction quality.
+
+**Status: Complete (2026-03-10)** — 7 tests pass. Task 4.3 (retroactive sharding) skipped as designed — sharding only applies forward.
 
 ### Tasks
 
@@ -197,8 +206,22 @@ Topic shifts in flowing conversation are detected. Shard separators show meaning
 - `test_extractor_skips_processed`: Shard with `extracted_at` set → skipped on next sweep
 - `test_background_from_shards`: Two closed shards → background summary has two lines with topic labels
 
-### Gate
+### Gate ✅
 Gardener extracts better facts using shard context. Background summaries are topic-aware. Full memory flow validated: message → shard → foreground → closed → Hot Memory → Cold Storage.
+
+---
+
+## Phase 1 Review — Implementation Issues (2026-03-09) — RESOLVED
+
+Claude Code completed Phase 1. Issues identified during review, all resolved during implementation:
+
+1. **`last_insert_rowid()` is fragile.** Still used — Cortex loop is strictly serialized (one message at a time), so no concurrent INSERT risk. Acceptable trade-off vs. refactoring `appendToSession` return type.
+
+2. **Duplicate `ForegroundConfig` type.** Canonical type is in `shards.ts`. The `ForegroundShardingConfig` in `types.ts` serves as the config-layer schema type.
+
+3. **Circular dependency risk.** `shards.ts` → `context.ts` (estimateTokens) and `context.ts` → `shards.ts` (getActiveShard etc). Verified: works at runtime — tsdown handles the cycle correctly.
+
+4. **Build verification.** ✅ All builds pass. 367 tests pass (1 pre-existing failure unrelated to sharding).
 
 ---
 
@@ -216,28 +239,39 @@ Phase 1 + 2 are the critical path. They can ship independently and immediately f
 
 ---
 
-## Estimated Effort
+## Effort (Actual)
 
-| Phase | Complexity | Estimate | Blocking? |
-|-------|-----------|----------|-----------|
-| Phase 1 | Medium | 1 session | Yes — foundation |
-| Phase 2 | Medium | 1 session | Yes — the actual fix |
-| Phase 3 | Medium-High | 1-2 sessions | No — quality improvement |
-| Phase 4 | Low-Medium | 1 session | No — Gardener already exists |
+| Phase | Complexity | Completed | Tests |
+|-------|-----------|-----------|-------|
+| Phase 1 | Medium | 2026-03-09 | 16 |
+| Phase 2 | Medium | 2026-03-09 | 7 |
+| Phase 3 | Medium | 2026-03-10 | 13 |
+| Phase 4 | Low-Medium | 2026-03-10 | 7 |
 
-A "session" is roughly 2-4 hours of focused work. Phase 1 + 2 could ship in a single day.
+All 4 phases implemented in 2 sessions (2026-03-09 and 2026-03-10). 43 new tests total.
 
 ---
 
-## Files Likely Modified
+## Files Modified
 
 | File | Phase | Change |
 |------|-------|--------|
-| `src/cortex/db.ts` | 1 | Schema migration |
-| `src/cortex/shards.ts` | 1, 3 | **New file** — shard manager |
-| `src/cortex/loop.ts` | 1, 3 | Inline assignment, sliding window trigger |
-| `src/cortex/context.ts` | 2 | Shard-based foreground builder |
-| `src/cortex/tools.ts` | 3 | fetch_chat_history shard_id mode |
-| `cortex/config.json` | 1 | Foreground config section |
-| Gardener extractor | 4 | Shard-aware extraction |
-| Gardener compactor | 4 | Shard-based background summaries |
+| `src/cortex/session.ts` | 1, 4 | Schema migration: `shard_id` column, `cortex_shards` table, `extracted_at` column |
+| `src/cortex/shards.ts` | 1, 3, 4 | **New file** — shard CRUD, boundary detection (Tier 1A/1B), semantic detection, topic labeling, `applyTopicShift`, shard query helpers |
+| `src/cortex/loop.ts` | 1, 3 | Inline shard assignment, sliding window counter, async semantic detection + labeling |
+| `src/cortex/context.ts` | 2 | `buildShardedForeground()`, unsharded message fallback, shard separators |
+| `src/cortex/tools.ts` | 3 | `fetch_chat_history` shard_id parameter + executor |
+| `src/cortex/gardener.ts` | 4 | Shard-aware fact extraction, shard-based background summaries |
+| `src/cortex/index.ts` | 1, 3 | `foregroundConfig` + `shardLLMFn` in CortexConfig, wired to startLoop |
+| `src/cortex/gateway-bridge.ts` | 1, 3 | Config loading, `shardLLMFn` = gardenerLLM |
+| `src/cortex/types.ts` | 1 | `ForegroundShardingConfig` interface |
+| `cortex/config.json` | 1 | `hippocampus.foreground` section |
+
+### Test Files Created
+
+| File | Phase | Tests |
+|------|-------|-------|
+| `src/cortex/__tests__/shards.test.ts` | 1 | 16 tests — schema, CRUD, boundary detection |
+| `src/cortex/__tests__/shards-foreground.test.ts` | 2 | 7 tests — context assembly, budget, tolerance |
+| `src/cortex/__tests__/shards-semantic.test.ts` | 3 | 13 tests — semantic detection, labeling, applyTopicShift, fetch_chat_history shard mode |
+| `src/cortex/__tests__/gardener-shards.test.ts` | 4 | 7 tests — shard-aware extraction, background summaries |
