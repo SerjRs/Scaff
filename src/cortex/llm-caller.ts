@@ -194,6 +194,7 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     })
     .map((msg) => {
       let content: string | unknown[] = msg.content;
+      // First: try parsing JSON-serialized structured content (tool round-trips)
       if (typeof content === "string" && content.startsWith("[")) {
         try {
           const parsed = JSON.parse(content);
@@ -224,7 +225,12 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
               content = "(internal processing)";
             }
           }
-        } catch { /* keep as string */ }
+        } catch { /* not JSON — keep as string */ }
+      }
+      // Prefix context metadata so the LLM knows when, who, and which channel for every message
+      if (typeof content === "string") {
+        const ts = msg.timestamp?.replace("T", " ").replace(/\.\d+Z$/, "") ?? "";
+        content = `[${ts}:${msg.issuer ?? "unknown"}:${msg.channel}] ${content}`;
       }
       return { role: msg.role as "user" | "assistant", content };
     });

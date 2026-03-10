@@ -144,12 +144,13 @@ export function appendStructuredContent(
   channel: string,
   contentBlocks: unknown[],
   issuer = "agent:main:cortex",
+  shardId?: string | null,
 ): void {
   const content = JSON.stringify(contentBlocks);
   db.prepare(`
-    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
-    VALUES (?, ?, ?, 'cortex', ?, ?, NULL, ?)
-  `).run(envelopeId, role, channel, content, new Date().toISOString(), issuer);
+    INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer, shard_id)
+    VALUES (?, ?, ?, 'cortex', ?, ?, NULL, ?, ?)
+  `).run(envelopeId, role, channel, content, new Date().toISOString(), issuer, shardId ?? null);
 }
 
 /** Write a task result directly to the session as a foreground message.
@@ -184,12 +185,13 @@ export function appendResponse(
   output: CortexOutput,
   inResponseTo: string,
   issuer = "agent:main:cortex",
+  shardId?: string | null,
 ): void {
   // Store the response for each output target
   for (const target of output.targets) {
     const stmt = db.prepare(`
-      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
-      VALUES (?, 'assistant', ?, 'cortex', ?, ?, ?, ?)
+      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer, shard_id)
+      VALUES (?, 'assistant', ?, 'cortex', ?, ?, ?, ?, ?)
     `);
     stmt.run(
       inResponseTo,
@@ -198,16 +200,17 @@ export function appendResponse(
       new Date().toISOString(),
       null,
       issuer,
+      shardId ?? null,
     );
   }
 
   // If silence (no targets), still record it
   if (output.targets.length === 0) {
     const stmt = db.prepare(`
-      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer)
-      VALUES (?, 'assistant', 'internal', 'cortex', '[silence]', ?, NULL, ?)
+      INSERT INTO cortex_session (envelope_id, role, channel, sender_id, content, timestamp, metadata, issuer, shard_id)
+      VALUES (?, 'assistant', 'internal', 'cortex', '[silence]', ?, NULL, ?, ?)
     `);
-    stmt.run(inResponseTo, new Date().toISOString(), issuer);
+    stmt.run(inResponseTo, new Date().toISOString(), issuer, shardId ?? null);
   }
 }
 
@@ -366,14 +369,18 @@ function _migrateSchema(db: DatabaseSync): void {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_shards_ended ON cortex_shards(ended_at)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_session_shard ON cortex_session(shard_id)`);
 
-  // --- extracted_at column for Gardener shard tracking ---
+  // --- extracted_at + issuer columns for Gardener shard tracking & unified context ---
   try {
     const shardCols = db.prepare("PRAGMA table_info(cortex_shards)").all() as { name: string }[];
     const shardColNames = new Set(shardCols.map((c) => c.name));
     if (!shardColNames.has("extracted_at")) {
       db.exec(`ALTER TABLE cortex_shards ADD COLUMN extracted_at TEXT`);
     }
+    if (!shardColNames.has("issuer")) {
+      db.exec(`ALTER TABLE cortex_shards ADD COLUMN issuer TEXT NOT NULL DEFAULT 'agent:main:cortex'`);
+    }
   } catch {
     // Already exists or table not ready
   }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_shards_issuer ON cortex_shards(issuer)`);
 }

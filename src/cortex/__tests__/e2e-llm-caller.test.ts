@@ -299,7 +299,7 @@ describe("E2E: LLM Caller Pipeline", () => {
     expect(fg?.content).toContain("third");
   }, 15000);
 
-  it("cross-channel context: webchat message sees WhatsApp in background", async () => {
+  it("cross-channel context: webchat message sees WhatsApp in unified foreground", async () => {
     const { caller, calls } = createMockLLM(["wa-reply", "web-reply"]);
     const sent: OutputTarget[] = [];
     const dbPath = path.join(tmpDir, "bus.sqlite");
@@ -325,7 +325,7 @@ describe("E2E: LLM Caller Pipeline", () => {
     }));
     await wait(2500);
 
-    // Second: webchat message — should see WhatsApp in background
+    // Second: webchat message — with unified context, WhatsApp is in foreground (same issuer)
     instance.enqueue(createEnvelope({
       channel: "webchat",
       sender: { id: "user", name: "Serj", relationship: "partner" },
@@ -337,9 +337,12 @@ describe("E2E: LLM Caller Pipeline", () => {
     expect(calls).toHaveLength(2);
     const webchatContext = calls[1];
     expect(webchatContext.foregroundChannel).toBe("webchat");
-    // Background should reference whatsapp
+    // With issuer-based unified context, WhatsApp messages are in the foreground (cross-channel)
+    const fg = webchatContext.layers.find((l) => l.name === "foreground");
+    expect(fg?.content).toContain("whatsapp");
+    // Background should be empty — all channels unified under one issuer
     const bg = webchatContext.layers.find((l) => l.name === "background");
-    expect(bg?.content).toContain("whatsapp");
+    expect(bg?.content).toBe("");
   }, 10000);
 
   it("LLM timeout: slow LLM → bus stays running", async () => {

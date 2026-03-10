@@ -1,7 +1,7 @@
 # Cortex Unified Context — Cross-Channel Fix
 
 *Created: 2026-03-10*
-*Status: Not Started*
+*Status: Implemented*
 *Ref: `docs/cortex-architecture.md`, `docs/foreground-sharding-architecture.md`*
 
 ---
@@ -158,6 +158,141 @@ Topic boundary detection (Tier 1: time gap + token count; Tier 2: semantic Haiku
 
 ---
 
+### Issue 8: `loop.ts` semantic check counters keyed by channel
+
+**File:** `src/cortex/loop.ts` (~line 166)
+
+```typescript
+const semanticCheckCounters = new Map<string, number>();
+// ...
+const ch = msg.envelope.channel;
+const count = (semanticCheckCounters.get(ch) ?? 0) + 1;
+semanticCheckCounters.set(ch, count);
+```
+
+The sliding-window counter for Tier 2 semantic checks is keyed by `msg.envelope.channel`. With issuer-based shards, a WhatsApp message and a webchat message each increment separate counters. If `semanticCheckInterval` is 8, you could get 7 messages on WhatsApp and 7 on webchat (14 total) without ever triggering a semantic check.
+
+**Fix:** Key the counter by `issuer` (or a shared key like `"unified"`) when issuer-based shards are active. Cross-channel messages must contribute to the same sliding window.
+
+---
+
+### Issue 9: `loop.ts` Tier 2 calls `getActiveShard(db, ch)` with channel
+
+**File:** `src/cortex/loop.ts` (~line 171)
+
+```typescript
+const currentActive = getActiveShard(db, ch);
+const shardWasClosed = !currentActive || currentActive.id !== assignedShardId;
+```
+
+After shard assignment, the loop checks whether the shard was closed by Tier 1 heuristics. It calls `getActiveShard(db, ch)` — with the channel, not issuer. If the shard was created under issuer scope, this channel-scoped lookup won't find it.
+
+**Fix:** Pass `issuer` to `getActiveShard()` when issuer-based shards are active.
+
+---
+
+### Issue 10: `loop.ts` `applyTopicShift()` passes channel
+
+**File:** `src/cortex/loop.ts` (~line 187)
+
+```typescript
+applyTopicShift(db, ch, assignedShardId, result.splitAtId, result.oldTopic, result.newTopic);
+```
+
+`applyTopicShift()` receives the channel and passes it to `createShard()` when splitting. The new shard inherits the trigger channel, not the issuer — breaking cross-channel shard continuity.
+
+**Fix:** Pass `issuer` instead of `ch`. Or change `applyTopicShift` to accept `{ channel?, issuer? }`.
+
+---
+
+### Issue 11: `createShard()` takes channel as required param
+
+**File:** `src/cortex/shards.ts` (~line 72)
+
+```typescript
+export function createShard(
+  db: DatabaseSync,
+  channel: string,      // ← required, written to DB
+  firstMessageId: number,
+  startedAt: string,
+  topic = "Continued conversation",
+): Shard
+```
+
+New shards are stamped with a single channel. In a cross-channel shard, the channel written at creation time is just whichever channel happened to trigger the shard boundary. The `channel` column becomes misleading metadata.
+
+**Fix:** Accept `issuer` param, write it to the `issuer` column. Keep `channel` for display but understand it's the *originating* channel, not a scope filter.
+
+---
+
+### Issue 12: `applyTopicShift()` creates new shard with channel
+
+**File:** `src/cortex/shards.ts` (~line 438)
+
+```typescript
+const newShard = createShard(db, channel, firstNewMsg.id, firstNewMsg.timestamp, newTopic);
+```
+
+When a semantic topic split creates a new shard, it passes the `channel` param from its caller (which is `loop.ts` passing `msg.envelope.channel`). Same single-channel stamp problem as Issue 11.
+
+**Fix:** Forward `issuer` through the call chain.
+
+---
+
+### Issue 13: Gardener Channel Compactor uses channel-scoped queries
+
+**File:** `src/cortex/gardener.ts` (~line 104)
+
+```typescript
+const recentShards = getRecentClosedShards(db, state.channel, 5);
+// ...fallback:
+const messages = getSessionHistory(db, { channel: state.channel });
+```
+
+The Channel Compactor iterates `getChannelStates()`, then queries shards and session history per-channel. With issuer-based shards:
+- `getRecentClosedShards(db, state.channel)` will return **zero** results because closed shards are now scoped by issuer, not channel.
+- The fallback `getSessionHistory(db, { channel: state.channel })` would still work (channel filter on session table) but would miss cross-channel context.
+
+More fundamentally, the compactor's concept of "idle foreground channel → background" is questionable in a unified model. If all channels share one foreground, a channel going idle doesn't mean its content should be summarized away — it's still part of the active conversation.
+
+**Fix:** Two options:
+1. When issuer-based context is active, the compactor should operate on the **issuer** level, not per-channel. It compresses the unified conversation, not individual channels.
+2. Or: `getRecentClosedShards()` gets an issuer-filter path like the other shard functions. The compactor queries by issuer when available.
+
+**Note:** `getRecentClosedShards()` was missed in Issue 3's list — it also filters by channel.
+
+---
+
+### Issue 14: Shard separator display doesn't show cross-channel info
+
+**File:** `src/cortex/context.ts` (~line 228)
+
+```typescript
+lines.push(`--- [Topic: ${shard.topic} | ${timeAgo} | ${shard.messageCount} messages] ---`);
+```
+
+Closed shard separators show topic, time, and message count — but not which channels participated. For cross-channel shards, Cortex needs to see that a shard spanned multiple channels to maintain awareness of conversation flow.
+
+**Fix:** Query distinct channels from the shard's messages and include in the separator:
+```
+--- [Topic: Token monitor debugging | via whatsapp, webchat | ~12min ago | 8 messages] ---
+```
+
+---
+
+### Issue 15: Schema migration missing for `cortex_shards.issuer`
+
+**File:** `src/cortex/session.ts`, function `_migrateSchema()` (~line 333)
+
+The migration function adds `issuer` and `shard_id` columns to `cortex_session`, and creates the `cortex_shards` table — but the table definition has `channel TEXT NOT NULL` with no `issuer` column. There's an index `idx_shards_channel` but no `idx_shards_issuer`.
+
+**Fix:** Add to `_migrateSchema()`:
+1. `ALTER TABLE cortex_shards ADD COLUMN issuer TEXT NOT NULL DEFAULT 'agent:main:cortex'`
+2. `CREATE INDEX IF NOT EXISTS idx_shards_issuer ON cortex_shards(issuer)`
+3. Backfill: `UPDATE cortex_shards SET issuer = 'agent:main:cortex' WHERE issuer = ''` (for any existing rows)
+
+---
+
 ## Data Model
 
 The `cortex_session` table already has the required fields:
@@ -179,47 +314,60 @@ CREATE TABLE cortex_session (
 
 The `issuer` column is populated by `appendToSession()` in `session.ts`. Default value: `agent:main:cortex`. No schema changes needed.
 
-The `shards` table:
+The `cortex_shards` table (actual schema from `session.ts:_migrateSchema()`):
 
 ```sql
-CREATE TABLE shards (
-  id TEXT PRIMARY KEY,
-  channel TEXT NOT NULL,        -- ← currently required, should become optional/metadata
-  topic TEXT DEFAULT 'unknown',
-  first_message_id INTEGER,
-  last_message_id INTEGER,
-  token_count INTEGER DEFAULT 0,
-  message_count INTEGER DEFAULT 0,
-  started_at TEXT NOT NULL,
-  ended_at TEXT,
-  status TEXT DEFAULT 'active'  -- 'active' | 'closed'
+CREATE TABLE cortex_shards (
+  id                TEXT PRIMARY KEY,
+  channel           TEXT NOT NULL,          -- ← currently required, used as scope filter
+  topic             TEXT NOT NULL DEFAULT 'Continued conversation',
+  first_message_id  INTEGER NOT NULL,
+  last_message_id   INTEGER NOT NULL,
+  token_count       INTEGER NOT NULL DEFAULT 0,
+  message_count     INTEGER NOT NULL DEFAULT 0,
+  started_at        TEXT NOT NULL,
+  ended_at          TEXT,                   -- NULL = active shard
+  created_at        TEXT NOT NULL,
+  created_by        TEXT NOT NULL DEFAULT 'inline',
+  extracted_at      TEXT                    -- Gardener fact extraction tracking
 );
+-- Indexes: idx_shards_channel, idx_shards_ended, idx_session_shard
 ```
 
-**Schema change needed:** The `shards` table uses `channel` as a required field and as a query filter. Options:
+**Schema change needed:** The `cortex_shards` table uses `channel` as a required field and as a query filter in `getActiveShard`, `getClosedShards`, `getRecentClosedShards`. Options:
 1. Replace `channel` with `issuer` in the shards table
 2. Keep `channel` as metadata but add `issuer` column and filter on that
 3. Remove the channel filter from queries, let shards be channel-agnostic
 
-**Recommendation:** Option 2 — add `issuer` column to `shards` table, keep `channel` as metadata for display (shard separators show `[Topic: X | whatsapp+webchat | 5min ago]`). Query by `issuer`.
+**Recommendation:** Option 2 — add `issuer` column to `cortex_shards` table, keep `channel` as metadata for display (shard separators show `[Topic: X | via whatsapp, webchat | 5min ago]`). Query by `issuer`. The `channel` column becomes "originating channel" — whichever channel triggered the shard's creation. For display purposes, query distinct channels from the shard's messages in `cortex_session`.
 
 ---
 
 ## Files to Change
 
-| File | What |
-|------|------|
-| `src/cortex/context.ts` | `assembleContext()` — pass issuer to sharded path |
-| `src/cortex/context.ts` | `buildShardedForeground()` — accept issuer, query by issuer |
-| `src/cortex/context.ts` | `getUnshardedMessages()` — accept issuer filter |
-| `src/cortex/context.ts` | `buildBackground()` — skip when issuer-based context |
-| `src/cortex/shards.ts` | `getActiveShard()` — support issuer filter |
-| `src/cortex/shards.ts` | `getClosedShards()` — support issuer filter |
-| `src/cortex/shards.ts` | `assignMessageWithBoundaryDetection()` — use issuer |
-| `src/cortex/loop.ts` | Shard assignment call — pass issuer instead of channel |
-| `src/cortex/session.ts` | No changes needed — `issuer` already set ✅ |
+| File | What | Issues |
+|------|------|--------|
+| `src/cortex/context.ts` | `assembleContext()` — pass issuer to sharded path | #1 |
+| `src/cortex/context.ts` | `buildShardedForeground()` — accept `{ channel?, issuer? }`, query by issuer when set | #2 |
+| `src/cortex/context.ts` | `getUnshardedMessages()` — accept issuer filter | #5 |
+| `src/cortex/context.ts` | `buildBackground()` — skip when issuer-based context is active | #6 |
+| `src/cortex/context.ts` | Shard separator format — show distinct channels for cross-channel shards | #14 |
+| `src/cortex/shards.ts` | `getActiveShard()` — support issuer filter | #3 |
+| `src/cortex/shards.ts` | `getClosedShards()` — support issuer filter | #3 |
+| `src/cortex/shards.ts` | `getRecentClosedShards()` — support issuer filter | #3, #13 |
+| `src/cortex/shards.ts` | `assignMessageWithBoundaryDetection()` — accept issuer, pass to internal calls | #3, #4, #7 |
+| `src/cortex/shards.ts` | `createShard()` — accept issuer param, write to `issuer` column | #11 |
+| `src/cortex/shards.ts` | `applyTopicShift()` — accept issuer, forward to `createShard()` | #10, #12 |
+| `src/cortex/loop.ts` | Shard assignment call — pass issuer instead of channel | #4 |
+| `src/cortex/loop.ts` | Semantic check counters — key by issuer when active | #8 |
+| `src/cortex/loop.ts` | Tier 2 `getActiveShard()` call — pass issuer | #9 |
+| `src/cortex/loop.ts` | `applyTopicShift()` call — pass issuer | #10 |
+| `src/cortex/gardener.ts` | `runChannelCompactor()` — use issuer-based queries when available | #13 |
+| `src/cortex/session.ts` | `_migrateSchema()` — add `issuer` column + index to `cortex_shards` | #15 |
 
-**Schema migration:** Add `issuer` column to `shards` table.
+**Schema migration (in `_migrateSchema()`):**
+1. `ALTER TABLE cortex_shards ADD COLUMN issuer TEXT NOT NULL DEFAULT 'agent:main:cortex'`
+2. `CREATE INDEX IF NOT EXISTS idx_shards_issuer ON cortex_shards(issuer)`
 
 ---
 
@@ -231,5 +379,9 @@ CREATE TABLE shards (
 4. **Token budget:** Verify sharding token cap still works with cross-channel messages
 5. **Background layer:** Verify background layer is empty/skipped when using issuer-based context
 6. **Backward compat:** When `issuer` is not set, fall back to channel-based filtering (existing behavior)
-7. **Display:** Shard separators show channel info as metadata: `[Topic: X | via whatsapp, webchat]`
+7. **Display:** Shard separators show channel info as metadata: `[Topic: X | via whatsapp, webchat | ~5min ago]`
 8. **Existing tests:** All 43 foreground sharding tests still pass (they test channel-based path)
+9. **Semantic counter:** Cross-channel messages contribute to same sliding window counter
+10. **Topic shift split:** `applyTopicShift()` creates new shard with correct issuer, not locked to one channel
+11. **Gardener compactor:** Compactor generates background summaries correctly with issuer-scoped shards
+12. **Schema migration:** Existing DBs gain `issuer` column on `cortex_shards` with correct default, new index created

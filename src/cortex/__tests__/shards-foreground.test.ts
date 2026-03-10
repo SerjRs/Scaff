@@ -88,7 +88,7 @@ describe("buildShardedForeground", () => {
     db.prepare("UPDATE cortex_shards SET message_count = 1, token_count = ? WHERE id = ?")
       .run(estimateTokens("hello active"), shard.id);
 
-    const { layer, messages } = buildShardedForeground(db, "webchat", config);
+    const { layer, messages } = buildShardedForeground(db, config, { channel: "webchat" });
     expect(layer.content).toContain("hello active");
     expect(messages).toHaveLength(1);
   });
@@ -109,7 +109,7 @@ describe("buildShardedForeground", () => {
     db.prepare("UPDATE cortex_shards SET message_count = 1, token_count = ? WHERE id = ?")
       .run(estimateTokens("active msg"), activeShard.id);
 
-    const { layer } = buildShardedForeground(db, "webchat", config);
+    const { layer } = buildShardedForeground(db, config, { channel: "webchat" });
     // Should include active + some closed but not all 5
     expect(layer.content).toContain("active msg");
     // Token count should be within budget (active + some closed, but not all)
@@ -125,7 +125,7 @@ describe("buildShardedForeground", () => {
     db.prepare("UPDATE cortex_shards SET message_count = 1, token_count = ? WHERE id = ?")
       .run(estimateTokens(bigContent), shard.id);
 
-    const { layer } = buildShardedForeground(db, "webchat", config);
+    const { layer } = buildShardedForeground(db, config, { channel: "webchat" });
     expect(layer.content).toContain(bigContent);
     expect(layer.tokens).toBeGreaterThan(config.tokenCap);
   });
@@ -143,7 +143,7 @@ describe("buildShardedForeground", () => {
       { content: "z".repeat(720), timestamp: "2026-03-09T09:00:00Z" },
     ], "Within tolerance");
 
-    const { layer } = buildShardedForeground(db, "webchat", config);
+    const { layer } = buildShardedForeground(db, config, { channel: "webchat" });
     expect(layer.content).toContain("z".repeat(100)); // Partial match is enough
   });
 
@@ -160,7 +160,7 @@ describe("buildShardedForeground", () => {
       { content: "z".repeat(800), timestamp: "2026-03-09T09:00:00Z" },
     ], "Over tolerance");
 
-    const { layer } = buildShardedForeground(db, "webchat", config);
+    const { layer } = buildShardedForeground(db, config, { channel: "webchat" });
     // Shard separator should NOT be present (excluded)
     expect(layer.content).not.toContain("Over tolerance");
   });
@@ -176,10 +176,10 @@ describe("buildShardedForeground", () => {
     db.prepare("UPDATE cortex_shards SET message_count = 1, token_count = 10 WHERE id = ?")
       .run(activeShard.id);
 
-    const { layer } = buildShardedForeground(db, "webchat", {
+    const { layer } = buildShardedForeground(db, {
       ...config,
       tokenCap: 10000, // Large cap to include everything
-    });
+    }, { channel: "webchat" });
     expect(layer.content).toContain("--- [Topic: Bug fix session");
     expect(layer.content).toContain("messages] ---");
   });
@@ -189,7 +189,7 @@ describe("buildShardedForeground", () => {
     appendAndGetId("webchat", "unsharded msg 1", "2026-03-09T10:00:00Z");
     appendAndGetId("webchat", "unsharded msg 2", "2026-03-09T10:01:00Z");
 
-    const { layer, messages } = buildShardedForeground(db, "webchat", config);
+    const { layer, messages } = buildShardedForeground(db, config, { channel: "webchat" });
     expect(layer.content).toContain("unsharded msg 1");
     expect(layer.content).toContain("unsharded msg 2");
     expect(messages).toHaveLength(2);

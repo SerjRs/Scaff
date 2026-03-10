@@ -152,39 +152,43 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
       }
 
       // 2b. Inline shard assignment (foreground sharding)
+      // Hoisted so assistant responses can be assigned to the same shard
+      let assignedShardId: string | null = null;
       if (foregroundConfig && !isOpsTrigger) {
         const lastId = db.prepare(`SELECT last_insert_rowid() as id`).get() as { id: number | bigint };
         const messageId = Number(lastId.id);
-        const assignedShardId = assignMessageWithBoundaryDetection(
+        assignedShardId = assignMessageWithBoundaryDetection(
           db, messageId, msg.envelope.channel, appendedContent,
-          msg.envelope.timestamp, foregroundConfig,
+          msg.envelope.timestamp, foregroundConfig, issuer,
         );
 
         // 2c. Tier 2: Semantic boundary detection (sliding window)
         // Fire async every semanticCheckInterval messages — does not block the loop
+        // Counter keyed by issuer (cross-channel) when available, otherwise by channel
         if (shardLLMFn) {
-          const ch = msg.envelope.channel;
-          const count = (semanticCheckCounters.get(ch) ?? 0) + 1;
-          semanticCheckCounters.set(ch, count);
+          const counterKey = issuer ?? msg.envelope.channel;
+          const count = (semanticCheckCounters.get(counterKey) ?? 0) + 1;
+          semanticCheckCounters.set(counterKey, count);
 
           // Check if the shard was just closed by Tier 1 heuristics
-          const currentActive = getActiveShard(db, ch);
+          const shardFilter = issuer ? { issuer } : msg.envelope.channel;
+          const currentActive = getActiveShard(db, shardFilter);
           const shardWasClosed = !currentActive || currentActive.id !== assignedShardId;
 
           if (shardWasClosed) {
             // Tier 1 closed a shard — fire async labeling
-            semanticCheckCounters.set(ch, 0);
+            semanticCheckCounters.set(counterKey, 0);
             void labelShardAsync(db, assignedShardId, shardLLMFn).catch((err) => {
               onError(new Error(`[cortex] Shard labeling failed: ${err instanceof Error ? err.message : String(err)}`));
             });
           } else if (count >= foregroundConfig.semanticCheckInterval) {
             // Sliding window interval reached — fire semantic check
-            semanticCheckCounters.set(ch, 0);
+            semanticCheckCounters.set(counterKey, 0);
             const shardMsgs = getShardMessages(db, assignedShardId);
             if (shardMsgs.length >= 3) {
               void detectTopicShift(shardMsgs, shardLLMFn).then((result) => {
                 if (result.shifted && result.splitAtId != null && result.oldTopic && result.newTopic) {
-                  applyTopicShift(db, ch, assignedShardId, result.splitAtId, result.oldTopic, result.newTopic);
+                  applyTopicShift(db, msg.envelope.channel, assignedShardId!, result.splitAtId, result.oldTopic, result.newTopic, issuer);
                 }
               }).catch((err) => {
                 onError(new Error(`[cortex] Semantic detection failed: ${err instanceof Error ? err.message : String(err)}`));
@@ -231,7 +235,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
 
           // Store the assistant's raw response (with tool_use blocks) as structured content
           if (llmResult._rawContent && llmResult._rawContent.length > 0) {
-            appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, llmResult._rawContent, issuer);
+            appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, llmResult._rawContent, issuer, assignedShardId);
           }
 
           // Execute sync tools and collect results
@@ -259,7 +263,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             }
             // Store tool result as structured content block
             appendStructuredContent(db, msg.envelope.id, "user", "internal",
-              [{ type: "tool_result", tool_use_id: tc.id, content: result }], issuer);
+              [{ type: "tool_result", tool_use_id: tc.id, content: result }], issuer, assignedShardId);
             toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
           }
 
@@ -283,7 +287,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         const asyncCalls = isOpsTrigger ? [] : llmResult.toolCalls.filter((tc) => tc.name === "sessions_spawn");
         if (asyncCalls.length > 0 && llmResult._rawContent) {
           // Store the assistant's raw response with tool_use blocks as structured content
-          appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, llmResult._rawContent, issuer);
+          appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, llmResult._rawContent, issuer, assignedShardId);
         }
         for (const tc of asyncCalls) {
           if (tc.name === "sessions_spawn" && onSpawn) {
@@ -345,11 +349,11 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               });
               // Store structured tool result for the failure
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
-                [{ type: "tool_result", tool_use_id: tc.id, content: `Router spawn failed for task: ${task.slice(0, 120)}` }], issuer);
+                [{ type: "tool_result", tool_use_id: tc.id, content: `Router spawn failed for task: ${task.slice(0, 120)}` }], issuer, assignedShardId);
             } else {
               // Store structured tool result for the dispatch acknowledgment
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
-                [{ type: "tool_result", tool_use_id: tc.id, content: `Task dispatched. [TASK_ID]=${taskId}, Status=Pending, Priority=${resultPriority}` }], issuer);
+                [{ type: "tool_result", tool_use_id: tc.id, content: `Task dispatched. [TASK_ID]=${taskId}, Status=Pending, Priority=${resultPriority}` }], issuer, assignedShardId);
             }
           }
         }
@@ -387,8 +391,8 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // Allows live-mode delivery (e.g. webchat) to unblock the client
         onMessageComplete?.(msg.envelope.id, msg.envelope.replyContext, output.targets.length === 0);
 
-        // 8. Record response in session
-        appendResponse(db, output, msg.envelope.id, issuer);
+        // 8. Record response in session (assigned to same shard as trigger message)
+        appendResponse(db, output, msg.envelope.id, issuer, assignedShardId);
 
         // 9. Mark completed
         markCompleted(db, msg.envelope.id);

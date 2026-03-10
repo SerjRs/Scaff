@@ -4,7 +4,7 @@
   "thinking": "high",
   "defaultMode": "off",
   "channels": {
-    "webchat": "off",
+    "webchat": "live",
     "whatsapp": "live"
   },
   "hippocampus": {

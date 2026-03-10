@@ -30,6 +30,13 @@ export interface Shard {
   endedAt: string | null;
   createdAt: string;
   createdBy: "inline" | "gardener" | "manual";
+  issuer: string;
+}
+
+/** Filter options for shard queries — issuer takes precedence over channel */
+export interface ShardFilter {
+  channel?: string;
+  issuer?: string;
 }
 
 export interface ForegroundConfig {
@@ -54,16 +61,32 @@ export const DEFAULT_FOREGROUND_CONFIG: ForegroundConfig = {
 // Shard CRUD
 // ---------------------------------------------------------------------------
 
-/** Get the currently open (active) shard for a channel. Returns null if none. */
-export function getActiveShard(db: DatabaseSync, channel: string): Shard | null {
+/** Get ALL currently open (active) shards. Used by buildShardedForeground to handle
+ *  legacy data where multiple channels each have their own active shard under one issuer. */
+export function getAllActiveShards(db: DatabaseSync, channelOrFilter: string | ShardFilter): Shard[] {
+  const { filterCol, filterVal } = resolveFilter(channelOrFilter);
+  const rows = db.prepare(`
+    SELECT id, channel, topic, first_message_id, last_message_id,
+           token_count, message_count, started_at, ended_at, created_at, created_by, issuer
+    FROM cortex_shards
+    WHERE ${filterCol} = ? AND ended_at IS NULL
+    ORDER BY created_at ASC
+  `).all(filterVal) as Record<string, unknown>[];
+
+  return rows.map(rowToShard);
+}
+
+/** Get the currently open (active) shard. Filters by issuer when provided, otherwise by channel. */
+export function getActiveShard(db: DatabaseSync, channelOrFilter: string | ShardFilter): Shard | null {
+  const { filterCol, filterVal } = resolveFilter(channelOrFilter);
   const row = db.prepare(`
     SELECT id, channel, topic, first_message_id, last_message_id,
-           token_count, message_count, started_at, ended_at, created_at, created_by
+           token_count, message_count, started_at, ended_at, created_at, created_by, issuer
     FROM cortex_shards
-    WHERE channel = ? AND ended_at IS NULL
+    WHERE ${filterCol} = ? AND ended_at IS NULL
     ORDER BY created_at DESC
     LIMIT 1
-  `).get(channel) as Record<string, unknown> | undefined;
+  `).get(filterVal) as Record<string, unknown> | undefined;
 
   return row ? rowToShard(row) : null;
 }
@@ -75,20 +98,21 @@ export function createShard(
   firstMessageId: number,
   startedAt: string,
   topic = "Continued conversation",
+  issuer = "agent:main:cortex",
 ): Shard {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO cortex_shards (id, channel, topic, first_message_id, last_message_id,
-                               token_count, message_count, started_at, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, 'inline')
-  `).run(id, channel, topic, firstMessageId, firstMessageId, startedAt, now);
+                               token_count, message_count, started_at, created_at, created_by, issuer)
+    VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, 'inline', ?)
+  `).run(id, channel, topic, firstMessageId, firstMessageId, startedAt, now, issuer);
 
   return {
     id, channel, topic,
     firstMessageId, lastMessageId: firstMessageId,
     tokenCount: 0, messageCount: 0,
-    startedAt, endedAt: null, createdAt: now, createdBy: "inline",
+    startedAt, endedAt: null, createdAt: now, createdBy: "inline", issuer,
   };
 }
 
@@ -145,15 +169,16 @@ export function updateShardTopic(db: DatabaseSync, shardId: string, topic: strin
   db.prepare(`UPDATE cortex_shards SET topic = ? WHERE id = ?`).run(topic, shardId);
 }
 
-/** Get closed shards for a channel, newest first. */
-export function getClosedShards(db: DatabaseSync, channel: string): Shard[] {
+/** Get closed shards, newest first. Filters by issuer when provided, otherwise by channel. */
+export function getClosedShards(db: DatabaseSync, channelOrFilter: string | ShardFilter): Shard[] {
+  const { filterCol, filterVal } = resolveFilter(channelOrFilter);
   const rows = db.prepare(`
     SELECT id, channel, topic, first_message_id, last_message_id,
-           token_count, message_count, started_at, ended_at, created_at, created_by
+           token_count, message_count, started_at, ended_at, created_at, created_by, issuer
     FROM cortex_shards
-    WHERE channel = ? AND ended_at IS NOT NULL
+    WHERE ${filterCol} = ? AND ended_at IS NOT NULL
     ORDER BY ended_at DESC
-  `).all(channel) as Record<string, unknown>[];
+  `).all(filterVal) as Record<string, unknown>[];
 
   return rows.map(rowToShard);
 }
@@ -162,7 +187,7 @@ export function getClosedShards(db: DatabaseSync, channel: string): Shard[] {
 export function getUnextractedShards(db: DatabaseSync): Shard[] {
   const rows = db.prepare(`
     SELECT id, channel, topic, first_message_id, last_message_id,
-           token_count, message_count, started_at, ended_at, created_at, created_by
+           token_count, message_count, started_at, ended_at, created_at, created_by, issuer
     FROM cortex_shards
     WHERE ended_at IS NOT NULL AND extracted_at IS NULL
     ORDER BY ended_at ASC
@@ -177,16 +202,17 @@ export function markShardExtracted(db: DatabaseSync, shardId: string): void {
     .run(new Date().toISOString(), shardId);
 }
 
-/** Get recent closed shards for a channel (for background summaries). */
-export function getRecentClosedShards(db: DatabaseSync, channel: string, limit = 5): Shard[] {
+/** Get recent closed shards (for background summaries). Filters by issuer when provided, otherwise by channel. */
+export function getRecentClosedShards(db: DatabaseSync, channelOrFilter: string | ShardFilter, limit = 5): Shard[] {
+  const { filterCol, filterVal } = resolveFilter(channelOrFilter);
   const rows = db.prepare(`
     SELECT id, channel, topic, first_message_id, last_message_id,
-           token_count, message_count, started_at, ended_at, created_at, created_by
+           token_count, message_count, started_at, ended_at, created_at, created_by, issuer
     FROM cortex_shards
-    WHERE channel = ? AND ended_at IS NOT NULL
+    WHERE ${filterCol} = ? AND ended_at IS NOT NULL
     ORDER BY ended_at DESC
     LIMIT ?
-  `).all(channel, limit) as Record<string, unknown>[];
+  `).all(filterVal, limit) as Record<string, unknown>[];
 
   return rows.map(rowToShard).reverse(); // Oldest first for display
 }
@@ -229,17 +255,21 @@ export function assignMessageWithBoundaryDetection(
   messageContent: string,
   messageTimestamp: string,
   config: ForegroundConfig,
+  issuer?: string,
 ): string {
   const messageTokens = estimateTokens(messageContent);
 
   let targetShardId: string;
   let targetShardTokens: number;
 
-  const activeShard = getActiveShard(db, channel);
+  // When issuer is provided, find active shard by issuer (cross-channel).
+  // Otherwise fall back to channel-scoped lookup (backward compat).
+  const filter: string | ShardFilter = issuer ? { issuer } : channel;
+  const activeShard = getActiveShard(db, filter);
 
   if (!activeShard) {
     // --- No active shard: create one ---
-    const shard = createShard(db, channel, messageId, messageTimestamp);
+    const shard = createShard(db, channel, messageId, messageTimestamp, undefined, issuer);
     assignMessageToShard(db, messageId, shard.id);
     updateShardTail(db, shard.id, messageId, messageTokens);
     targetShardId = shard.id;
@@ -254,7 +284,7 @@ export function assignMessageWithBoundaryDetection(
       if (gapMinutes >= config.timeGapMinutes) {
         // Close the active shard and start a new one
         closeShard(db, activeShard.id, activeShard.lastMessageId, lastMessageTime);
-        const newShard = createShard(db, channel, messageId, messageTimestamp);
+        const newShard = createShard(db, channel, messageId, messageTimestamp, undefined, issuer);
         assignMessageToShard(db, messageId, newShard.id);
         updateShardTail(db, newShard.id, messageId, messageTokens);
         targetShardId = newShard.id;
@@ -422,6 +452,7 @@ export function applyTopicShift(
   splitAtId: number,
   oldTopic: string,
   newTopic: string,
+  issuer?: string,
 ): string {
   // Get all messages in the current shard
   const messages = getShardMessages(db, shardId);
@@ -435,7 +466,7 @@ export function applyTopicShift(
 
   // Create new shard for messages from split point onward
   const firstNewMsg = messages[splitIdx];
-  const newShard = createShard(db, channel, firstNewMsg.id, firstNewMsg.timestamp, newTopic);
+  const newShard = createShard(db, channel, firstNewMsg.id, firstNewMsg.timestamp, newTopic, issuer);
 
   // Reassign messages from split point onward to the new shard
   let tokenTotal = 0;
@@ -471,6 +502,17 @@ function getLastMessageTimestamp(db: DatabaseSync, shardId: string): string | nu
   return row?.timestamp ?? null;
 }
 
+/** Resolve a channel string or ShardFilter into SQL column + value for WHERE clause */
+function resolveFilter(channelOrFilter: string | ShardFilter): { filterCol: string; filterVal: string } {
+  if (typeof channelOrFilter === "string") {
+    return { filterCol: "channel", filterVal: channelOrFilter };
+  }
+  if (channelOrFilter.issuer) {
+    return { filterCol: "issuer", filterVal: channelOrFilter.issuer };
+  }
+  return { filterCol: "channel", filterVal: channelOrFilter.channel ?? "" };
+}
+
 function rowToShard(row: Record<string, unknown>): Shard {
   return {
     id: row.id as string,
@@ -484,5 +526,6 @@ function rowToShard(row: Record<string, unknown>): Shard {
     endedAt: (row.ended_at as string) ?? null,
     createdAt: row.created_at as string,
     createdBy: row.created_by as Shard["createdBy"],
+    issuer: (row.issuer as string) ?? "agent:main:cortex",
   };
 }

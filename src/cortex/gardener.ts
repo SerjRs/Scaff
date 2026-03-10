@@ -85,8 +85,10 @@ export async function runChannelCompactor(params: {
   db: DatabaseSync;
   summarize: FactExtractorLLM;
   idleHours?: number;
+  /** When set, queries shards by issuer instead of per-channel */
+  issuer?: string;
 }): Promise<GardenerRunResult> {
-  const { db, summarize, idleHours = COMPACTOR_IDLE_HOURS } = params;
+  const { db, summarize, idleHours = COMPACTOR_IDLE_HOURS, issuer } = params;
   const result: GardenerRunResult = { task: "channel_compactor", processed: 0, errors: [] };
 
   const states = getChannelStates(db);
@@ -100,8 +102,9 @@ export async function runChannelCompactor(params: {
     if (now - lastMsg < thresholdMs) continue; // Still active
 
     try {
-      // Try shard-based summary first
-      const recentShards = getRecentClosedShards(db, state.channel, 5);
+      // Query shards by issuer (cross-channel) when available, otherwise per-channel
+      const shardFilter = issuer ? { issuer } : state.channel;
+      const recentShards = getRecentClosedShards(db, shardFilter, 5);
 
       let summary: string;
       if (recentShards.length > 0) {
@@ -114,7 +117,10 @@ export async function runChannelCompactor(params: {
           .join("\n");
       } else {
         // Fallback: LLM summarization of raw messages
-        const messages = getSessionHistory(db, { channel: state.channel });
+        const historyOpts = issuer
+          ? { issuer }
+          : { channel: state.channel as ChannelId };
+        const messages = getSessionHistory(db, historyOpts);
         if (messages.length === 0) continue;
 
         summary = await compactChannel(

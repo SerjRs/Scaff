@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { HotFact } from "./hippocampus.js";
 import { getChannelStates, getSessionHistory, type SessionMessage } from "./session.js";
-import { getActiveShard, getClosedShards, getShardMessages, type Shard, type ForegroundConfig } from "./shards.js";
+import { getActiveShard, getAllActiveShards, getClosedShards, getShardMessages, type Shard, type ForegroundConfig, type ShardFilter } from "./shards.js";
 import type { ChannelId, CortexEnvelope } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -177,18 +177,25 @@ export function buildForeground(
  */
 export function buildShardedForeground(
   db: DatabaseSync,
-  channel: string,
   config: ForegroundConfig,
+  opts: { channel?: string; issuer?: string },
 ): { layer: ContextLayer; messages: SessionMessage[] } {
   const ceiling = config.tokenCap * (1 + config.tolerancePct / 100);
   let runningTotal = 0;
 
+  // Resolve filter: issuer takes precedence (cross-channel unified context)
+  const filter: string | ShardFilter = opts.issuer
+    ? { issuer: opts.issuer }
+    : (opts.channel ?? "");
+
   // Collect shards to include (newest first, then reversed for chronological output)
   const includedShards: { shard: Shard | null; messages: ReturnType<typeof getShardMessages>; isActive: boolean }[] = [];
 
-  // 1. Active shard — always included
-  const activeShard = getActiveShard(db, channel);
-  if (activeShard) {
+  // 1. Active shard(s) — always included
+  // When filtering by issuer, there may be multiple active shards from different channels
+  // (legacy data from before unified context). Include all of them.
+  const activeShards = getAllActiveShards(db, filter);
+  for (const activeShard of activeShards) {
     const activeMessages = getShardMessages(db, activeShard.id);
     const activeTokens = activeMessages.reduce((sum, m) => sum + estimateTokens(formatShardMessage(m)), 0);
     runningTotal += activeTokens;
@@ -196,7 +203,7 @@ export function buildShardedForeground(
   }
 
   // Also include unsharded messages (tail messages not yet assigned to any shard)
-  const unshardedMessages = getUnshardedMessages(db, channel);
+  const unshardedMessages = getUnshardedMessages(db, opts);
   if (unshardedMessages.length > 0) {
     const unshardedTokens = unshardedMessages.reduce((sum, m) => sum + estimateTokens(formatShardMessage(m)), 0);
     runningTotal += unshardedTokens;
@@ -204,7 +211,7 @@ export function buildShardedForeground(
   }
 
   // 2. Walk backward through closed shards
-  const closedShards = getClosedShards(db, channel);
+  const closedShards = getClosedShards(db, filter);
   for (const shard of closedShards) {
     if (runningTotal + shard.tokenCount <= ceiling) {
       const messages = getShardMessages(db, shard.id);
@@ -227,7 +234,10 @@ export function buildShardedForeground(
     // Add separator for closed shards with topic labels
     if (shard && !isActive) {
       const timeAgo = formatTimeAgo(now, shard.endedAt ?? shard.startedAt);
-      lines.push(`--- [Topic: ${shard.topic} | ${timeAgo} | ${shard.messageCount} messages] ---`);
+      // Show distinct channels for cross-channel shards
+      const distinctChannels = [...new Set(messages.map((m) => m.channel))];
+      const channelInfo = distinctChannels.length > 1 ? ` | via ${distinctChannels.join(", ")}` : "";
+      lines.push(`--- [Topic: ${shard.topic}${channelInfo} | ${timeAgo} | ${shard.messageCount} messages] ---`);
     }
 
     for (const msg of messages) {
@@ -255,17 +265,34 @@ export function buildShardedForeground(
   };
 }
 
-/** Get messages from a channel that have no shard_id assigned. */
+/**
+ * Get recent messages that have no shard_id assigned (tail messages not yet sharded).
+ * Only returns messages AFTER the last shard's last_message_id to avoid pulling in
+ * the entire pre-sharding history. Filters by issuer when provided, otherwise by channel.
+ */
 function getUnshardedMessages(
   db: DatabaseSync,
-  channel: string,
+  opts: { channel?: string; issuer?: string },
 ): { id: number; content: string; timestamp: string; role: string; channel: string; senderId: string }[] {
+  const filterCol = opts.issuer ? "issuer" : "channel";
+  const filterVal = opts.issuer ?? opts.channel ?? "";
+
+  // Find the highest message ID assigned to any shard — only return unsharded messages after that.
+  // This prevents dumping the entire pre-sharding history (~1000s of messages) into the foreground.
+  const shardFilterCol = opts.issuer ? "issuer" : "channel";
+  const lastShardedRow = db.prepare(`
+    SELECT MAX(last_message_id) as last_id
+    FROM cortex_shards
+    WHERE ${shardFilterCol} = ?
+  `).get(filterVal) as { last_id: number | null } | undefined;
+  const afterId = lastShardedRow?.last_id ?? 0;
+
   const rows = db.prepare(`
     SELECT id, content, timestamp, role, channel, sender_id
     FROM cortex_session
-    WHERE channel = ? AND shard_id IS NULL
+    WHERE ${filterCol} = ? AND shard_id IS NULL AND id > ?
     ORDER BY timestamp ASC, id ASC
-  `).all(channel) as Record<string, unknown>[];
+  `).all(filterVal, afterId) as Record<string, unknown>[];
 
   return rows.map((r) => ({
     id: r.id as number,
@@ -278,7 +305,7 @@ function getUnshardedMessages(
 }
 
 function formatShardMessage(msg: { role: string; channel: string; senderId: string; content: string }): string {
-  const prefix = msg.role === "assistant" ? "Cortex" : `[${msg.channel}] ${msg.senderId}`;
+  const prefix = msg.role === "assistant" ? `Cortex → [${msg.channel}]` : `[${msg.channel}] ${msg.senderId}`;
   return `${prefix}: ${msg.content}`;
 }
 
@@ -364,9 +391,12 @@ export async function assembleContext(params: {
   const systemFloor = await loadSystemFloor(workspaceDir, hotFacts);
 
   // 2. Background summaries — small fixed cost
-  const background = buildBackground(db, triggerEnvelope.channel, {
-    idleCutoff: hippocampusEnabled === true,
-  });
+  // When using issuer-based context, all channels are in the foreground — skip background
+  const background = issuer
+    ? { name: "background" as const, tokens: 0, content: "" }
+    : buildBackground(db, triggerEnvelope.channel, {
+        idleCutoff: hippocampusEnabled === true,
+      });
 
   // 3. Foreground — shard-based or legacy
   let foreground: ContextLayer;
@@ -374,7 +404,11 @@ export async function assembleContext(params: {
 
   if (foregroundConfig) {
     // Shard-based foreground assembly — cuts at topic boundaries, respects token budget
-    const result = buildShardedForeground(db, triggerEnvelope.channel, foregroundConfig);
+    // When issuer is set, queries across all channels for unified context
+    const result = buildShardedForeground(db, foregroundConfig, {
+      channel: triggerEnvelope.channel,
+      issuer,
+    });
     foreground = result.layer;
     foregroundMessages = result.messages;
   } else {
@@ -424,6 +458,6 @@ interface FormattableMessage {
 }
 
 function formatSessionMessage(msg: FormattableMessage): string {
-  const prefix = msg.role === "assistant" ? "Cortex" : `[${msg.channel}] ${msg.senderId}`;
+  const prefix = msg.role === "assistant" ? `Cortex → [${msg.channel}]` : `[${msg.channel}] ${msg.senderId}`;
   return `${prefix}: ${msg.content}`;
 }
