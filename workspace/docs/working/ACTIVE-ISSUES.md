@@ -1,6 +1,6 @@
 # ACTIVE-ISSUES.md
 
-*Last updated: 2026-03-10*
+*Last updated: 2026-03-11*
 
 ## Fixed
 
@@ -26,6 +26,7 @@
 | 28 | Cortex `[silence]` on webchat — SOUL.md "stay silent" rule | Sender showed as "Partner" (not recognized as approved). SOUL.md instruction: "stay silent for unapproved senders." | Removed "stay silent" line from SOUL.md. Cortex has channel-level allowlisting instead. | ✅ Fixed |
 | 29 | WhatsApp auto-reply routing to webchat | Cortex config had `"false"` (truthy string) instead of `"off"`. Caused partial dual-delivery. | Changed to `"off"` in cortex/config.json. | ✅ Fixed |
 | 30 | Cortex unified context — cross-channel filtering | `buildContext` filtered per channel instead of per issuer. Cross-channel messages invisible. | Issuer-based filtering implemented. Spec: `02_cortex-unified-context.md`. | ✅ Fixed |
+| 33 | Cortex ops-trigger shard gap — context loss | Ops-trigger messages (`appendTaskResult` + trigger response) stored with `shard_id=NULL`. `getUnshardedMessages()` only looks forward from last shard ID — these fell into a gap between old and new shards. Cortex couldn't see its own responses, diagnosed correct output as "hallucination." | Removed `!isOpsTrigger` guard on shard assignment in `loop.ts`. Ops triggers use `replyChannel` for shard. Retroactive shard assignment for `appendTaskResult` rows. Spec: `05_cortex-ops-trigger-shard-gap.md`. | ✅ Fixed |
 
 ## Open — High Priority
 
@@ -40,6 +41,9 @@
 |---|-------|---------|-----------|
 | 12 | **Ollama bypassed under load** | Concurrent evaluations always timeout → Sonnet fallback handles all scoring. Ollama only works for sequential evals. | Consider queue/serialization for Ollama evals, or accept Sonnet-only. |
 | 22 | **Hippocampus fact dedup is exact-match only** | `gardener.ts` lines 208-210 and 249-251 check `WHERE fact_text = ?` — exact string match. Architecture spec calls for cosine similarity >0.85 via embeddings, never implemented. MEMORY.md claim about "cosine dedup since 2026-02-23" is a hallucinated Hippocampus fact. | Verify current state — Claude Code may have been asked to remove it. If still exact-match: implement embedding-based dedup via Ollama. |
+| 34 | **Cortex aggressive task status polling** | When Cortex spawns tasks, the LLM calls `get_task_status` in a tight loop (4 calls in 13 seconds observed). Each poll is a full LLM call with full context assembly. The ops-trigger system already delivers results via push — polling is pure token waste. | Two-part fix: (1) Add to Cortex system prompt: "Do not poll `get_task_status` in a loop. Results arrive via ops-trigger. Check once if asked, then wait." (2) Rate-limit the tool: if same taskId queried within 30s, return cached result with "awaiting notification" note. |
+| 35 | **Cortex double timestamp metadata prefixes** | Cortex responses sometimes contain two `[timestamp:issuer:channel]` prefixes. Root cause is a feedback loop: `contextToMessages()` in `llm-caller.ts` prepends metadata prefix to every message → LLM learns the pattern and generates its own prefix → response stored WITH the LLM-generated prefix → next turn, code adds ANOTHER prefix on replay → doubles accumulate. Cannot simply remove timestamps from context — Cortex needs temporal/channel awareness. | Fix: strip on output, not input. In `parseResponse()`, strip any leading text matching the metadata prefix regex (`/^\[[\d\-T: ]+:.*?\]\s*/g`) before storing to `cortex_session`. Code will re-add the authoritative prefix in `contextToMessages()` on replay. LLM can generate prefixes all it wants — they get cleaned before storage, no accumulation. |
+| 36 | **Cortex empty metadata-only messages** | LLM occasionally generates responses that are ONLY the metadata prefix (`[2026-03-11 08:48:22:Scaff[cortex]:webchat]`) with no actual content. These get delivered to the user as visible empty messages. | Fix: in `parseResponse()`, after stripping metadata prefixes (see #35), if remaining text is empty or whitespace-only, treat as `[silence]` — don't deliver to user. |
 
 ## Open — Low Priority / Future
 

@@ -26,6 +26,7 @@ import { appendToSession, appendResponse, appendToolCall, appendStructuredConten
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, type EmbedFunction } from "./tools.js";
 import {
   assignMessageWithBoundaryDetection,
+  assignMessageToShard,
   getActiveShard,
   getShardMessages,
   detectTopicShift,
@@ -158,15 +159,48 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
       }
 
       // 2b. Inline shard assignment (foreground sharding)
-      // Hoisted so assistant responses can be assigned to the same shard
+      // Hoisted so assistant responses can be assigned to the same shard.
+      // Ops-trigger messages MUST be assigned to a shard — they are conversation
+      // messages that the user sees. Without shard assignment, they fall into a gap
+      // between the old and new shards and become invisible to Cortex on the next turn.
+      // @see docs/working/05_cortex-ops-trigger-shard-gap.md (Bug 1)
       let assignedShardId: string | null = null;
-      if (foregroundConfig && !isOpsTrigger) {
+      if (foregroundConfig) {
+        // For ops triggers, use the reply channel (e.g. "webchat") not the trigger
+        // channel ("router") — the shard belongs to the user-facing conversation.
+        const shardChannel = isOpsTrigger
+          ? (msg.envelope.metadata?.replyChannel as string ?? msg.envelope.channel)
+          : msg.envelope.channel;
+
         const lastId = db.prepare(`SELECT last_insert_rowid() as id`).get() as { id: number | bigint };
         const messageId = Number(lastId.id);
         assignedShardId = assignMessageWithBoundaryDetection(
-          db, messageId, msg.envelope.channel, appendedContent,
+          db, messageId, shardChannel, appendedContent,
           msg.envelope.timestamp, foregroundConfig, issuer,
         );
+
+        if (isOpsTrigger) {
+          // Retroactively assign the appendTaskResult row (written by gateway-bridge
+          // before the trigger) to the same shard. That row was stored with shard_id=NULL
+          // because gateway-bridge doesn't know which shard is active.
+          // The taskId is used as envelope_id in appendTaskResult.
+          const taskId = msg.envelope.metadata?.taskId as string | undefined;
+          if (taskId) {
+            const taskRow = db.prepare(
+              `SELECT id FROM cortex_session WHERE envelope_id = ? AND sender_id = 'cortex:ops' AND shard_id IS NULL ORDER BY id DESC LIMIT 1`,
+            ).get(taskId) as { id: number } | undefined;
+            if (taskRow) {
+              assignMessageToShard(db, taskRow.id, assignedShardId);
+              // Also update the shard's running counts for this message
+              const taskContent = db.prepare(`SELECT content FROM cortex_session WHERE id = ?`).get(taskRow.id) as { content: string } | undefined;
+              if (taskContent) {
+                const taskTokens = Math.ceil(taskContent.content.length / 4);
+                db.prepare(`UPDATE cortex_shards SET last_message_id = MAX(last_message_id, ?), token_count = token_count + ?, message_count = message_count + 1 WHERE id = ?`)
+                  .run(taskRow.id, taskTokens, assignedShardId);
+              }
+            }
+          }
+        }
 
         // 2c. Tier 2: Semantic boundary detection (sliding window)
         // Fire async every semanticCheckInterval messages — does not block the loop
@@ -392,7 +426,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             } else {
               // Store structured tool result for the dispatch acknowledgment
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
-                [{ type: "tool_result", tool_use_id: tc.id, content: `Task dispatched. [TASK_ID]=${taskId}, Status=Pending, Priority=${resultPriority}` }], issuer, assignedShardId);
+                [{ type: "tool_result", tool_use_id: tc.id, content: `Task dispatched. [TASK_ID]=${taskId}, Status=Pending, Priority=${resultPriority}. You will be notified automatically when this task completes — do NOT poll get_task_status. The system will wake you with the result. Just inform the user the task is running.` }], issuer, assignedShardId);
             }
           }
         }
