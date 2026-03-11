@@ -109,6 +109,12 @@ export async function initGatewayCortex(params: {
     maxResponseTokens: 8192,
     onError: (err) => {
       params.log.warn(`[cortex-llm] ${err.message}`);
+      // TEMP DEBUG: write to file to diagnose silence issue
+      try {
+        const fs = require("node:fs");
+        fs.appendFileSync("C:\\Users\\Temp User\\.openclaw\\cortex-debug.log",
+          `[${new Date().toISOString()}] ${err.message}\n`);
+      } catch { /* ignore */ }
     },
     debugContext: config.debugContext,
     ...(config.thinking ? { thinking: config.thinking } : {}),

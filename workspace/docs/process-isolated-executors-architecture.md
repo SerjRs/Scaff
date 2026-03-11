@@ -293,9 +293,11 @@ Once executors are process-isolated, moving them to **remote machines** is a sma
 
 - **Gateway auth for child processes:** The executor needs to authenticate with the gateway WebSocket. Currently auth uses a static token (`gateway.auth.token`). Child processes can receive this via env var. Secure enough for localhost? For remote executors, we'd need per-executor tokens or mTLS.
 - **Workspace isolation:** Current executors use `workspace-router-executor/` as their workspace. In process-isolated mode, should each executor get a temp directory (true isolation) or share the existing workspace (simpler, risk of file conflicts)?
+- share an execution Workspace, each executor can uniquely identifies its file by some UUID;
 - **Log aggregation:** Executor stderr goes to the child process. Should we pipe it to the gateway's log file? Separate per-executor logs? Both?
+- separate, per executor log, in the shared executor Workspace;
 - **Hot reload:** When the gateway rebuilds, in-process executors die with it. Process-isolated executors could survive a gateway restart and reconnect — is this desirable or a footgun?
-
+- this is desirable;
 ---
 
 *This document proposes moving Router Executors from in-process async functions to child processes. The key insight is that executors already communicate with the gateway via WebSocket RPC (`callGateway`) — they just happen to be calling themselves. Moving them to separate processes requires minimal code changes because the communication protocol is already remote-capable.*

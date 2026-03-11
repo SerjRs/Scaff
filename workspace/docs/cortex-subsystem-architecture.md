@@ -1090,17 +1090,22 @@ SAGE Paper 3 describes "CEO agent" as a real-time organizational curator that tr
 ## 12. Open Questions
 
 1. **Should subsystems share a database or each have their own?** Currently proposed: shared `cortex/bus.sqlite` for the registry, separate `library/library.sqlite` for the Library. But the Night Scholar reads both the Library and the registry. Clear boundaries vs. convenience.
+- The common diagnosis stays in Cortex DBs, everything else, all the needed information in their own.
 
 2. **Should the LLM be able to start/stop subsystems?** Current design: subsystems start at gateway boot. Should the LLM be able to `subsystem_action("cortex:scholar", "stop")` if the user asks? This adds complexity but increases control.
+- We need a clear health API for any subsystem; Start/Stop/Pause/Restart/CancelAllJobs/Config - we need to define what is the minimum API needed for Cortex to act on runtime;
 
 3. **Inter-subsystem communication.** If the Night Scholar finds something urgent in the Library, should it be able to alert the LLM directly (push)? Or only surface it in the next brief (pull)? Push is more responsive but adds complexity.
+- yes, they should be able to add to the CORTEX_SESSION table an event , so Cortex can have a direct discussion with the Subsystem.
 
 4. **Subsystem configuration.** Currently hardcoded in registration. Should there be a `cortex/subsystems.json` config file? Would allow users to enable/disable subsystems, adjust schedules, change models.
+- Yes, any Subsystem should be able to have full LLM configuration, missing only the capabilities to spawn and read diagnosis of other subsystems.
 
 5. **Subsystem plugins.** Could third-party developers create subsystems as OpenClaw skills? A skill that registers a subsystem, with its own result handler and LLM actions. This would make the subsystem layer extensible.
+- No, Subsystem is something the Cortex decides he might need either at build time or at runtime. This is a pure AI decision while self evolving.
 
 6. **Task priority between subsystems.** Night Scholar runs background tasks. Librarian runs normal priority. What if the user asks Cortex to spawn an urgent task while 15 Night Scholar tasks are queued? Router priority handling exists but may need tuning for multi-issuer scenarios.
-
+- This is Cortex's decision should be, Cortex should be able to undertstand the system capabilities, the subsystems run (maibe it worth to let a subsystem finish its job and after that to put it on pause).
 ---
 
 *This document is a living specification. It defines the expansion path from Cortex-as-monolith to Cortex-as-supervisor. Implementation is incremental — each phase delivers value independently.*
