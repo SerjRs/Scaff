@@ -322,14 +322,34 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
   // Consolidate string-content messages (alternating roles)
   const consolidated = consolidateMessages(messages);
 
-  // Append tool round-trip continuation if present (BEFORE validation)
-  if (context.toolRoundTrip) {
-    // Assistant message with raw content blocks (text + tool_use)
+  // Append tool round-trip continuation if present (BEFORE validation).
+  // Prefer accumulated toolRoundTrips (all rounds) over singular toolRoundTrip (legacy).
+  // This ensures the LLM sees full results from ALL prior sync tool rounds,
+  // preventing the compressed reference loop where early-round results vanish.
+  // @see workspace/docs/working/06_compressed-reference-loop.md
+  if (context.toolRoundTrips && context.toolRoundTrips.length > 0) {
+    for (const trip of context.toolRoundTrips) {
+      // Assistant message with raw content blocks (text + tool_use)
+      consolidated.push({
+        role: "assistant",
+        content: trip.previousContent,
+      });
+      // User message with tool results
+      consolidated.push({
+        role: "user",
+        content: trip.toolResults.map((r) => ({
+          type: "tool_result",
+          tool_use_id: r.toolCallId,
+          content: r.content,
+        })),
+      });
+    }
+  } else if (context.toolRoundTrip) {
+    // Legacy single round-trip (backward compat)
     consolidated.push({
       role: "assistant",
       content: context.toolRoundTrip.previousContent,
     });
-    // User message with tool results
     consolidated.push({
       role: "user",
       content: context.toolRoundTrip.toolResults.map((r) => ({

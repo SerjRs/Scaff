@@ -46,11 +46,16 @@ export interface AssembledContext {
   hippocampusEnabled?: boolean;
   /** Whether this is an ops trigger turn — suppress sessions_spawn tool to prevent re-dispatch */
   isOpsTrigger?: boolean;
-  /** For sync tool round-trips: previous LLM response + tool results */
+  /** For sync tool round-trips: previous LLM response + tool results (single round — legacy) */
   toolRoundTrip?: {
     previousContent: unknown[];
     toolResults: ToolResultEntry[];
   };
+  /** Accumulated tool round-trips across all sync rounds (fixes compressed reference loop) */
+  toolRoundTrips?: Array<{
+    previousContent: unknown[];
+    toolResults: ToolResultEntry[];
+  }>;
 }
 
 // ---------------------------------------------------------------------------

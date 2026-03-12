@@ -294,6 +294,12 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // Also capture the original raw content for async dispatch storage
         const originalRawContent = llmResult._rawContent;
 
+        // Accumulate all tool round-trips so the LLM sees results from ALL rounds,
+        // not just the latest. Fixes compressed reference loop where library_get
+        // results from round N vanish in round N+2, causing re-fetch loops.
+        // @see workspace/docs/working/06_compressed-reference-loop.md
+        const allRoundTrips: Array<{ previousContent: unknown[]; toolResults: ToolResultEntry[] }> = [];
+
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           // Check for sync tool calls
           const syncCalls = llmResult.toolCalls.filter((tc) => SYNC_TOOL_NAMES.has(tc.name));
@@ -356,13 +362,16 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
           }
 
-          // Re-call LLM with tool results appended
+          // Accumulate this round's data (all prior rounds remain visible to LLM)
+          allRoundTrips.push({
+            previousContent: llmResult._rawContent ?? [],
+            toolResults,
+          });
+
+          // Re-call LLM with ALL accumulated tool round-trips
           context = {
             ...context,
-            toolRoundTrip: {
-              previousContent: llmResult._rawContent ?? [],
-              toolResults,
-            },
+            toolRoundTrips: allRoundTrips,
           };
           llmResult = await callLLM(context);
         }
