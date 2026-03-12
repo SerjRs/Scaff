@@ -40,10 +40,11 @@ moved_at: "2026-03-12" # last stage transition date
 
 ### Body
 
-- **Cooking stage:** Raw thoughts, architecture notes, open questions. Can be messy.
-- **ToDo stage:** Clean implementation spec. Everything the executor needs — no ambiguity.
-- **InProgress/InReview:** Executor appends progress notes, blockers, test results at the bottom.
-- **Done:** Scaff appends final summary (commit, PR link, what shipped).
+- **Cooking stage:** Raw thoughts, architecture notes, open questions. Can be messy. Serj + Scaff, Serj owning;
+- **ToDo stage:** Clean implementation spec. Everything the executor needs — no ambiguity. Scaff owning;
+- **InProgress**: Executor appends progress notes, blockers, test results at the bottom. Scaff + Executor, Executor owning;
+- **InReview**: Scaff review, Executor appends changes, asks again for review. Scaff + Executor, Scaff owning;
+- **Done:** Scaff or Executor appends final summary (commit, PR link, what shipped).
 
 ## Numbering
 

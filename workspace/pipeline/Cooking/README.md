@@ -1,6 +1,6 @@
 # Cooking
 
-**Who works here:** Scaff + Serj
+**Who works here:** Scaff + Serj, Serj approve the task/idea and Scaff moves it to TO DO;
 
 **What this is:** The kitchen. Raw ideas, architecture thoughts, problem analysis, open questions. Nothing here needs to be clean or complete.
 

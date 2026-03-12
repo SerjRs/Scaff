@@ -1,6 +1,6 @@
 # ToDo
 
-**Who works here:** Scaff (prioritization), Serj (approval)
+**Who works here:** Scaff (prioritization), the tasks in this folder are approved by Serj. Only Scaff works here
 
 **What this is:** The backlog. Tasks here have clean implementation specs — ready to be picked up by an executor.
 
