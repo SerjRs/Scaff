@@ -217,8 +217,70 @@ For large files, use offset and limit to read specific line ranges.`,
   },
 };
 
+export const WRITE_FILE_TOOL = {
+  name: "write_file",
+  description: `Write content to a local file. Creates parent directories if needed. \
+Overwrites existing files by default. Use append mode to add to existing files. \
+Paths are resolved relative to the workspace directory.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      path: {
+        type: "string",
+        description: "File path (relative to workspace, or absolute)",
+      },
+      content: {
+        type: "string",
+        description: "Content to write",
+      },
+      append: {
+        type: "boolean",
+        description: "Append to file instead of overwriting (optional, default false)",
+      },
+    },
+    required: ["path", "content"],
+  },
+};
+
+export const MOVE_FILE_TOOL = {
+  name: "move_file",
+  description: `Move or rename a local file. Creates destination directories if needed. \
+Paths are resolved relative to the workspace directory. \
+Use for pipeline task transitions and file organization.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      from: {
+        type: "string",
+        description: "Source file path",
+      },
+      to: {
+        type: "string",
+        description: "Destination file path",
+      },
+    },
+    required: ["from", "to"],
+  },
+};
+
+export const DELETE_FILE_TOOL = {
+  name: "delete_file",
+  description: `Delete a local file. Paths are resolved relative to the workspace directory. \
+Files only — refuses to delete directories. Use with care — deletions are permanent.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      path: {
+        type: "string",
+        description: "File path to delete",
+      },
+    },
+    required: ["path"],
+  },
+};
+
 /** Tool names that are handled synchronously (round-trip within same turn) */
-export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file"]);
+export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file", "write_file", "move_file", "delete_file"]);
 
 // ---------------------------------------------------------------------------
 // Embed Function Type
@@ -494,6 +556,120 @@ export function executeReadFile(
     return `${header}\nShowing lines ${offset}-${offset + slice.length - 1} of ${totalLines}:\n\n${result}`;
   }
   return `${header}\n\n${result}`;
+}
+
+/** Execute write_file — write or append to a local file */
+export function executeWriteFile(
+  args: { path: string; content: string; append?: boolean },
+  workspaceDir: string,
+): string {
+  // Resolve path: relative paths resolve against workspace
+  let filePath = args.path;
+  if (!path.isAbsolute(filePath)) {
+    filePath = path.join(workspaceDir, filePath);
+  }
+
+  // Security: block writes outside the project directory
+  const projectRoot = path.resolve(workspaceDir, "..");
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(projectRoot)) {
+    return `Error: path "${args.path}" is outside the project directory.`;
+  }
+
+  // Create parent directories if needed
+  const dir = path.dirname(resolved);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  // Write or append
+  if (args.append) {
+    fs.appendFileSync(resolved, args.content, "utf-8");
+    return `Appended to: ${args.path} (${args.content.length} chars)`;
+  } else {
+    fs.writeFileSync(resolved, args.content, "utf-8");
+    return `Wrote: ${args.path} (${args.content.length} chars)`;
+  }
+}
+
+/** Execute move_file — move or rename a local file */
+export function executeMoveFile(
+  args: { from: string; to: string },
+  workspaceDir: string,
+): string {
+  // Resolve both paths
+  let fromPath = args.from;
+  let toPath = args.to;
+  if (!path.isAbsolute(fromPath)) {
+    fromPath = path.join(workspaceDir, fromPath);
+  }
+  if (!path.isAbsolute(toPath)) {
+    toPath = path.join(workspaceDir, toPath);
+  }
+
+  // Security: both paths must be inside project root
+  const projectRoot = path.resolve(workspaceDir, "..");
+  const resolvedFrom = path.resolve(fromPath);
+  const resolvedTo = path.resolve(toPath);
+  if (!resolvedFrom.startsWith(projectRoot)) {
+    return `Error: source path "${args.from}" is outside the project directory.`;
+  }
+  if (!resolvedTo.startsWith(projectRoot)) {
+    return `Error: destination path "${args.to}" is outside the project directory.`;
+  }
+
+  // Source must exist and be a file
+  if (!fs.existsSync(resolvedFrom)) {
+    return `Error: source not found: ${args.from}`;
+  }
+  const stat = fs.statSync(resolvedFrom);
+  if (stat.isDirectory()) {
+    return `Error: source is a directory, not a file: ${args.from}`;
+  }
+
+  // Create destination parent dirs
+  const destDir = path.dirname(resolvedTo);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  // Move
+  fs.renameSync(resolvedFrom, resolvedTo);
+  return `Moved: ${args.from} → ${args.to}`;
+}
+
+/** Execute delete_file — delete a local file */
+export function executeDeleteFile(
+  args: { path: string },
+  workspaceDir: string,
+): string {
+  // Resolve path
+  let filePath = args.path;
+  if (!path.isAbsolute(filePath)) {
+    filePath = path.join(workspaceDir, filePath);
+  }
+
+  // Security: block deletes outside project root
+  const projectRoot = path.resolve(workspaceDir, "..");
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(projectRoot)) {
+    return `Error: path "${args.path}" is outside the project directory.`;
+  }
+
+  // Must exist
+  if (!fs.existsSync(resolved)) {
+    return `Error: file not found: ${args.path}`;
+  }
+
+  // Must be a file, not directory
+  const stat = fs.statSync(resolved);
+  if (stat.isDirectory()) {
+    return `Error: "${args.path}" is a directory. Only files can be deleted.`;
+  }
+
+  // Delete
+  fs.unlinkSync(resolved);
+  return `Deleted: ${args.path}`;
 }
 
 // ---------------------------------------------------------------------------
