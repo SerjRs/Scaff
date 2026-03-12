@@ -106,14 +106,91 @@ Much cheaper than having executors grep blindly.`,
   },
 };
 
+// ---------------------------------------------------------------------------
+// Library Tools
+// ---------------------------------------------------------------------------
+
+export const LIBRARY_INGEST_TOOL = {
+  name: "library_ingest",
+  description: `Ingest a URL into the Library for long-term domain knowledge. Use this whenever \
+the user shares a URL — every link the user shares should be ingested. The Librarian executor \
+will read the content, summarize it, extract key concepts and tags, and store it in the Library \
+database. You will be notified when ingestion completes. Do NOT poll — the system will wake you \
+with the result.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      url: {
+        type: "string",
+        description: "The URL to ingest into the Library",
+      },
+    },
+    required: ["url"],
+  },
+};
+
+export const LIBRARY_GET_TOOL = {
+  name: "library_get",
+  description: `Get the full summary, key concepts, and metadata of a Library item by ID. \
+Use when you see a relevant item in the Library breadcrumbs and need its full details \
+to answer the user's question. The result is used for this turn only — a compressed \
+reference is stored in conversation history.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      item_id: {
+        type: "number",
+        description: "Item ID from the Library breadcrumbs (e.g., 7)",
+      },
+    },
+    required: ["item_id"],
+  },
+};
+
+export const LIBRARY_SEARCH_TOOL = {
+  name: "library_search",
+  description: `Search the Library for items matching a query. Use when you need knowledge \
+that the breadcrumbs don't show, or when you want to explore a specific angle that differs \
+from the user's original question. Returns titles, tags, and teasers — use library_get(id) \
+to read the full item.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      query: {
+        type: "string",
+        description: "Natural language search query",
+      },
+      limit: {
+        type: "number",
+        description: "Max results (default 10, max 20)",
+      },
+    },
+    required: ["query"],
+  },
+};
+
+export const LIBRARY_STATS_TOOL = {
+  name: "library_stats",
+  description: `Get Library statistics: total items, items by status, recent ingestions, \
+tag distribution. Use when the user asks about Library health or what knowledge is stored.`,
+  parameters: {
+    type: "object" as const,
+    properties: {},
+    required: [],
+  },
+};
+
 /** All Hippocampus tools */
 export const HIPPOCAMPUS_TOOLS = [FETCH_CHAT_HISTORY_TOOL, MEMORY_QUERY_TOOL];
+
+/** Library tools — sync retrieval + async ingestion */
+export const LIBRARY_TOOLS = [LIBRARY_INGEST_TOOL, LIBRARY_GET_TOOL, LIBRARY_SEARCH_TOOL, LIBRARY_STATS_TOOL];
 
 /** Core Cortex tools (always available alongside sessions_spawn) */
 export const CORTEX_TOOLS = [GET_TASK_STATUS_TOOL, CODE_SEARCH_TOOL];
 
 /** Tool names that are handled synchronously (round-trip within same turn) */
-export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search"]);
+export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats"]);
 
 // ---------------------------------------------------------------------------
 // Embed Function Type
@@ -326,4 +403,136 @@ export async function executeMemoryQuery(
       archivedAt: r.archivedAt,
     })),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Library Tool Executors
+// ---------------------------------------------------------------------------
+
+/** Result type for library sync tools — supports compressed shard persistence */
+export interface LibraryToolResult {
+  content: string;
+  /** When set, this is stored in the shard instead of the full content */
+  shardContent?: string;
+}
+
+/** Execute library_get — retrieve full item details by ID */
+export function executeLibraryGet(args: { item_id: number }): LibraryToolResult {
+  try {
+    const { openLibraryDbReadonly, getItemById, formatItem, formatCompressedReference } = require("../library/retrieval.js");
+    const libraryDb = openLibraryDbReadonly();
+    if (!libraryDb) {
+      return { content: "Library not available." };
+    }
+
+    try {
+      const item = getItemById(libraryDb, args.item_id);
+      if (!item) {
+        return { content: `Library item [id:${args.item_id}] not found.` };
+      }
+      return {
+        content: formatItem(item),
+        shardContent: formatCompressedReference(item),
+      };
+    } finally {
+      libraryDb.close();
+    }
+  } catch (err) {
+    return { content: `Library get failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/** Execute library_search — semantic search across the Library */
+export async function executeLibrarySearch(
+  args: { query: string; limit?: number },
+  embedFn: EmbedFunction = embedViaOllama,
+): Promise<LibraryToolResult> {
+  try {
+    const { openLibraryDbReadonly, searchItems, formatSearchResults, formatCompressedSearchRef } = require("../library/retrieval.js");
+    const libraryDb = openLibraryDbReadonly();
+    if (!libraryDb) {
+      return { content: "Library not available." };
+    }
+
+    try {
+      const queryEmbedding = await embedFn(args.query);
+      const limit = Math.min(args.limit ?? 10, 20);
+      const results = searchItems(libraryDb, queryEmbedding, limit);
+      return {
+        content: formatSearchResults(results),
+        shardContent: formatCompressedSearchRef(args.query, results.length),
+      };
+    } finally {
+      libraryDb.close();
+    }
+  } catch (err) {
+    return { content: `Library search failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/** Execute library_stats — return Library health statistics */
+export function executeLibraryStats(): string {
+  try {
+    const { openLibraryDbReadonly } = require("../library/retrieval.js");
+    const libraryDb = openLibraryDbReadonly();
+    if (!libraryDb) {
+      return "Library not initialized (no items ingested yet).";
+    }
+
+    try {
+      const total = libraryDb.prepare("SELECT COUNT(*) as c FROM items").get() as { c: number };
+      const byStatus = libraryDb.prepare(
+        "SELECT status, COUNT(*) as c FROM items GROUP BY status ORDER BY c DESC",
+      ).all() as { status: string; c: number }[];
+      const recent = libraryDb.prepare(
+        "SELECT id, title, tags, ingested_at FROM items WHERE status = 'active' ORDER BY ingested_at DESC LIMIT 5",
+      ).all() as { id: number; title: string; tags: string; ingested_at: string }[];
+
+      let embeddingCount = 0;
+      try {
+        const row = libraryDb.prepare("SELECT COUNT(*) as c FROM item_embeddings").get() as { c: number };
+        embeddingCount = row.c;
+      } catch { /* item_embeddings may not exist */ }
+
+      // Tag frequency
+      const allTags = libraryDb.prepare(
+        "SELECT tags FROM items WHERE status = 'active'",
+      ).all() as { tags: string }[];
+      const tagCounts = new Map<string, number>();
+      for (const row of allTags) {
+        try {
+          const tags = JSON.parse(row.tags) as string[];
+          for (const tag of tags) {
+            tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+          }
+        } catch { /* skip malformed */ }
+      }
+      const topTags = [...tagCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([tag, count]) => `${tag} (${count})`);
+
+      const lines = [
+        `📚 Library Statistics`,
+        `Total items: ${total.c}`,
+        `By status: ${byStatus.map((s) => `${s.status}: ${s.c}`).join(", ")}`,
+        `With embeddings: ${embeddingCount}`,
+        ``,
+        `Recent ingestions:`,
+        ...recent.map((r) => {
+          let tags: string[];
+          try { tags = JSON.parse(r.tags); } catch { tags = []; }
+          return `  [id:${r.id}] "${r.title}" — ${tags.slice(0, 3).join(", ")} (${r.ingested_at.slice(0, 10)})`;
+        }),
+        ``,
+        `Top tags: ${topTags.join(", ")}`,
+      ];
+
+      return lines.join("\n");
+    } finally {
+      libraryDb.close();
+    }
+  } catch (err) {
+    return `Library stats failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
 }

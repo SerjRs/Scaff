@@ -319,6 +319,82 @@ export async function initGatewayCortex(params: {
 
         const completedAt = new Date().toISOString();
 
+        // Library task detection — intercept Librarian executor results
+        // Check if this job is a Library ingestion task (stored by loop.ts library_ingest handler)
+        // Uses require() (not await import()) because this callback is synchronous.
+        try {
+          const libDb = require("../library/db.js");
+          const libraryUrl = libDb.getLibraryTaskMeta(instance.db, jobId);
+
+          if (libraryUrl) {
+            if (job.status === "completed") {
+              try {
+                const rawResult = job.result ?? "";
+                // Parse JSON from executor result (may have markdown wrapping)
+                let jsonStr = rawResult;
+                const jsonMatch = rawResult.match(/\{[\s\S]*\}/);
+                if (jsonMatch) jsonStr = jsonMatch[0];
+
+                const parsed = JSON.parse(jsonStr) as {
+                  title: string; summary: string; key_concepts: string[];
+                  tags: string[]; content_type: string; source_quality: string;
+                };
+
+                // Write to Library DB
+                const libraryDb = libDb.openLibraryDb();
+                try {
+                  const itemId = libDb.insertItem(libraryDb, {
+                    url: libraryUrl, title: parsed.title, summary: parsed.summary,
+                    key_concepts: parsed.key_concepts, tags: parsed.tags,
+                    content_type: parsed.content_type, source_quality: parsed.source_quality,
+                  });
+
+                  // Generate embedding async (fire-and-forget — item is stored regardless)
+                  const libEmbed = require("../library/embeddings.js");
+                  const textToEmbed = `${parsed.title}. ${parsed.summary} ${parsed.key_concepts.join(". ")}`;
+                  void libEmbed.generateEmbedding(textToEmbed).then((embedding: number[]) => {
+                    const eDb = libDb.openLibraryDb();
+                    try { libDb.insertEmbedding(eDb, itemId, embedding); } finally { eDb.close(); }
+                  }).catch((embErr: unknown) => {
+                    params.log.warn(`[library] Embedding failed for item ${itemId}: ${embErr instanceof Error ? embErr.message : String(embErr)}`);
+                  });
+
+                  // Check if this was an update (version > 1)
+                  const versionRow = libraryDb.prepare("SELECT version FROM items WHERE id = ?").get(itemId) as { version: number } | undefined;
+                  const tagStr = parsed.tags.slice(0, 5).join(", ");
+                  if (versionRow && versionRow.version > 1) {
+                    job.result = `📚 Updated: "${parsed.title}" (v${versionRow.version}) — tags: [${tagStr}]`;
+                  } else {
+                    job.result = `📚 Stored: "${parsed.title}" — tags: [${tagStr}]`;
+                  }
+                  taskDescription = `Library ingestion: ${libraryUrl}`;
+                } finally {
+                  libraryDb.close();
+                }
+              } catch (parseErr) {
+                params.log.warn(`[library] Parse failed for ${libraryUrl}: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
+                try {
+                  const libraryDb = libDb.openLibraryDb();
+                  try { libDb.insertFailedItem(libraryDb, libraryUrl, `Parse error: ${parseErr}`); } finally { libraryDb.close(); }
+                } catch { /* best-effort */ }
+                job.result = `📚 Library ingestion failed for ${libraryUrl}: could not parse executor result.`;
+                taskDescription = `Library ingestion (failed): ${libraryUrl}`;
+              }
+            } else {
+              // Task failed — store failure in Library DB
+              try {
+                const libraryDb = libDb.openLibraryDb();
+                try { libDb.insertFailedItem(libraryDb, libraryUrl, job.error ?? "Unknown error"); } finally { libraryDb.close(); }
+              } catch { /* best-effort */ }
+              taskDescription = `Library ingestion (failed): ${libraryUrl}`;
+            }
+
+            libDb.removeLibraryTaskMeta(instance.db, jobId);
+          }
+        } catch (libErr) {
+          params.log.warn(`[library] Task detection error: ${libErr instanceof Error ? libErr.message : String(libErr)}`);
+        }
+
         if (job.status === "completed") {
           const result = job.result ?? "Task completed.";
           // Write result directly to session as a foreground message

@@ -694,3 +694,16 @@ Bind: loopback
     at listOnTimeout (node:internal/timers:605:17)
     at processTimers (node:internal/timers:541:7)
 
+[2026-03-12T09:07:11.145Z] sonnet failed: Error: All models failed (3): anthropic/claude-sonnet-4-6: ⚠️ API rate limit reached. Please try again later. (rate_limit) | anthropic/claude-haiku-4-5: No available auth profile for anthropic (all in cooldown or unavailable). (rate_limit) | anthropic/claude-opus-4-6: No available auth profile for anthropic (all in cooldown or unavailable). (rate_limit)
+Error: Error: All models failed (3): anthropic/claude-sonnet-4-6: ⚠️ API rate limit reached. Please try again later. (rate_limit) | anthropic/claude-haiku-4-5: No available auth profile for anthropic (all in cooldown or unavailable). (rate_limit) | anthropic/claude-opus-4-6: No available auth profile for anthropic (all in cooldown or unavailable). (rate_limit)
+    at GatewayClient.handleMessage (file:///C:/Users/Temp%20User/.openclaw/dist/client-CzCoyKdy.js:2276:25)
+    at WebSocket.<anonymous> (file:///C:/Users/Temp%20User/.openclaw/dist/client-CzCoyKdy.js:2109:40)
+    at WebSocket.emit (node:events:508:28)
+    at Receiver.receiverOnMessage (C:\Users\Temp User\.openclaw\node_modules\.pnpm\ws@8.19.0\node_modules\ws\lib\websocket.js:1225:20)
+    at Receiver.emit (node:events:508:28)
+    at Receiver.dataMessage (C:\Users\Temp User\.openclaw\node_modules\.pnpm\ws@8.19.0\node_modules\ws\lib\receiver.js:596:14)
+    at Receiver.getData (C:\Users\Temp User\.openclaw\node_modules\.pnpm\ws@8.19.0\node_modules\ws\lib\receiver.js:496:10)
+    at Receiver.startLoop (C:\Users\Temp User\.openclaw\node_modules\.pnpm\ws@8.19.0\node_modules\ws\lib\receiver.js:167:16)
+    at Receiver._write (C:\Users\Temp User\.openclaw\node_modules\.pnpm\ws@8.19.0\node_modules\ws\lib\receiver.js:94:10)
+    at writeOrBuffer (node:internal/streams/writable:570:12)
+

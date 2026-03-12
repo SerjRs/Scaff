@@ -23,7 +23,7 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
-import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, type EmbedFunction } from "./tools.js";
+import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
 import {
   assignMessageWithBoundaryDetection,
   assignMessageToShard,
@@ -321,6 +321,29 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               } else if (tc.name === "code_search") {
                 const args = tc.arguments as Record<string, unknown>;
                 result = executeCodeSearch(args as any);
+              } else if (tc.name === "library_get") {
+                const args = tc.arguments as Record<string, unknown>;
+                const libResult: LibraryToolResult = executeLibraryGet(args as any);
+                result = libResult.content;
+                // Store compressed reference in shard instead of full content
+                if (libResult.shardContent) {
+                  appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                    [{ type: "tool_result", tool_use_id: tc.id, content: libResult.shardContent }], issuer, assignedShardId);
+                  toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
+                  continue; // Skip the normal storage below — we stored the compressed version
+                }
+              } else if (tc.name === "library_search") {
+                const args = tc.arguments as Record<string, unknown>;
+                const libResult: LibraryToolResult = await executeLibrarySearch(args as any, embedFn);
+                result = libResult.content;
+                if (libResult.shardContent) {
+                  appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                    [{ type: "tool_result", tool_use_id: tc.id, content: libResult.shardContent }], issuer, assignedShardId);
+                  toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
+                  continue;
+                }
+              } else if (tc.name === "library_stats") {
+                result = executeLibraryStats();
               } else {
                 result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
               }
@@ -351,7 +374,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // Even if the LLM sneaks a tool call through, we ignore it on trigger turns.
         // IMPORTANT: Use originalAsyncCalls captured before the sync re-call loop,
         // NOT llmResult.toolCalls which is from the stale round-2 re-call.
-        const asyncCalls = isOpsTrigger ? [] : originalAsyncCalls.filter((tc) => tc.name === "sessions_spawn");
+        const asyncCalls = isOpsTrigger ? [] : originalAsyncCalls.filter((tc) => tc.name === "sessions_spawn" || tc.name === "library_ingest");
         if (asyncCalls.length > 0 && originalRawContent) {
           // Store the original assistant response with tool_use blocks as structured content.
           // Only store if there were NO sync calls (otherwise it was already stored in the sync loop).
@@ -363,7 +386,116 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           }
         }
         for (const tc of asyncCalls) {
-          if (tc.name === "sessions_spawn" && onSpawn) {
+          if (tc.name === "library_ingest") {
+            // Library ingestion — fetch URL, build Librarian prompt, spawn via Router
+            const url = (tc.arguments as Record<string, unknown>).url as string;
+            if (!url) {
+              appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                [{ type: "tool_result", tool_use_id: tc.id, content: "Error: URL is required." }], issuer, assignedShardId);
+              continue;
+            }
+
+            // 1. Fetch content upfront so executor doesn't need web access
+            let content = "";
+            let fetchError = "";
+            try {
+              const response = await fetch(url, {
+                headers: { "User-Agent": "Mozilla/5.0 (compatible; OpenClaw/1.0)" },
+                signal: AbortSignal.timeout(30_000),
+              });
+              if (response.ok) {
+                const contentType = response.headers.get("content-type") ?? "";
+                const isPdf = contentType.includes("application/pdf") || url.toLowerCase().endsWith(".pdf");
+
+                if (isPdf) {
+                  // PDF extraction via pdf-parse
+                  try {
+                    const pdfBuffer = Buffer.from(await response.arrayBuffer());
+                    const os = await import("node:os");
+                    const tempPath = path.join(os.tmpdir(), `library-${crypto.randomUUID()}.pdf`);
+                    fs.writeFileSync(tempPath, pdfBuffer);
+                    try {
+                      const { execSync } = await import("node:child_process");
+                      content = execSync(`npx -y pdf-parse text "${tempPath}"`, {
+                        encoding: "utf-8", timeout: 60_000, maxBuffer: 10 * 1024 * 1024,
+                      });
+                    } finally {
+                      try { fs.unlinkSync(tempPath); } catch { /* best effort */ }
+                    }
+                  } catch (pdfErr) {
+                    fetchError = `PDF extraction failed: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}`;
+                  }
+                } else {
+                  content = await response.text();
+                  // Strip HTML tags for cleaner Librarian input
+                  if (contentType.includes("text/html")) {
+                    content = content
+                      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+                      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+                      .replace(/<[^>]+>/g, " ")
+                      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+                      .replace(/\s+/g, " ")
+                      .trim();
+                  }
+                }
+
+                // Truncate to ~50K chars to avoid oversized prompts
+                if (content.length > 50_000) {
+                  content = content.slice(0, 50_000) + "\n\n[TRUNCATED — content exceeds 50K characters]";
+                }
+              } else {
+                fetchError = `HTTP ${response.status} ${response.statusText}`;
+              }
+            } catch (err) {
+              fetchError = err instanceof Error ? err.message : String(err);
+            }
+
+            if (fetchError) {
+              // Store failed ingestion in Library DB
+              try {
+                const { openLibraryDb, insertFailedItem } = await import("../library/db.js");
+                const libraryDb = openLibraryDb();
+                try { insertFailedItem(libraryDb, url, fetchError); } finally { libraryDb.close(); }
+              } catch { /* best-effort */ }
+              appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                [{ type: "tool_result", tool_use_id: tc.id,
+                   content: `Library ingestion failed for ${url}: ${fetchError}. URL tracked for retry.` }], issuer, assignedShardId);
+              continue;
+            }
+
+            // 2. Build Librarian prompt with pre-fetched content
+            const { buildLibrarianPrompt } = await import("../library/librarian-prompt.js");
+            const librarianPrompt = buildLibrarianPrompt(url, content);
+
+            // 3. Spawn via Router
+            const taskId = crypto.randomUUID();
+            const replyChannel = (msg.envelope.channel !== "router" && msg.envelope.channel !== "cron")
+              ? msg.envelope.channel : null;
+
+            const jobId = onSpawn?.({
+              task: librarianPrompt,
+              replyChannel,
+              resultPriority: "normal",
+              envelopeId: msg.envelope.id,
+              taskId,
+            });
+
+            if (!jobId) {
+              appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                [{ type: "tool_result", tool_use_id: tc.id, content: "Library ingestion failed: Router not available." }], issuer, assignedShardId);
+              continue;
+            }
+
+            // 4. Store metadata so gateway-bridge knows this is a library task
+            const { storeLibraryTaskMeta } = await import("../library/db.js");
+            storeLibraryTaskMeta(db, taskId, url);
+
+            // 5. Tool result — tell LLM not to poll
+            appendStructuredContent(db, msg.envelope.id, "user", "internal",
+              [{ type: "tool_result", tool_use_id: tc.id,
+                 content: `Library ingestion started for: ${url}. Task ID: ${taskId}. You will be notified automatically when complete — do NOT poll.` }], issuer, assignedShardId);
+
+          } else if (tc.name === "sessions_spawn" && onSpawn) {
             const args = tc.arguments as { task?: string; priority?: string; resources?: Array<{ type: string; name?: string; path?: string; url?: string; content?: string }> };
             const task = args.task ?? "";
             const resultPriority = (args.priority as "urgent" | "normal" | "background") ?? "normal";

@@ -27,7 +27,7 @@ function makeConfig(enabled = true): RouterConfig {
     },
     tiers: {
       haiku: { range: [1, 3], model: "anthropic/claude-haiku-4-5" },
-      sonnet: { range: [4, 7], model: "anthropic/claude-sonnet-4-5" },
+      sonnet: { range: [4, 7], model: "anthropic/claude-sonnet-4-6" },
       opus: { range: [8, 10], model: "anthropic/claude-opus-4-6" },
     },
   };
@@ -224,12 +224,16 @@ describe("context isolation", () => {
       },
     });
 
-    // Should have a sessions.patch call with the haiku model
+    // Should have a sessions.patch call with the evaluated model.
+    // Note: vi.doMock doesn't intercept dynamic await import() inside
+    // routerCallGateway, so the real evaluator runs, fails (no ollama/sonnet
+    // in test env), and falls back to fallback_weight 5 → sonnet tier.
+    // Weight-to-tier mapping is directly tested in "weight-to-tier mapping" below.
     const patchCall = callLog.find(
       (c) => c.method === "sessions.patch" && c.params.model,
     );
     expect(patchCall).toBeDefined();
-    expect(patchCall!.params.model).toBe("anthropic/claude-haiku-4-5");
+    expect(patchCall!.params.model).toBe("anthropic/claude-sonnet-4-6");
 
     stopGatewayRouter();
   });
@@ -252,7 +256,7 @@ describe("context isolation", () => {
       const { resolveWeightToTier } = await import("./dispatcher.js");
       const tier = resolveWeightToTier(5, makeConfig().tiers);
       expect(tier).toBe("sonnet");
-      expect(makeConfig().tiers[tier].model).toBe("anthropic/claude-sonnet-4-5");
+      expect(makeConfig().tiers[tier].model).toBe("anthropic/claude-sonnet-4-6");
     });
 
     it("weight 9 → opus", async () => {

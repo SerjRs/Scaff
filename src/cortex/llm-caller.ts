@@ -14,7 +14,7 @@
  */
 
 import type { AssembledContext } from "./context.js";
-import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS } from "./tools.js";
+import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS } from "./tools.js";
 import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 
 // ---------------------------------------------------------------------------
@@ -224,7 +224,14 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "Searches ~14,000 indexed source code chunks semantically. Returns file paths, line numbers, " +
     "and snippets. Include results as context in sessions_spawn tasks so executors don't grep blind.\n" +
     "- **fetch_chat_history**: Use when you need older messages not in the active window.\n" +
-    "- **memory_query**: Use when you need to recall facts from long-term memory.",
+    "- **memory_query**: Use when you need to recall facts from long-term memory.\n\n" +
+    "## Library\n" +
+    "When the user shares a URL, always call library_ingest(url) to store it in the Library. " +
+    "Every link the user shares is domain knowledge worth retaining.\n\n" +
+    "Your context includes Library breadcrumbs — titles and tags of relevant items. " +
+    "Use library_get(id) to pull full details when you need them for answering. " +
+    "Use library_search(query) to explore different angles or find items the breadcrumbs don't show. " +
+    "You decide how deep to go — skip the Library for casual questions, pull multiple items for deep analysis.",
   );
 
   const system = systemParts.join("\n\n---\n\n");
@@ -599,10 +606,10 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             }
           }
 
-          // Select tools: sessions_spawn + get_task_status always; hippocampus when enabled
+          // Select tools: sessions_spawn + get_task_status + library always; hippocampus when enabled
           const tools = context.hippocampusEnabled
-            ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS]
-            : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS];
+            ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS, ...LIBRARY_TOOLS]
+            : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...LIBRARY_TOOLS];
 
           // When thinking/reasoning is enabled, Claude rejects assistant message prefill
           // (last message cannot be assistant). Strip trailing assistant messages.

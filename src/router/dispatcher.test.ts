@@ -161,6 +161,7 @@ describe("dispatch", () => {
       "Rendered prompt content",
       "anthropic/claude-sonnet-4-6",
       mockExecutor,
+      "What is 2+2?",
     );
   });
 
@@ -197,6 +198,7 @@ describe("dispatch", () => {
       expect.any(String),
       "anthropic/claude-haiku-4-5",
       mockExecutor,
+      "What is 2+2?",
     );
 
     vi.clearAllMocks();
@@ -211,6 +213,7 @@ describe("dispatch", () => {
       expect.any(String),
       "anthropic/claude-opus-4-6",
       mockExecutor,
+      "What is 2+2?",
     );
   });
 
