@@ -51,13 +51,14 @@ Cortex → sessions_spawn("implement task X")
 
 ## Related Docs
 
-- **`docs/working/01_process-isolated-executors.md`** — Full 7-phase architecture for fork-per-job executor isolation. Covers timeout enforcement (SIGTERM → SIGKILL), process-isolated execution, token monitor bridging, config schema. Phase 1-3 are the critical path for this task.
+- **Task 006** (`pipeline/Cooking/006-router-inactivity-timeout.md`) — Inactivity-based Router timeout. Prerequisite — lets Coding Executors run 10-15min without getting falsely killed.
+- **`docs/working/01_process-isolated-executors.md`** — Fork-per-job executor isolation (separate concern, but complementary — process isolation + inactivity timeout together).
 
 ## Resolved Questions
 
 - **Router task routing:** Router needs a SKILL — if the task is code-related, spin up an Executor with shell access to Claude Code. Otherwise use standard LLM executor.
 - **Executor profile config:** Grants/permissions/auth come from the local repo. Everything in the repo defines its own access.
-- **Timeout strategy:** Covered in `01_process-isolated-executors.md` Phase 5 — two-stage kill (SIGTERM at `timeoutMs`, SIGKILL after `killGraceMs`). Configurable via `router.executors.timeoutMs` (default 300s).
+- **Timeout strategy:** Covered in freeze investigation P3 — inactivity-based, not blind timer. Active executor (tool calls within 60s) gets extended. Hard cap by task weight (5/10/15min). Claude Code tasks are heavy (weight 7-10) → 15min cap.
 - **Error handling:** LLM Executor figures out details and tries to help Claude Code. 3 iterations MAX before reporting failure.
 - **Security boundary:** Disregarded for now.
 
@@ -65,5 +66,4 @@ Cortex → sessions_spawn("implement task X")
 
 - ✅ Cortex file I/O tools (PR #3 merged — write_file, move_file, delete_file)
 - ✅ Pipeline system (folders + task frontmatter)
-- ⚠️ `01_process-isolated-executors.md` Phase 1-3 (executor process isolation) — prerequisite infrastructure
-- Task 002 (pipeline_status) — nice to have but not blocking
+- ⚠️ Task 006 (`006-router-inactivity-timeout.md`) — prerequisite for long-running coding tasks
