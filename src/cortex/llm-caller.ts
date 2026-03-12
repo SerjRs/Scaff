@@ -14,7 +14,7 @@
  */
 
 import type { AssembledContext } from "./context.js";
-import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS } from "./tools.js";
+import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS, READ_FILE_TOOL } from "./tools.js";
 import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 
 // ---------------------------------------------------------------------------
@@ -224,7 +224,8 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "Searches ~14,000 indexed source code chunks semantically. Returns file paths, line numbers, " +
     "and snippets. Include results as context in sessions_spawn tasks so executors don't grep blind.\n" +
     "- **fetch_chat_history**: Use when you need older messages not in the active window.\n" +
-    "- **memory_query**: Use when you need to recall facts from long-term memory.\n\n" +
+    "- **memory_query**: Use when you need to recall facts from long-term memory.\n" +
+    "- **read_file**: Read local files (docs, configs, architecture specs). Paths relative to workspace. Use offset/limit for large files.\n\n" +
     "## Library\n" +
     "When the user shares a URL, always call library_ingest(url) to store it in the Library. " +
     "Every link the user shares is domain knowledge worth retaining.\n\n" +
@@ -626,10 +627,10 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
             }
           }
 
-          // Select tools: sessions_spawn + get_task_status + library always; hippocampus when enabled
+          // Select tools: sessions_spawn + get_task_status + library + read_file always; hippocampus when enabled
           const tools = context.hippocampusEnabled
-            ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS, ...LIBRARY_TOOLS]
-            : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...LIBRARY_TOOLS];
+            ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS, ...LIBRARY_TOOLS, READ_FILE_TOOL]
+            : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...LIBRARY_TOOLS, READ_FILE_TOOL];
 
           // When thinking/reasoning is enabled, Claude rejects assistant message prefill
           // (last message cannot be assistant). Strip trailing assistant messages.

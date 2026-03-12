@@ -23,7 +23,7 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
-import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
+import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
 import {
   assignMessageWithBoundaryDetection,
   assignMessageToShard,
@@ -327,6 +327,12 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               } else if (tc.name === "code_search") {
                 const args = tc.arguments as Record<string, unknown>;
                 result = executeCodeSearch(args as any);
+              } else if (tc.name === "read_file") {
+                const args = tc.arguments as Record<string, unknown>;
+                result = executeReadFile(
+                  { path: args.path as string, offset: args.offset as number | undefined, limit: args.limit as number | undefined },
+                  workspaceDir,
+                );
               } else if (tc.name === "library_get") {
                 const args = tc.arguments as Record<string, unknown>;
                 const libResult: LibraryToolResult = executeLibraryGet(args as any);
