@@ -1,25 +1,29 @@
-import { describe, expect, it, vi } from "vitest";
-import { getTemplate, renderTemplate } from "../templates/index.js";
-import { routerCallGateway } from "../gateway-integration.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JobType } from "../types.js";
 
-describe("Coding Executor", () => {
+// --- Template tests (use real implementations, no mocks) ---
+
+describe("Coding Executor Templates", () => {
   describe("Template Existence", () => {
-    it("should load opus coding_run template", () => {
+    it("should load opus coding_run template", async () => {
+      const { getTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       expect(() => getTemplate("opus", "coding_run")).not.toThrow();
     });
 
-    it("should load sonnet coding_run template", () => {
+    it("should load sonnet coding_run template", async () => {
+      const { getTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       expect(() => getTemplate("sonnet", "coding_run")).not.toThrow();
     });
 
-    it("should load haiku coding_run template", () => {
+    it("should load haiku coding_run template", async () => {
+      const { getTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       expect(() => getTemplate("haiku", "coding_run")).not.toThrow();
     });
   });
 
   describe("Template Rendering", () => {
-    it("should render opus coding_run template with task variable", () => {
+    it("should render opus coding_run template with task variable", async () => {
+      const { getTemplate, renderTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       const template = getTemplate("opus", "coding_run");
       const rendered = renderTemplate(template, {
         task: "implement user auth",
@@ -29,10 +33,11 @@ describe("Coding Executor", () => {
       });
 
       expect(rendered).toContain("implement user auth");
-      expect(rendered).not.toContain("{task}"); // Variable should be replaced
+      expect(rendered).not.toContain("{task}");
     });
 
-    it("should render sonnet coding_run template with task variable", () => {
+    it("should render sonnet coding_run template with task variable", async () => {
+      const { getTemplate, renderTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       const template = getTemplate("sonnet", "coding_run");
       const rendered = renderTemplate(template, {
         task: "fix database bug",
@@ -45,7 +50,8 @@ describe("Coding Executor", () => {
       expect(rendered).not.toContain("{task}");
     });
 
-    it("should render haiku coding_run template with task variable", () => {
+    it("should render haiku coding_run template with task variable", async () => {
+      const { getTemplate, renderTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       const template = getTemplate("haiku", "coding_run");
       const rendered = renderTemplate(template, {
         task: "update readme",
@@ -60,7 +66,8 @@ describe("Coding Executor", () => {
   });
 
   describe("Template Content", () => {
-    it("should contain claude CLI and exec/process keywords in opus template", () => {
+    it("should contain claude CLI and exec/process keywords in opus template", async () => {
+      const { getTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       const template = getTemplate("opus", "coding_run");
       const content = template.toLowerCase();
 
@@ -69,7 +76,8 @@ describe("Coding Executor", () => {
       expect(content).toContain("process");
     });
 
-    it("should contain claude CLI keyword in sonnet template", () => {
+    it("should contain claude CLI keyword in sonnet template", async () => {
+      const { getTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       const template = getTemplate("sonnet", "coding_run");
       const content = template.toLowerCase();
 
@@ -77,19 +85,20 @@ describe("Coding Executor", () => {
       expect(content).toContain("exec");
     });
 
-    it("should contain appropriate executor instructions in haiku template", () => {
+    it("should contain appropriate executor instructions in haiku template", async () => {
+      const { getTemplate } = await vi.importActual<typeof import("../templates/index.js")>("../templates/index.js");
       const template = getTemplate("haiku", "coding_run");
       const content = template.toLowerCase();
 
       expect(content).toContain("exec");
-      // Haiku template should mention claude for complex tasks
       expect(content).toContain("claude");
     });
   });
 });
 
+// --- Gateway Integration tests (use mocks) ---
+
 describe("Gateway Integration with JobType", () => {
-  // Mock the router components
   vi.mock("../index.js", () => ({
     startRouter: vi.fn(),
   }));
@@ -130,7 +139,6 @@ describe("Gateway Integration with JobType", () => {
     enqueue: vi.fn().mockReturnValue("test-job-id"),
   };
 
-  // Mock the global router instance
   beforeEach(() => {
     (globalThis as any).__openclaw_router_instance__ = mockInstance;
   });
@@ -139,9 +147,8 @@ describe("Gateway Integration with JobType", () => {
     const { evaluate } = await import("../evaluator.js");
     const { resolveWeightToTier } = await import("../dispatcher.js");
 
-    // Mock a low weight evaluation
     (evaluate as any).mockResolvedValueOnce({ weight: 3, reasoning: "simple task" });
-    (resolveWeightToTier as any).mockReturnValueOnce("opus"); // Should be opus due to flooring
+    (resolveWeightToTier as any).mockReturnValueOnce("opus");
 
     const opts = {
       method: "agent" as const,
@@ -152,18 +159,15 @@ describe("Gateway Integration with JobType", () => {
       timeoutMs: 30000,
     };
 
+    const { routerCallGateway } = await import("../gateway-integration.js");
     await routerCallGateway(opts, "sync", "coding_run" as JobType);
 
-    // Verify that evaluate was called
     expect(evaluate).toHaveBeenCalled();
-
-    // The weight should have been floored to 7, so resolveWeightToTier should be called with >= 7
     expect(resolveWeightToTier).toHaveBeenCalledWith(
-      expect.any(Number), // The floored weight (>= 7)
-      expect.any(Object)  // Config
+      expect.any(Number),
+      expect.any(Object)
     );
 
-    // Get the actual weight passed to resolveWeightToTier
     const [[actualWeight]] = (resolveWeightToTier as any).mock.calls;
     expect(actualWeight).toBeGreaterThanOrEqual(7);
   });
@@ -180,9 +184,9 @@ describe("Gateway Integration with JobType", () => {
       timeoutMs: 30000,
     };
 
-    await routerCallGateway(opts, "sync"); // No jobType specified
+    const { routerCallGateway } = await import("../gateway-integration.js");
+    await routerCallGateway(opts, "sync");
 
-    // Should use "agent_run" as default
     expect(getTemplate).toHaveBeenCalledWith("sonnet", "agent_run");
   });
 
@@ -198,9 +202,9 @@ describe("Gateway Integration with JobType", () => {
       timeoutMs: 30000,
     };
 
+    const { routerCallGateway } = await import("../gateway-integration.js");
     await routerCallGateway(opts, "sync", "coding_run" as JobType);
 
-    // Should use "coding_run" when specified
     expect(getTemplate).toHaveBeenCalledWith("sonnet", "coding_run");
   });
 });
