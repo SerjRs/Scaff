@@ -264,13 +264,13 @@ describe("startRouterLoop", () => {
   it("watchdog detects hung job (stale checkpoint) and resets to pending", async () => {
     const db = freshDb();
 
-    // Insert a job directly in_execution with old checkpoint (200s ago)
+    // Insert a job directly in_execution with weight=5 (threshold 300s), checkpoint 400s ago
     db.prepare(
-      `INSERT INTO jobs (id, type, status, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
-       VALUES ('hung-1', 'agent_run', 'in_execution', '{}', 'session:x',
-               datetime('now', '-200 seconds'),
-               datetime('now', '-200 seconds'),
-               datetime('now', '-200 seconds'),
+      `INSERT INTO jobs (id, type, status, weight, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
+       VALUES ('hung-1', 'agent_run', 'in_execution', 5, '{}', 'session:x',
+               datetime('now', '-400 seconds'),
+               datetime('now', '-400 seconds'),
+               datetime('now', '-400 seconds'),
                datetime('now'), 0)`,
     ).run();
 
@@ -297,13 +297,13 @@ describe("startRouterLoop", () => {
   it("watchdog marks job as permanently failed after max retries", async () => {
     const db = freshDb();
 
-    // Insert a hung job that has already retried twice
+    // Insert a hung job with weight=5 (threshold 300s), checkpoint 400s ago, already retried twice
     db.prepare(
-      `INSERT INTO jobs (id, type, status, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
-       VALUES ('hung-2', 'agent_run', 'in_execution', '{}', 'session:x',
-               datetime('now', '-200 seconds'),
-               datetime('now', '-200 seconds'),
-               datetime('now', '-200 seconds'),
+      `INSERT INTO jobs (id, type, status, weight, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
+       VALUES ('hung-2', 'agent_run', 'in_execution', 5, '{}', 'session:x',
+               datetime('now', '-400 seconds'),
+               datetime('now', '-400 seconds'),
+               datetime('now', '-400 seconds'),
                datetime('now'), 2)`,
     ).run();
 
@@ -314,7 +314,7 @@ describe("startRouterLoop", () => {
 
     const job = getJob(db, "hung-2");
     expect(job!.status).toBe("failed");
-    expect(job!.error).toBe("hung: no checkpoint for 90s");
+    expect(job!.error).toBe("hung: no checkpoint for 300s");
 
     handle.stop();
     db.close();
@@ -384,10 +384,10 @@ describe("startRouterLoop", () => {
   it("stop() clears pending watchdog timeouts", async () => {
     const db = freshDb();
 
-    // Insert a hung job
+    // Insert a hung job with weight=2 (threshold 150s), checkpoint 200s ago
     db.prepare(
-      `INSERT INTO jobs (id, type, status, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
-       VALUES ('hung-stop', 'agent_run', 'in_execution', '{}', 'session:x',
+      `INSERT INTO jobs (id, type, status, weight, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
+       VALUES ('hung-stop', 'agent_run', 'in_execution', 2, '{}', 'session:x',
                datetime('now', '-200 seconds'),
                datetime('now', '-200 seconds'),
                datetime('now', '-200 seconds'),
@@ -636,6 +636,84 @@ describe("startRouterLoop", () => {
   // -----------------------------------------------------------------------
   // 16. No job:failed event on successful dispatch
   // -----------------------------------------------------------------------
+
+  // -----------------------------------------------------------------------
+  // Weight-aware watchdog tests
+  // -----------------------------------------------------------------------
+
+  it("watchdog detects light task as hung (weight=2, threshold=150s)", async () => {
+    const db = freshDb();
+
+    // weight=2 → threshold 150s, checkpoint 200s ago → hung
+    db.prepare(
+      `INSERT INTO jobs (id, type, status, weight, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
+       VALUES ('light-hung', 'agent_run', 'in_execution', 2, '{}', 'session:x',
+               datetime('now', '-200 seconds'),
+               datetime('now', '-200 seconds'),
+               datetime('now', '-200 seconds'),
+               datetime('now'), 0)`,
+    ).run();
+
+    const handle = startRouterLoop(db, TEST_CONFIG);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    const job = getJob(db, "light-hung");
+    expect(job!.status).toBe("pending");
+    expect(job!.retry_count).toBe(1);
+
+    handle.stop();
+    db.close();
+  });
+
+  it("watchdog does NOT detect heavy task with 3min stale checkpoint as hung", async () => {
+    const db = freshDb();
+
+    // weight=8 → threshold 450s, checkpoint 180s ago → NOT hung
+    db.prepare(
+      `INSERT INTO jobs (id, type, status, weight, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
+       VALUES ('heavy-ok', 'agent_run', 'in_execution', 8, '{}', 'session:x',
+               datetime('now', '-180 seconds'),
+               datetime('now', '-180 seconds'),
+               datetime('now', '-180 seconds'),
+               datetime('now'), 0)`,
+    ).run();
+
+    const handle = startRouterLoop(db, TEST_CONFIG);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    const job = getJob(db, "heavy-ok");
+    expect(job!.status).toBe("in_execution"); // Still running
+
+    handle.stop();
+    db.close();
+  });
+
+  it("watchdog detects heavy task as hung after weight threshold exceeded", async () => {
+    const db = freshDb();
+
+    // weight=8 → threshold 450s, checkpoint 500s ago → hung
+    db.prepare(
+      `INSERT INTO jobs (id, type, status, weight, payload, issuer, started_at, last_checkpoint, created_at, updated_at, retry_count)
+       VALUES ('heavy-hung', 'agent_run', 'in_execution', 8, '{}', 'session:x',
+               datetime('now', '-500 seconds'),
+               datetime('now', '-500 seconds'),
+               datetime('now', '-500 seconds'),
+               datetime('now'), 0)`,
+    ).run();
+
+    const handle = startRouterLoop(db, TEST_CONFIG);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    const job = getJob(db, "heavy-hung");
+    expect(job!.status).toBe("pending");
+    expect(job!.retry_count).toBe(1);
+
+    handle.stop();
+    db.close();
+  });
 
   it("does not emit job:failed on successful dispatch", async () => {
     const db = freshDb();

@@ -150,7 +150,7 @@ describe("dispatch", () => {
     });
   });
 
-  it("calls worker.run with correct prompt and model", () => {
+  it("calls worker.run with correct prompt, model, and weight", () => {
     const job = makeJob({ weight: 5 });
 
     dispatch(fakeDb, job, TEST_CONFIG, mockExecutor);
@@ -162,6 +162,7 @@ describe("dispatch", () => {
       "anthropic/claude-sonnet-4-6",
       mockExecutor,
       "What is 2+2?",
+      5,
     );
   });
 
@@ -199,6 +200,7 @@ describe("dispatch", () => {
       "anthropic/claude-haiku-4-5",
       mockExecutor,
       "What is 2+2?",
+      1,
     );
 
     vi.clearAllMocks();
@@ -214,6 +216,7 @@ describe("dispatch", () => {
       "anthropic/claude-opus-4-6",
       mockExecutor,
       "What is 2+2?",
+      9,
     );
   });
 
@@ -245,6 +248,24 @@ describe("dispatch", () => {
         constraints: "",
       }),
     );
+  });
+
+  it("passes weight to worker.run", () => {
+    const job = makeJob({ weight: 8 });
+
+    dispatch(fakeDb, job, TEST_CONFIG, mockExecutor);
+
+    // 7th arg to run() should be the weight
+    expect(mockRun.mock.calls[0][6]).toBe(8);
+  });
+
+  it("passes fallback weight to worker.run when job.weight is null", () => {
+    const job = makeJob({ weight: null });
+
+    dispatch(fakeDb, job, TEST_CONFIG, mockExecutor);
+
+    // fallback_weight is 5
+    expect(mockRun.mock.calls[0][6]).toBe(5);
   });
 
   it("does not await worker.run (fire-and-forget)", () => {

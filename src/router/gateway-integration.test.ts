@@ -182,12 +182,13 @@ describe("gateway-integration", () => {
   // Test: createGatewayExecutor calls callGateway with correct params
   // -----------------------------------------------------------------------
 
-  it("createGatewayExecutor calls callGateway with correct params", async () => {
+  it("createGatewayExecutor calls callGateway with correct params and default timeout", async () => {
     setupMocks();
     const { createGatewayExecutor } = await import("./gateway-integration.js");
     const { callGateway: mockCallGateway } = await import("../gateway/call.js");
 
     const executor = createGatewayExecutor();
+    // No options → default weight 5 → 10min timeout
     const result = await executor("test prompt", "anthropic/claude-sonnet-4-5");
 
     expect(result).toBe("mock-agent-response");
@@ -204,8 +205,45 @@ describe("gateway-integration", () => {
     expect(callArgs.params.message).toBe("test prompt");
     expect(callArgs.params.deliver).toBe(false);
     expect(callArgs.expectFinal).toBe(true);
+    expect(callArgs.timeoutMs).toBe(600000); // 10min default (weight 5)
     // Session key should be under router-executor
     expect(callArgs.params.sessionKey).toMatch(/^agent:router-executor:task:/);
+  });
+
+  // -----------------------------------------------------------------------
+  // Test: executor uses weight-based timeout for light tasks
+  // -----------------------------------------------------------------------
+
+  it("executor uses 5min timeout for light tasks (weight=2)", async () => {
+    setupMocks();
+    const { createGatewayExecutor } = await import("./gateway-integration.js");
+    const { callGateway: mockCallGateway } = await import("../gateway/call.js");
+
+    const executor = createGatewayExecutor();
+    await executor("light task", "anthropic/claude-haiku-4-5", { weight: 2 });
+
+    const agentCall = (mockCallGateway as ReturnType<typeof vi.fn>).mock.calls.find(
+      (args: unknown[]) => (args[0] as { method: string }).method === "agent",
+    );
+    expect(agentCall![0].timeoutMs).toBe(300000); // 5min
+  });
+
+  // -----------------------------------------------------------------------
+  // Test: executor uses weight-based timeout for heavy tasks
+  // -----------------------------------------------------------------------
+
+  it("executor uses 15min timeout for heavy tasks (weight=9)", async () => {
+    setupMocks();
+    const { createGatewayExecutor } = await import("./gateway-integration.js");
+    const { callGateway: mockCallGateway } = await import("../gateway/call.js");
+
+    const executor = createGatewayExecutor();
+    await executor("heavy task", "anthropic/claude-opus-4-6", { weight: 9 });
+
+    const agentCall = (mockCallGateway as ReturnType<typeof vi.fn>).mock.calls.find(
+      (args: unknown[]) => (args[0] as { method: string }).method === "agent",
+    );
+    expect(agentCall![0].timeoutMs).toBe(900000); // 15min
   });
 
   // -----------------------------------------------------------------------

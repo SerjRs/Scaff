@@ -241,7 +241,30 @@ describe("worker", () => {
   it("passes prompt and model to executor", async () => {
     await run(fakeDb, TEST_JOB_ID, TEST_PROMPT, TEST_MODEL, mockExecutor);
 
-    expect(mockExecutor).toHaveBeenCalledWith(TEST_PROMPT, TEST_MODEL);
+    expect(mockExecutor).toHaveBeenCalledWith(TEST_PROMPT, TEST_MODEL, { weight: undefined });
+  });
+
+  // -----------------------------------------------------------------------
+  // 13. run() passes weight to executor in options
+  // -----------------------------------------------------------------------
+
+  it("passes weight to executor in options", async () => {
+    await run(fakeDb, TEST_JOB_ID, TEST_PROMPT, TEST_MODEL, mockExecutor, undefined, 7);
+
+    expect(mockExecutor).toHaveBeenCalledWith(TEST_PROMPT, TEST_MODEL, { weight: 7 });
+  });
+
+  // -----------------------------------------------------------------------
+  // 14. run() works without weight (backward compat)
+  // -----------------------------------------------------------------------
+
+  it("works without weight param (backward compat)", async () => {
+    await run(fakeDb, TEST_JOB_ID, TEST_PROMPT, TEST_MODEL, mockExecutor);
+
+    expect(mockExecutor).toHaveBeenCalledWith(TEST_PROMPT, TEST_MODEL, { weight: undefined });
+    // Verify it completed successfully
+    const lastCall = mockUpdateJob.mock.calls[mockUpdateJob.mock.calls.length - 1];
+    expect(lastCall[2]).toMatchObject({ status: "completed" });
   });
 
   // -----------------------------------------------------------------------
