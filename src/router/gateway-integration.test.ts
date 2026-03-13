@@ -462,4 +462,168 @@ describe("gateway-integration", () => {
       executor("test prompt", "anthropic/claude-sonnet-4-5"),
     ).rejects.toThrow("model unavailable");
   });
+
+  // -----------------------------------------------------------------------
+  // Test: routerCallGateway backward compatibility with default jobType
+  // -----------------------------------------------------------------------
+
+  it("routerCallGateway uses agent_run jobType by default (backward compat)", async () => {
+    setupMocks(5); // Weight 5 should not be floored
+    const { initGatewayRouter, stopGatewayRouter, routerCallGateway } =
+      await import("./gateway-integration.js");
+
+    initGatewayRouter(makeConfig());
+
+    // Call without jobType parameter (should use default "agent_run")
+    const result = await routerCallGateway({
+      method: "agent",
+      params: { message: "regular task", sessionKey: "test-issuer" },
+      timeoutMs: 15_000,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.result).toBeDefined();
+
+    stopGatewayRouter();
+  });
+
+  // -----------------------------------------------------------------------
+  // Test: routerCallGateway with coding_run jobType floors weight
+  // -----------------------------------------------------------------------
+
+  it("routerCallGateway with coding_run jobType floors weight to 7", async () => {
+    // Set up low weight evaluation that should be floored
+    const dbPath = path.join(
+      tmpDir,
+      `queue-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`,
+    );
+
+    vi.doMock("./queue.js", async (importOriginal) => {
+      const actual = (await importOriginal()) as typeof import("./queue.js");
+      return {
+        ...actual,
+        initRouterDb: (p?: string) => actual.initRouterDb(p ?? dbPath),
+      };
+    });
+
+    // Mock low weight evaluation
+    vi.doMock("./evaluator.js", () => ({
+      evaluate: vi.fn(async () => ({
+        weight: 3, // Low weight that should be floored to 7
+        reasoning: "simple task",
+      })),
+    }));
+
+    // Mock the dispatcher to capture the actual weight used
+    let actualWeight: number | undefined;
+    vi.doMock("./dispatcher.js", async (importOriginal) => {
+      const actual = (await importOriginal()) as typeof import("./dispatcher.js");
+      return {
+        ...actual,
+        resolveWeightToTier: (weight: number, tiers: unknown) => {
+          actualWeight = weight;
+          return actual.resolveWeightToTier(weight, tiers);
+        },
+      };
+    });
+
+    vi.doMock("../gateway/call.js", () => ({
+      callGateway: vi.fn(async () => ({
+        runId: "mock-run-id",
+        status: "ok",
+        result: "mock-agent-response",
+      })),
+    }));
+
+    const { initGatewayRouter, stopGatewayRouter, routerCallGateway } =
+      await import("./gateway-integration.js");
+
+    initGatewayRouter(makeConfig());
+
+    // Call with coding_run jobType
+    await routerCallGateway(
+      {
+        method: "agent",
+        params: { message: "coding task", sessionKey: "test-issuer" },
+        timeoutMs: 15_000,
+      },
+      "sync",
+      "coding_run",
+    );
+
+    // Weight should have been floored to 7
+    expect(actualWeight).toBe(7);
+
+    stopGatewayRouter();
+  });
+
+  // -----------------------------------------------------------------------
+  // Test: routerCallGateway with coding_run preserves higher weights
+  // -----------------------------------------------------------------------
+
+  it("routerCallGateway with coding_run preserves weights already >= 7", async () => {
+    // Set up high weight evaluation that should NOT be floored
+    const dbPath = path.join(
+      tmpDir,
+      `queue-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`,
+    );
+
+    vi.doMock("./queue.js", async (importOriginal) => {
+      const actual = (await importOriginal()) as typeof import("./queue.js");
+      return {
+        ...actual,
+        initRouterDb: (p?: string) => actual.initRouterDb(p ?? dbPath),
+      };
+    });
+
+    // Mock high weight evaluation
+    vi.doMock("./evaluator.js", () => ({
+      evaluate: vi.fn(async () => ({
+        weight: 9, // High weight that should NOT be floored
+        reasoning: "complex task",
+      })),
+    }));
+
+    // Mock the dispatcher to capture the actual weight used
+    let actualWeight: number | undefined;
+    vi.doMock("./dispatcher.js", async (importOriginal) => {
+      const actual = (await importOriginal()) as typeof import("./dispatcher.js");
+      return {
+        ...actual,
+        resolveWeightToTier: (weight: number, tiers: unknown) => {
+          actualWeight = weight;
+          return actual.resolveWeightToTier(weight, tiers);
+        },
+      };
+    });
+
+    vi.doMock("../gateway/call.js", () => ({
+      callGateway: vi.fn(async () => ({
+        runId: "mock-run-id",
+        status: "ok",
+        result: "mock-agent-response",
+      })),
+    }));
+
+    const { initGatewayRouter, stopGatewayRouter, routerCallGateway } =
+      await import("./gateway-integration.js");
+
+    initGatewayRouter(makeConfig());
+
+    // Call with coding_run jobType and high weight
+    await routerCallGateway(
+      {
+        method: "agent",
+        params: { message: "complex coding task", sessionKey: "test-issuer" },
+        timeoutMs: 15_000,
+      },
+      "sync",
+      "coding_run",
+    );
+
+    // Weight should remain 9 (not floored)
+    expect(actualWeight).toBe(9);
+
+    stopGatewayRouter();
+  });
 });
