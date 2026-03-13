@@ -108,5 +108,5 @@ export function dispatch(
   //    Executor runs in isolated router-executor session — no parent context.
   // Prefer evaluator-generated summary over raw truncated text
   const taskLabel = evaluatorSummary || (payload.message ?? "").slice(0, 60);
-  void run(db, job.id, prompt, model, executor, taskLabel);
+  void run(db, job.id, prompt, model, executor, taskLabel, weight);
 }
