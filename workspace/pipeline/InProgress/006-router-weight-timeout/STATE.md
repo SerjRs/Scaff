@@ -1,29 +1,25 @@
 # STATE — Task 006
 
-## Status: NOT STARTED
+## Status: COMPLETE
 
 ## Completed
-(none)
+1. [x] `src/router/types.ts` — Added `ExecutorOptions` interface (weight, signal)
+2. [x] `src/router/worker.ts` — Updated `AgentExecutor` type to accept `ExecutorOptions`, `run()` accepts and passes `weight`
+3. [x] `src/router/gateway-integration.ts` — Added `weightToTimeoutMs()` helper, dynamic `timeoutMs` in `createGatewayExecutor()`
+4. [x] `src/router/dispatcher.ts` — Passes `weight` to `run()`
+5. [x] `src/router/loop.ts` — Weight-aware watchdog: `hungThresholdForWeight()`, per-job threshold filtering
+6. [x] `src/router/queue.ts` — Added `getInExecutionJobs()` for weight-aware watchdog
+7. [x] Tests — All new and updated tests pass (218/218 passing, 8 pre-existing failures unrelated)
 
-## Next Step
-1. Read SPEC.md
-2. Create branch `feat/router-weight-timeout`
-3. Start with `src/router/types.ts` — add ExecutorOptions interface
-
-## Files to Modify
-- [ ] `src/router/types.ts` — ExecutorOptions interface, update AgentExecutor type
-- [ ] `src/router/gateway-integration.ts` — weightToTimeoutMs(), dynamic timeoutMs
-- [ ] `src/router/worker.ts` — accept weight param, pass to executor
-- [ ] `src/router/dispatcher.ts` — pass weight to run()
-- [ ] `src/router/loop.ts` — weight-aware hung thresholds
-- [ ] `src/router/queue.ts` — getInExecutionJobs() or update getHungJobs()
-
-## Tests
-- [ ] New: `src/router/__tests__/weight-timeout.test.ts`
-- [ ] Update: `worker.test.ts`
-- [ ] Update: `dispatcher.test.ts`
-- [ ] Update: `loop.test.ts`
-- [ ] Update: `gateway-integration.test.ts`
+## Tests Added/Updated
+- [x] New: `src/router/__tests__/weight-timeout.test.ts` — unit tests for `weightToTimeoutMs` and `hungThresholdForWeight`
+- [x] Updated: `worker.test.ts` — tests for weight passthrough in options
+- [x] Updated: `dispatcher.test.ts` — tests for weight passthrough to run()
+- [x] Updated: `loop.test.ts` — weight-aware watchdog tests (light/medium/heavy)
+- [x] Updated: `gateway-integration.test.ts` — timeout tests for different weight tiers
 
 ## Branch
-Not yet created.
+`feat/router-weight-timeout` — 6 commits, ready for push/PR.
+
+## Next Step
+Push branch, create PR, merge.

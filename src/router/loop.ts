@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { dequeue, getHungJobs, getJob, updateJob } from "./queue.js";
+import { dequeue, getInExecutionJobs, getJob, updateJob } from "./queue.js";
 import { evaluate } from "./evaluator.js";
 import { dispatch } from "./dispatcher.js";
 import { routerEvents, type AgentExecutor } from "./worker.js";
@@ -11,10 +11,17 @@ import type { RouterConfig, RouterJob } from "./types.js";
 
 const LOOP_INTERVAL_MS = 1_000; // poll every 1 second
 const WATCHDOG_INTERVAL_MS = 30_000; // check for hung jobs every 30 seconds
-const HUNG_THRESHOLD_SECONDS = 90; // job is considered hung after 90s without checkpoint
 const MAX_RETRIES = 2; // max retry_count before permanent failure
 const RETRY_DELAY_MS = 5_000; // wait 5 seconds before re-dispatching retries
 const MAX_CONCURRENT = 2; // max jobs executing simultaneously
+
+/** Weight-based hung threshold in seconds (no heartbeat for this long → hung). */
+export function hungThresholdForWeight(weight: number | null): number {
+  const w = weight ?? 5;
+  if (w <= 3) return 150;   // 2.5 min
+  if (w <= 6) return 300;   // 5 min
+  return 450;               // 7.5 min
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -149,9 +156,19 @@ export function startRouterLoop(
     if (stopped) return;
 
     try {
-      const hungJobs = getHungJobs(db, HUNG_THRESHOLD_SECONDS);
+      // Get all in-execution jobs; filter by per-job weight threshold
+      const allExecuting = getInExecutionJobs(db);
+      const now = Date.now();
 
-      for (const job of hungJobs) {
+      for (const job of allExecuting) {
+        const threshold = hungThresholdForWeight(job.weight);
+        const checkpoint = job.last_checkpoint ?? job.started_at;
+        if (!checkpoint) continue;
+
+        const checkpointTime = new Date(checkpoint.replace(" ", "T") + "Z").getTime();
+        const staleSec = (now - checkpointTime) / 1000;
+        if (staleSec < threshold) continue;
+
         if (job.retry_count < MAX_RETRIES) {
           // Schedule retry after delay
           const timer = setTimeout(() => {
@@ -169,9 +186,10 @@ export function startRouterLoop(
           pendingTimeouts.add(timer);
         } else {
           // Permanent failure — too many retries
+          const thresholdLabel = `${Math.round(threshold)}s`;
           updateJob(db, job.id, {
             status: "failed",
-            error: "hung: no checkpoint for 90s",
+            error: `hung: no checkpoint for ${thresholdLabel}`,
           });
         }
       }

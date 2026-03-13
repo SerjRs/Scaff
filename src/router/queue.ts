@@ -238,6 +238,16 @@ export function getHungJobs(
 }
 
 /**
+ * Get all `in_execution` jobs. Used by the weight-aware watchdog
+ * to apply per-job thresholds.
+ */
+export function getInExecutionJobs(db: DatabaseSync): RouterJob[] {
+  return db
+    .prepare(`SELECT * FROM jobs WHERE status = 'in_execution'`)
+    .all() as unknown as RouterJob[];
+}
+
+/**
  * Crash recovery: find jobs stuck in `evaluating` or `in_execution`.
  */
 export function getStuckJobs(db: DatabaseSync): RouterJob[] {
