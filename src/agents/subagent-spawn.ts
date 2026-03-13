@@ -5,6 +5,7 @@ import { loadConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
 import { formatResourceBlocks } from "../router/dispatcher.js";
 import { routerCallGateway, isGatewayRouterActive } from "../router/gateway-integration.js";
+import type { JobType } from "../router/types.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.js";
@@ -43,6 +44,8 @@ export type SpawnSubagentParams = {
   expectsCompletionMessage?: boolean;
   /** Resolved file resources to append to the child task message */
   resources?: ResolvedResource[];
+  /** Executor type: "auto" (default) or "coding" (uses Claude Code) */
+  executor?: "auto" | "coding";
 };
 
 export type SpawnSubagentContext = {
@@ -280,6 +283,7 @@ export async function spawnSubagentDirect(
   // the executor's only instructions. Full context isolation.
   const routerActive = isGatewayRouterActive();
   const effectiveAgentId = routerActive ? "router-executor" : targetAgentId;
+  const jobType: JobType = params.executor === "coding" ? "coding_run" : "agent_run";
   const childSessionKey = `agent:${effectiveAgentId}:subagent:${crypto.randomUUID()}`;
   const childDepth = callerDepth + 1;
   const spawnedByKey = requesterInternalKey;
@@ -450,6 +454,7 @@ export async function spawnSubagentDirect(
       ? await routerCallGateway<{ runId: string }>(
           agentCallOpts,
           spawnMode === "run" ? "sync" : "async",
+          jobType,
         )
       : await callGateway<{ runId: string }>(agentCallOpts);
     if (typeof response?.runId === "string" && response.runId) {

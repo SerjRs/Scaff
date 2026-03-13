@@ -7,7 +7,7 @@ export type JobStatus =
   | "failed"
   | "canceled";
 
-export type JobType = "agent_run";
+export type JobType = "agent_run" | "coding_run";
 
 export type Tier = "haiku" | "sonnet" | "opus";
 

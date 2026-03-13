@@ -40,6 +40,27 @@ describe("getTemplate", () => {
     expect(tpl).toContain("available tools");
   });
 
+  it("loads the haiku/coding_run template", () => {
+    const tpl = getTemplate("haiku", "coding_run");
+    expect(tpl).toBeTruthy();
+    expect(tpl).toContain("{task}");
+    expect(tpl).toContain("task executor");
+  });
+
+  it("loads the sonnet/coding_run template", () => {
+    const tpl = getTemplate("sonnet", "coding_run");
+    expect(tpl).toBeTruthy();
+    expect(tpl).toContain("{task}");
+    expect(tpl).toContain("coding executor");
+  });
+
+  it("loads the opus/coding_run template", () => {
+    const tpl = getTemplate("opus", "coding_run");
+    expect(tpl).toBeTruthy();
+    expect(tpl).toContain("{task}");
+    expect(tpl).toContain("coding executor");
+  });
+
   it("throws a clear error for invalid tier/type", () => {
     expect(() => getTemplate("haiku" as any, "nonexistent" as any)).toThrow(
       /Template not found.*haiku\/nonexistent/,

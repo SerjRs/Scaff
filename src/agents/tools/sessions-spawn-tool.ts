@@ -27,6 +27,7 @@ const SessionsSpawnToolSchema = Type.Object({
   mode: optionalStringEnum(SUBAGENT_SPAWN_MODES),
   cleanup: optionalStringEnum(["delete", "keep"] as const),
   resources: Type.Optional(Type.Array(ResourceSchema)),
+  executor: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("coding")])),
 });
 
 export function createSessionsSpawnTool(opts?: {
@@ -70,6 +71,7 @@ export function createSessionsSpawnTool(opts?: {
           ? Math.max(0, Math.floor(timeoutSecondsCandidate))
           : undefined;
       const thread = params.thread === true;
+      const executor = params.executor === "coding" ? "coding" : undefined;
 
       // Resolve resources
       const resolvedResources: ResolvedResource[] = [];
@@ -105,6 +107,7 @@ export function createSessionsSpawnTool(opts?: {
           cleanup,
           expectsCompletionMessage: true,
           resources: resolvedResources.length > 0 ? resolvedResources : undefined,
+          executor,
         },
         {
           agentSessionKey: opts?.agentSessionKey,

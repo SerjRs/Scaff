@@ -17,7 +17,7 @@ import type { CallGatewayOptions } from "../gateway/call.js";
 import { callGateway } from "../gateway/call.js";
 import { startRouter, type RouterInstance, type AgentExecutor } from "./index.js";
 import type { OnDeliveredCallback } from "./notifier.js";
-import type { ExecutorOptions, RouterConfig, RouterJob } from "./types.js";
+import type { ExecutorOptions, RouterConfig, RouterJob, JobType } from "./types.js";
 import { getCortexSessionKey } from "../cortex/session.js";
 import { registerJobSession, updateTaskBySession } from "../token-monitor/ledger.js";
 
@@ -301,6 +301,7 @@ export function stopGatewayRouter(): void {
 export async function routerCallGateway<T = Record<string, unknown>>(
   opts: CallGatewayOptions,
   _routerMode: "sync" | "async" = "sync",
+  jobType: JobType = "agent_run",
 ): Promise<T> {
   const instance = getRouterInstance();
   if (opts.method !== "agent" || !instance) {
@@ -323,6 +324,11 @@ export async function routerCallGateway<T = Record<string, unknown>>(
     const routerConfig = instance.getConfig();
     const evalResult = await evaluate(routerConfig.evaluator, message);
 
+    // 1.5. Floor weight for coding_run jobs to ensure opus tier
+    if (jobType === "coding_run") {
+      evalResult.weight = Math.max(evalResult.weight, 7);
+    }
+
     // 2. Resolve weight → tier → model
     const { resolveWeightToTier } = await import("./dispatcher.js");
     const resolvedTier = resolveWeightToTier(evalResult.weight, routerConfig.tiers);
@@ -335,7 +341,7 @@ export async function routerCallGateway<T = Record<string, unknown>>(
     // 3. Render the tier-specific template - this IS the executor's complete prompt.
     //    No SOUL.md, no AGENTS.md, no parent context. Just the template + task.
     const { getTemplate, renderTemplate } = await import("./templates/index.js");
-    const template = getTemplate(resolvedTier, "agent_run");
+    const template = getTemplate(resolvedTier, jobType);
     const renderedPrompt = renderTemplate(template, {
       task: message,
       context: "",
@@ -372,6 +378,7 @@ export async function routerCallGateway<T = Record<string, unknown>>(
       model,
       runId: (response as Record<string, unknown>)?.runId as string | undefined,
       sessionKey,
+      jobType,
     });
 
     return response;
@@ -397,10 +404,11 @@ async function logRouterDecision(
     model?: string;
     runId?: string;
     sessionKey?: string;
+    jobType?: JobType;
   },
 ): Promise<void> {
   try {
-    const jobId = instance.enqueue("agent_run", { message: decision.message }, decision.sessionKey ?? "unknown", crypto.randomUUID());
+    const jobId = instance.enqueue(decision.jobType ?? "agent_run", { message: decision.message }, decision.sessionKey ?? "unknown", crypto.randomUUID());
     // The Router loop would normally pick this up, but we've already handled it.
     // Mark as completed immediately and let the notifier archive it.
     // Import queue operations to update directly.
