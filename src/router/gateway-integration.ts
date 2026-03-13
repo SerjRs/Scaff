@@ -17,9 +17,16 @@ import type { CallGatewayOptions } from "../gateway/call.js";
 import { callGateway } from "../gateway/call.js";
 import { startRouter, type RouterInstance, type AgentExecutor } from "./index.js";
 import type { OnDeliveredCallback } from "./notifier.js";
-import type { RouterConfig, RouterJob } from "./types.js";
+import type { ExecutorOptions, RouterConfig, RouterJob } from "./types.js";
 import { getCortexSessionKey } from "../cortex/session.js";
 import { registerJobSession, updateTaskBySession } from "../token-monitor/ledger.js";
+
+/** Map evaluator weight (1-10) to executor timeout in ms */
+export function weightToTimeoutMs(weight: number): number {
+  if (weight <= 3) return 5 * 60 * 1000;   // 5 min
+  if (weight <= 6) return 10 * 60 * 1000;  // 10 min
+  return 15 * 60 * 1000;                   // 15 min
+}
 
 // ---------------------------------------------------------------------------
 // Global singleton - use globalThis to survive bundler chunk splitting.
@@ -81,7 +88,9 @@ export function getCurrentExecutorTaskLabel(): string | null {
 }
 
 export function createGatewayExecutor(): AgentExecutor {
-  return async (prompt: string, model: string): Promise<string> => {
+  return async (prompt: string, model: string, options?: ExecutorOptions): Promise<string> => {
+    const weight = options?.weight ?? 5;
+    const timeoutMs = weightToTimeoutMs(weight);
     // Always create an isolated session under the router-executor agent.
     // This agent has an empty workspace - no context files are injected.
     const sessionKey = `agent:${EXECUTOR_AGENT_ID}:task:${crypto.randomUUID()}`;
@@ -121,7 +130,7 @@ export function createGatewayExecutor(): AgentExecutor {
         idempotencyKey,
       },
       expectFinal: true,
-      timeoutMs: 5 * 60 * 1000,
+      timeoutMs,
     });
 
     if (response?.status === "error") {
