@@ -187,7 +187,7 @@ export async function initGatewayCortex(params: {
       }
     },
     // Fire-and-forget delegation to the Router when Cortex calls sessions_spawn
-    onSpawn: ({ task, replyChannel, resultPriority, taskId, resources }) => {
+    onSpawn: ({ task, replyChannel, resultPriority, taskId, resources, executor }) => {
       try {
         const router = getGatewayRouter();
         if (!router) {
@@ -205,8 +205,11 @@ export async function initGatewayCortex(params: {
           payload.resources = resources;
         }
 
+        // Route to coding_run when executor="coding" (Claude Code template, weight≥7, 15min timeout)
+        const jobType = executor === "coding" ? "coding_run" as const : "agent_run" as const;
+
         const jobId = router.enqueue(
-          "agent_run",
+          jobType,
           payload,
           issuer,
           taskId,

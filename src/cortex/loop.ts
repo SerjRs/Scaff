@@ -56,6 +56,8 @@ export interface SpawnParams {
   taskId: string;
   /** Resolved file resources to include in the executor's task message */
   resources?: ResolvedResource[];
+  /** Executor type — "coding" routes to coding_run template (Claude Code). Default: agent_run. */
+  executor?: "coding";
 }
 
 export interface CortexLoopOptions {
@@ -529,9 +531,10 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                  content: `Library ingestion started for: ${url}. Task ID: ${taskId}. You will be notified automatically when complete — do NOT poll.` }], issuer, assignedShardId);
 
           } else if (tc.name === "sessions_spawn" && onSpawn) {
-            const args = tc.arguments as { task?: string; priority?: string; resources?: Array<{ type: string; name?: string; path?: string; url?: string; content?: string }> };
+            const args = tc.arguments as { task?: string; priority?: string; executor?: string; resources?: Array<{ type: string; name?: string; path?: string; url?: string; content?: string }> };
             const task = args.task ?? "";
             const resultPriority = (args.priority as "urgent" | "normal" | "background") ?? "normal";
+            const executor = args.executor === "coding" ? "coding" as const : undefined;
             // Reply channel = source channel if user-facing, null if internal/system
             const replyChannel = (msg.envelope.channel !== "router" && msg.envelope.channel !== "cron")
               ? msg.envelope.channel
@@ -572,6 +575,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             const jobId = onSpawn({
               task, replyChannel, resultPriority, envelopeId: msg.envelope.id, taskId,
               resources: resolvedResources.length > 0 ? resolvedResources : undefined,
+              executor,
             });
 
             if (!jobId) {

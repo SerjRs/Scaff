@@ -104,6 +104,12 @@ You may attach resources (workspace files or inline text) so the executor can ac
         description:
           "How urgently the result needs Cortex's attention. urgent = critical alerts, time-sensitive. normal = user is waiting for the answer. background = proactive work, no one waiting.",
       },
+      executor: {
+        type: "string",
+        enum: ["auto", "coding"],
+        description:
+          "Executor type. 'auto' (default) = standard LLM executor. 'coding' = spawns Claude Code CLI for implementation tasks (gets opus tier, 15min timeout). Use 'coding' when the task requires creating/editing code across multiple files, running tests, or creating PRs.",
+      },
       resources: {
         type: "array",
         items: {
@@ -228,7 +234,10 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "- **read_file**: Read local files (docs, configs, architecture specs). Paths relative to workspace. Use offset/limit for large files.\n" +
     "- **write_file**: Write or append to local files. Creates parent dirs. Paths relative to workspace.\n" +
     "- **move_file**: Move or rename files. Use for pipeline transitions. Paths relative to workspace.\n" +
-    "- **delete_file**: Delete a file. Files only, no directories. Use with care.\n\n" +
+    "- **delete_file**: Delete a file. Files only, no directories. Use with care.\n" +
+    "- **sessions_spawn executor param**: Pass `executor: \"coding\"` when the task requires multi-file code changes, " +
+    "running tests, creating branches/PRs, or any work best handled by Claude Code CLI. " +
+    "This routes to the coding_run template (opus tier, 15min timeout). Default (\"auto\") uses the standard LLM executor.\n\n" +
     "## Library\n" +
     "When the user shares a URL, always call library_ingest(url) to store it in the Library. " +
     "Every link the user shares is domain knowledge worth retaining.\n\n" +
