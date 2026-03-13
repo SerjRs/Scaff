@@ -4,6 +4,7 @@ import { updateJob } from "./queue.js";
 import { updateStatusByJobId } from "../token-monitor/ledger.js";
 import { setCurrentExecutorTaskLabel } from "./gateway-integration.js";
 import { setCurrentExecutorJobId } from "./gateway-integration.js";
+import type { ExecutorOptions } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Shared lifecycle event emitter - other modules (Notifier) listen on this.
@@ -24,7 +25,7 @@ export const routerEvents = new EventEmitter();
  * agent with full tool access but no parent context or memory. The prompt
  * (from the Router's tier template) is the executor's only instruction set.
  */
-export type AgentExecutor = (prompt: string, model: string) => Promise<string>;
+export type AgentExecutor = (prompt: string, model: string, options?: ExecutorOptions) => Promise<string>;
 
 // ---------------------------------------------------------------------------
 // Default (placeholder) executor
@@ -94,6 +95,7 @@ export async function run(
   model: string,
   executor: AgentExecutor = defaultExecuteAgent,
   taskLabel?: string,
+  weight?: number,
 ): Promise<void> {
   const now = nowTimestamp();
 
@@ -117,7 +119,7 @@ export async function run(
     // Set job context so the executor can register the job→session mapping
     setCurrentExecutorJobId(jobId);
     setCurrentExecutorTaskLabel(taskLabel ?? null);
-    const result = await executor(prompt, model);
+    const result = await executor(prompt, model, { weight });
     setCurrentExecutorJobId(null);
     setCurrentExecutorTaskLabel(null);
 
