@@ -60,3 +60,10 @@ export interface RouterConfig {
   evaluator: EvaluatorConfig;
   tiers: Record<Tier, TierConfig>;
 }
+
+export interface ExecutorOptions {
+  /** Task weight (1-10) from evaluator. Determines timeout. */
+  weight?: number;
+  /** AbortSignal for external cancellation (Phase 2). */
+  signal?: AbortSignal;
+}
