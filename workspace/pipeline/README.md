@@ -1,51 +1,66 @@
-# Pipeline
+# Development Pipeline
 
-Development pipeline for Scaff + coding executors (Claude Code, Gemini, Codex).
+Folder-based task pipeline for stateless AI agents (Scaff, Claude Code, Cortex).
 
-Tasks are markdown files that move between folders as they progress through stages. Each folder has a `README.md` explaining its purpose and rules.
-
-## Flow
+## Stages
 
 ```
-Cooking → ToDo → InProgress → InReview → Done
-                                      ↘ Canceled
+Cooking → InProgress → Done
+                    ↘ Canceled
 ```
 
-## Roles
+| Stage        | Meaning                                           |
+|--------------|---------------------------------------------------|
+| **Cooking**  | Ideas, rough specs, open questions                 |
+| **InProgress** | Active work — Claude Code running, branch exists |
+| **Done**     | Merged to main, complete                           |
+| **Canceled** | Dropped                                            |
 
-- **Scaff** — Architect. Writes specs, reviews code, orchestrates pipeline. Moves tasks between Cooking → ToDo → InProgress. Reviews in InReview and moves to Done.
-- **Serj** — Owner. Contributes to Cooking. Final say on priorities and direction.
-- **Executor** (Claude Code / Gemini / Codex) — Implements. Picks up from InProgress, codes, tests, pushes branch + PR, moves task to InReview.
+## Task Structure
 
-## Task File Format
+Each task is a **folder** (not a single file). The folder contains everything an AI executor needs to work independently:
 
-Every task is a `.md` file. Filename pattern: `NNN-short-name.md` (e.g. `008-cortex-read-file.md`).
+```
+006-router-weight-timeout/
+  SPEC.md      ← Implementation spec (what to build, why, how)
+  CLAUDE.md    ← Instructions for Claude Code (how to work)
+  STATE.md     ← Progress checkpoint (updated by executor after each milestone)
+```
 
-### Required Metadata Header
+### Key Files
+
+- **SPEC.md** — The full spec. Architecture, code changes, test requirements, risks.
+- **CLAUDE.md** — Claude Code reads this on spawn. Contains branch name, constraints, workflow instructions.
+- **STATE.md** — Executor updates this after each milestone. If interrupted, next spawn resumes from here.
+
+## Workflow
+
+1. **Scaff** creates task folder in `Cooking/` with SPEC.md (rough or detailed)
+2. When ready, move folder to `InProgress/`, add CLAUDE.md + STATE.md
+3. **Spawn Claude Code** with `workdir` pointing to the task folder
+4. Claude Code reads CLAUDE.md → checks STATE.md → works on branch → commits incrementally → updates STATE.md
+5. If interrupted: respawn in same folder, picks up from STATE.md + branch
+6. When done: Claude Code pushes branch, creates PR, merges
+7. **Scaff** moves folder to `Done/`
+
+## Parallel Execution
+
+Each task has its own branch + folder. Multiple Claude Code instances can run simultaneously on different tasks without conflicts.
+
+## Branch Convention
+
+Branch name matches task: `feat/router-weight-timeout` for `006-router-weight-timeout/`
+
+## YAML Frontmatter (SPEC.md)
 
 ```yaml
 ---
-id: "008"
-title: "Cortex read_file sync tool"
-created: "2026-03-12"
-author: "scaff"
-executor: ""           # claude-code | gemini | codex (set when moved to InProgress)
-branch: ""             # set by executor
-pr: ""                 # set by executor
-priority: "high"       # low | medium | high | critical
-status: "cooking"      # cooking | todo | in-progress | in-review | done | canceled
-moved_at: "2026-03-12" # last stage transition date
+id: "006"
+title: "Router weight-based timeout"
+created: 2026-03-12
+author: scaff
+priority: high
+status: in_progress
+branch: feat/router-weight-timeout
 ---
 ```
-
-### Body
-
-- **Cooking stage:** Raw thoughts, architecture notes, open questions. Can be messy. Serj + Scaff, Serj owning;
-- **ToDo stage:** Clean implementation spec. Everything the executor needs — no ambiguity. Scaff owning;
-- **InProgress**: Executor appends progress notes, blockers, test results at the bottom. Scaff + Executor, Executor owning;
-- **InReview**: Scaff review, Executor appends changes, asks again for review. Scaff + Executor, Scaff owning;
-- **Done:** Scaff or Executor appends final summary (commit, PR link, what shipped).
-
-## Numbering
-
-Sequential, zero-padded to 3 digits. Check the highest number across ALL folders before creating a new task.
