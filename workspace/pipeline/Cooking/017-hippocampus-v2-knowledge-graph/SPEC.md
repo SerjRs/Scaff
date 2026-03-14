@@ -14,7 +14,7 @@ moved_at: "2026-03-14"
 
 ## What Hippocampus Is
 
-Hippocampus is how Scaff remembers. Not a database to search — a brain that knows.
+Hippocampus is how Cortex remembers. Not a database to search — a brain that knows.
 
 It governs how information flows from the immediate ("we just said this") through working knowledge ("I know this matters right now") into deep memory ("I learned this weeks ago and it's still true") — and how connections between all of it surface the right thing at the right time.
 
@@ -22,16 +22,17 @@ It governs how information flows from the immediate ("we just said this") throug
 
 ## The Problem We're Solving
 
-Scaff wakes up blank every session. The conversation from 30 minutes ago is compacted away. An article ingested last week sits in a separate database with no connection to the decision it informed. A mistake we made Tuesday has no link to the reasoning that caused it.
+Cortex loses context between turns as the conversation window slides. An article ingested last week sits in a separate database with no connection to the decision it informed. A mistake from Tuesday has no link to the reasoning that caused it.
 
-Three separate systems exist today:
-- **Hippocampus** — extracts flat facts from conversations. No relationships. "Budget is 2.4M" is stored, but not why, or what it connects to.
-- **Library** — 21 article summaries with vector embeddings. Isolated blobs. Can't tell you how Article 7 relates to Article 12 or to Tuesday's decision.
-- **MEMORY.md** — manually curated text file. The closest thing to actual continuity, and it's edited by hand during heartbeats.
+Two separate knowledge systems exist in Cortex today:
+- **Hippocampus (cortex_hot_memory)** — extracts flat facts from conversations. No relationships. "Budget is 2.4M" is stored, but not why, or what it connects to. Facts are isolated rows in a table.
+- **Library (library.sqlite)** — article summaries with vector embeddings. Isolated blobs in a separate database. Can't tell you how Article 7 relates to Article 12 or to Tuesday's decision. Breadcrumbs surface titles but not connections.
 
-None of these talk to each other. None of them build connections. None of them learn from mistakes.
+These two systems don't talk to each other. Neither builds connections. Neither learns from mistakes.
 
 **The fix isn't a new system. It's completing the one we designed.**
+
+> **Scope note:** This spec covers Cortex's memory architecture only. The main agent (Scaff) has its own memory system (MEMORY.md, daily files, session backups) which is separate and unaffected by this work.
 
 ---
 
@@ -179,11 +180,12 @@ When assembling context for an LLM turn:
 
 ---
 
-## What Gets Retired
+## What Gets Retired (Cortex-side only)
 
-- **MEMORY.md** — replaced by hot memory graph. No more manual curation during heartbeats.
-- **Library as a separate knowledge store** — becomes an ingestion pipeline into Hippocampus. The `library.sqlite` may persist for raw content storage / re-processing, but knowledge facts live in Hippocampus.
-- **memory/*.md daily files** — replaced by the Fact Extractor writing to the graph. Raw session logs (JSONL) remain as the source of truth for replay.
+- **Library as a separate knowledge store** — becomes an ingestion pipeline into Hippocampus. `library.sqlite` may persist for raw content storage and re-processing, but the *knowledge* (facts, entities, connections) lives in Hippocampus. Cortex queries one graph, not two databases.
+- **Flat `cortex_hot_memory`** — replaced by the hot memory graph (facts + edges). Same table, extended with relationships.
+
+> **Not affected:** The main agent's MEMORY.md, memory/*.md daily files, and session JSONL backups are a separate system and are not part of this spec.
 
 ---
 
@@ -194,13 +196,14 @@ When assembling context for an LLM turn:
 - **Hot memory with hit count + recency** — unchanged. Facts still compete for the top-N slots.
 - **Vector cold storage** — unchanged. Evicted facts are embedded for semantic search.
 - **Gardener** — expanded with the Consolidator task, but same cron-based architecture.
-- **Session JSONL backups** — unchanged. Always the source of truth for conversation replay.
+- **cortex_session** — unchanged. Conversation history per channel/shard.
+- **cortex_channel_states** — unchanged. Background summaries of other channels.
 
 ---
 
 ## Success Criteria
 
-1. **Never lose the thread** — within a session, the LLM knows what was discussed 30 minutes ago (Foreground shards). Across sessions, the hot memory graph carries forward the key facts and their connections.
+1. **Never lose the thread** — within a conversation, Cortex knows what was discussed 30 minutes ago (Foreground shards). Across conversations, the hot memory graph carries forward the key facts and their connections.
 
 2. **Articles feed the same brain** — ingesting a URL produces facts + edges in Hippocampus, not an isolated blob in Library. The article's knowledge is connected to conversation knowledge.
 
@@ -208,7 +211,7 @@ When assembling context for an LLM turn:
 
 4. **Breadcrumbs lead somewhere** — the hot memory graph in Layer 1 shows threads the LLM can pull. Each thread leads to deeper knowledge (cold storage, articles, conversations). The LLM can navigate, not just search.
 
-5. **One system** — no more Hippocampus + Library + MEMORY.md. One knowledge brain with layers (hot/cold), connections (edges), and sources (conversations, articles, corrections).
+5. **One system** — no more separate Hippocampus + Library stores. One knowledge brain for Cortex with layers (hot/cold), connections (edges), and sources (conversations, articles, corrections).
 
 ---
 
