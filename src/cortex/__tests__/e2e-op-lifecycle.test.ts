@@ -146,4 +146,30 @@ describe("cortex_task_dispatch lifecycle", () => {
     const dispatch = getDispatch(db, taskId);
     expect(dispatch!.channelContext).toEqual(complexContext);
   });
+
+  it("channelContext captures arbitrary replyContext attributes", () => {
+    // Simulate a future channel that adds custom attributes to replyContext
+    // Store dispatch with channelContext containing unexpected keys
+    // Retrieve and verify all keys survived serialization
+    const taskId = "test-future-channel";
+    storeDispatch(db, {
+      taskId,
+      channel: "telegram",
+      channelContext: {
+        threadId: "chat-123",
+        topicId: 42,
+        botToken: "prod",
+        customField: "whatever-future-channels-need",
+      },
+      taskSummary: "Future channel test",
+      priority: "normal",
+    });
+    const dispatch = getDispatch(db, taskId);
+    expect(dispatch!.channelContext).toEqual({
+      threadId: "chat-123",
+      topicId: 42,
+      botToken: "prod",
+      customField: "whatever-future-channels-need",
+    });
+  });
 });

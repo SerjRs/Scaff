@@ -505,14 +505,11 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             const taskId = crypto.randomUUID();
 
             // Record dispatch context — stays in Cortex, never enters the pipeline
+            const { channel: _, ...channelAttrs } = msg.envelope.replyContext ?? { channel: msg.envelope.channel };
             storeDispatch(db, {
               taskId,
               channel: msg.envelope.channel,
-              channelContext: {
-                threadId: msg.envelope.replyContext?.threadId,
-                accountId: msg.envelope.replyContext?.accountId,
-                messageId: msg.envelope.replyContext?.messageId,
-              },
+              channelContext: channelAttrs,
               counterpartId: msg.envelope.sender?.id,
               counterpartName: msg.envelope.sender?.name,
               shardId: assignedShardId,
@@ -554,14 +551,11 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             const taskId = crypto.randomUUID();
 
             // Record dispatch context — stays in Cortex, never enters the pipeline
+            const { channel: _, ...channelAttrs } = msg.envelope.replyContext ?? { channel: msg.envelope.channel };
             storeDispatch(db, {
               taskId,
               channel: msg.envelope.channel,
-              channelContext: {
-                threadId: msg.envelope.replyContext?.threadId,
-                accountId: msg.envelope.replyContext?.accountId,
-                messageId: msg.envelope.replyContext?.messageId,
-              },
+              channelContext: channelAttrs,
               counterpartId: msg.envelope.sender?.id,
               counterpartName: msg.envelope.sender?.name,
               shardId: assignedShardId,
