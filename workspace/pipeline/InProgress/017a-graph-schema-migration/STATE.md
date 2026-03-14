@@ -1,8 +1,8 @@
 # STATE — 017a
-## Status: Not Started
+## Status: Done
 ## Milestones
-- [ ] initGraphTables function created
-- [ ] migrateHotMemoryToGraph function created
-- [ ] CRUD functions implemented (insertFact, insertEdge, getFactWithEdges, etc.)
-- [ ] Tests written and passing
-- [ ] Branch committed
+- [x] initGraphTables function created
+- [x] migrateHotMemoryToGraph function created
+- [x] CRUD functions implemented (insertFact, insertEdge, getFactWithEdges, etc.)
+- [x] Tests written and passing (18/18)
+- [x] Branch committed
