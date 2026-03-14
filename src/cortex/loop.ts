@@ -23,7 +23,7 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates, storeDispatch, getDispatch } from "./session.js";
-import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeWriteFile, executeMoveFile, executeDeleteFile, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
+import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeWriteFile, executeMoveFile, executeDeleteFile, executePipelineStatus, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
 import {
   assignMessageWithBoundaryDetection,
   assignMessageToShard,
@@ -350,6 +350,12 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 const args = tc.arguments as Record<string, unknown>;
                 result = executeDeleteFile(
                   { path: args.path as string },
+                  workspaceDir,
+                );
+              } else if (tc.name === "pipeline_status") {
+                const args = tc.arguments as Record<string, unknown>;
+                result = executePipelineStatus(
+                  { folder: args.folder as string | undefined },
                   workspaceDir,
                 );
               } else if (tc.name === "library_get") {

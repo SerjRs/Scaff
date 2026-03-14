@@ -279,8 +279,25 @@ Files only — refuses to delete directories. Use with care — deletions are pe
   },
 };
 
+export const PIPELINE_STATUS_TOOL = {
+  name: "pipeline_status",
+  description: `Get the current state of the development pipeline. Returns task counts per stage \
+and task summaries. Use when asked about pipeline status, active work, or task progress. \
+Use read_file to drill into specific tasks.`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      folder: {
+        type: "string",
+        description: "Filter to a specific stage: Cooking, ToDo, InProgress, InReview, Done, Canceled (optional — omit for full overview)",
+      },
+    },
+    required: [] as string[],
+  },
+};
+
 /** Tool names that are handled synchronously (round-trip within same turn) */
-export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file", "write_file", "move_file", "delete_file"]);
+export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file", "write_file", "move_file", "delete_file", "pipeline_status"]);
 
 // ---------------------------------------------------------------------------
 // Embed Function Type
@@ -670,6 +687,117 @@ export function executeDeleteFile(
   // Delete
   fs.unlinkSync(resolved);
   return `Deleted: ${args.path}`;
+}
+
+/** Parse YAML frontmatter between --- markers. Returns key-value pairs. */
+function parseYamlFrontmatter(content: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!match) return result;
+  for (const line of match[1].split("\n")) {
+    const sep = line.indexOf(":");
+    if (sep === -1) continue;
+    const key = line.slice(0, sep).trim();
+    let value = line.slice(sep + 1).trim();
+    // Strip surrounding quotes
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key) result[key] = value;
+  }
+  return result;
+}
+
+/** Execute pipeline_status — scan pipeline folder structure and return summary */
+export function executePipelineStatus(
+  args: { folder?: string },
+  workspaceDir: string,
+): string {
+  const STAGES = ["Cooking", "ToDo", "InProgress", "InReview", "Done", "Canceled"];
+  const pipelineRoot = path.join(workspaceDir, "pipeline");
+
+  if (!fs.existsSync(pipelineRoot)) {
+    return "📋 Pipeline Status\n\nPipeline directory not found.";
+  }
+
+  const stagesToScan = args.folder
+    ? STAGES.filter((s) => s.toLowerCase() === args.folder!.toLowerCase())
+    : STAGES;
+
+  if (args.folder && stagesToScan.length === 0) {
+    return `Error: unknown stage "${args.folder}". Valid stages: ${STAGES.join(", ")}`;
+  }
+
+  const isFiltered = !!args.folder;
+  const sections: string[] = ["📋 Pipeline Status", ""];
+
+  for (const stage of STAGES) {
+    const stageDir = path.join(pipelineRoot, stage);
+    if (!fs.existsSync(stageDir)) {
+      if (stagesToScan.includes(stage)) {
+        sections.push(`${stage} (0)`);
+      }
+      continue;
+    }
+
+    // List subdirectories (task folders), skip files like README.md
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(stageDir).filter((entry) => {
+        const entryPath = path.join(stageDir, entry);
+        try {
+          return fs.statSync(entryPath).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+    } catch {
+      if (stagesToScan.includes(stage)) {
+        sections.push(`${stage} (0)`);
+      }
+      continue;
+    }
+
+    if (!stagesToScan.includes(stage)) {
+      // Show count-only line for non-filtered stages
+      sections.push(`${stage} (${entries.length})`);
+      continue;
+    }
+
+    sections.push(`${stage} (${entries.length}):`);
+
+    for (const taskFolder of entries.sort()) {
+      const specPath = path.join(stageDir, taskFolder, "SPEC.md");
+      let meta: Record<string, string> = {};
+      if (fs.existsSync(specPath)) {
+        try {
+          const specContent = fs.readFileSync(specPath, "utf-8");
+          meta = parseYamlFrontmatter(specContent);
+        } catch { /* best-effort */ }
+      }
+
+      const id = meta.id || taskFolder.split("-")[0] || "?";
+      const title = meta.title || taskFolder;
+      const priority = meta.priority ? ` [${meta.priority}]` : "";
+      const movedAt = meta.moved_at ? `, ${meta.moved_at}` : "";
+
+      if (isFiltered) {
+        // Detailed view when filtered to a single stage
+        const executor = meta.executor ? `executor=${meta.executor}` : "";
+        const branch = meta.branch ? `branch=${meta.branch}` : "";
+        const pr = meta.pr ? `PR=${meta.pr}` : "";
+        const details = [executor, branch, pr].filter(Boolean).join(", ");
+        const detailStr = details ? ` (${details})` : "";
+        sections.push(`  ${id} — ${title}${priority}${detailStr}${movedAt}`);
+      } else {
+        // Compact view for full overview
+        const author = meta.author ? ` (${meta.author}${movedAt})` : movedAt ? ` (${movedAt.slice(2)})` : "";
+        sections.push(`  ${id} — ${title}${priority}${author}`);
+      }
+    }
+  }
+
+  return sections.join("\n");
 }
 
 // ---------------------------------------------------------------------------
