@@ -4,7 +4,7 @@ title: "graph_traverse sync tool — walk the knowledge graph N hops"
 created: "2026-03-14"
 author: "scaff"
 priority: "high"
-status: "in_progress"
+status: "done"
 moved_at: "2026-03-14"
 depends_on: ["017a"]
 parent: "017"
