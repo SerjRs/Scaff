@@ -355,12 +355,21 @@ export async function initGatewayCortex(params: {
                   // Generate embedding async (fire-and-forget — item is stored regardless)
                   const libEmbed = require("../library/embeddings.js");
                   const textToEmbed = `${parsed.title}. ${parsed.summary} ${parsed.key_concepts.join(". ")}`;
-                  void libEmbed.generateEmbedding(textToEmbed).then((embedding: number[]) => {
-                    const eDb = libDb.openLibraryDb();
-                    try { libDb.insertEmbedding(eDb, itemId, embedding); } finally { eDb.close(); }
-                  }).catch((embErr: unknown) => {
-                    params.log.warn(`[library] Embedding failed for item ${itemId}: ${embErr instanceof Error ? embErr.message : String(embErr)}`);
-                  });
+                  void (async () => {
+                    let lastErr: unknown;
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                      try {
+                        const embedding: number[] = await libEmbed.generateEmbedding(textToEmbed, 15_000);
+                        const eDb = libDb.openLibraryDb();
+                        try { libDb.insertEmbedding(eDb, itemId, embedding); } finally { eDb.close(); }
+                        return;
+                      } catch (err) {
+                        lastErr = err;
+                        if (attempt === 0) await new Promise(r => setTimeout(r, 2_000));
+                      }
+                    }
+                    params.log.warn(`[library] Embedding failed for item ${itemId} after 2 attempts: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
+                  })();
 
                   // Check if this was an update (version > 1)
                   const versionRow = libraryDb.prepare("SELECT version FROM items WHERE id = ?").get(itemId) as { version: number } | undefined;

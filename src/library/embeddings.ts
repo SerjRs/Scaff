@@ -9,7 +9,7 @@
  * @see docs/library-architecture.md §5
  */
 
-export async function generateEmbedding(text: string): Promise<number[]> {
+export async function generateEmbedding(text: string, timeoutMs = 15_000): Promise<number[]> {
   const response = await fetch("http://127.0.0.1:11434/api/embeddings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -17,7 +17,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       model: "nomic-embed-text",
       prompt: text,
     }),
-    signal: AbortSignal.timeout(5_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) {
