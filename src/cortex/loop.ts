@@ -696,6 +696,26 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               }
             }
 
+            // Auto-attach Library domain context for task enrichment (010c)
+            try {
+              const { openLibraryDbReadonly, searchItems } = require("../library/retrieval.js");
+              const libraryDb = openLibraryDbReadonly();
+              if (libraryDb && embedFn) {
+                try {
+                  const taskEmbedding = await embedFn(task.substring(0, 500));
+                  const matches = searchItems(libraryDb, taskEmbedding, 3);
+                  if (matches.length > 0) {
+                    const context = matches.map((m: any) => `[${m.title}]\n${m.summary}`).join("\n---\n");
+                    if (context.length <= 4096) {
+                      resolvedResources.push({ name: "Library domain context", content: context });
+                    }
+                  }
+                } finally {
+                  libraryDb.close();
+                }
+              }
+            } catch { /* best-effort — don't block spawn */ }
+
             // Fire spawn — Router result will arrive via gateway-bridge → appendTaskResult
             const jobId = onSpawn({
               task, resultPriority, envelopeId: msg.envelope.id, taskId,

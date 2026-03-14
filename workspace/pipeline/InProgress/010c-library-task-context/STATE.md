@@ -1,6 +1,6 @@
 # STATE — 010c
-## Status: Not Started
+## Status: Complete
 ## Milestones
-- [ ] Library context injection added to loop.ts
-- [ ] Compiles cleanly (no new TS errors)
+- [x] Library context injection added to loop.ts
+- [x] Compiles cleanly (no new TS errors)
 - [ ] Branch pushed, PR created
