@@ -4,7 +4,7 @@ title: "Proactive Library suggestions + growth metrics"
 created: "2026-03-14"
 author: "scaff"
 priority: "low"
-status: "cooking"
+status: "in_progress"
 moved_at: "2026-03-14"
 ---
 

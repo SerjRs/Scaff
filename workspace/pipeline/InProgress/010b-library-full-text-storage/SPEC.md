@@ -4,7 +4,7 @@ title: "Store full_text on Library ingestion"
 created: "2026-03-14"
 author: "scaff"
 priority: "high"
-status: "cooking"
+status: "in_progress"
 moved_at: "2026-03-14"
 ---
 

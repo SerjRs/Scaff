@@ -4,7 +4,7 @@ title: "Library-informed task context for coding executors"
 created: "2026-03-14"
 author: "scaff"
 priority: "medium"
-status: "cooking"
+status: "in_progress"
 moved_at: "2026-03-14"
 ---
 

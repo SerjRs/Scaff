@@ -4,7 +4,7 @@ title: "Backfill Library embeddings + fix generation reliability"
 created: "2026-03-14"
 author: "scaff"
 priority: "critical"
-status: "cooking"
+status: "in_progress"
 moved_at: "2026-03-14"
 ---
 
