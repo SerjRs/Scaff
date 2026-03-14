@@ -13,7 +13,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import type { HotFact } from "./hippocampus.js";
+import type { GraphFactWithEdges } from "./hippocampus.js";
 import { getChannelStates, getSessionHistory, type SessionMessage } from "./session.js";
 import { getActiveShard, getAllActiveShards, getClosedShards, getShardMessages, type Shard, type ForegroundConfig, type ShardFilter } from "./shards.js";
 import type { ChannelId, CortexEnvelope } from "./types.js";
@@ -82,10 +82,10 @@ const SYSTEM_FLOOR_FILES = [
   "MEMORY.md",
 ];
 
-/** Load system floor: identity + memory + workspace context + hot facts */
+/** Load system floor: identity + memory + workspace context + graph facts */
 export async function loadSystemFloor(
   workspaceDir: string,
-  hotFacts?: HotFact[],
+  graphFacts?: GraphFactWithEdges[],
 ): Promise<ContextLayer> {
   const sections: string[] = [];
 
@@ -104,12 +104,16 @@ export async function loadSystemFloor(
     }
   }
 
-  // Add hot memory facts (Hippocampus Layer 1)
-  if (hotFacts && hotFacts.length > 0) {
-    const factsText = hotFacts
-      .map((f) => `- ${f.factText}`)
-      .join("\n");
-    sections.push(`## Known Facts\n${factsText}`);
+  // Add graph-aware hot memory facts (Hippocampus Layer 1)
+  if (graphFacts && graphFacts.length > 0) {
+    const lines = graphFacts.map((f) => {
+      if (f.edges.length === 0) return `- ${f.factText}`;
+      const edgeHints = f.edges
+        .map((e) => `→ ${e.edgeType}: ${e.isStub ? `[evicted: ${e.targetHint}]` : e.targetHint}`)
+        .join(" | ");
+      return `- ${f.factText} [${edgeHints}]`;
+    });
+    sections.push(`## Knowledge Graph (Hot Memory)\n${lines.join("\n")}`);
   }
 
   const content = sections.join("\n\n---\n\n");
@@ -394,15 +398,26 @@ export async function assembleContext(params: {
 }): Promise<AssembledContext> {
   const { db, triggerEnvelope, workspaceDir, maxTokens, hippocampusEnabled, foregroundConfig, issuer } = params;
 
-  // Load hot facts when hippocampus is enabled
-  let hotFacts: HotFact[] | undefined;
+  // Load graph facts when hippocampus is enabled
+  let graphFacts: GraphFactWithEdges[] | undefined;
   if (hippocampusEnabled) {
-    const { getTopHotFacts } = await import("./hippocampus.js");
-    hotFacts = getTopHotFacts(db, 50);
+    try {
+      const { getTopFactsWithEdges } = await import("./hippocampus.js");
+      graphFacts = getTopFactsWithEdges(db, 30, 3);
+    } catch {
+      // Fallback to old hot facts if graph tables don't exist
+      const { getTopHotFacts } = await import("./hippocampus.js");
+      const hotFacts = getTopHotFacts(db, 50);
+      graphFacts = hotFacts.map(f => ({
+        ...f, factType: 'fact', confidence: 'medium', status: 'active',
+        sourceType: null, sourceRef: null,
+        edges: []
+      }));
+    }
   }
 
   // 1. System floor — always loaded first
-  const systemFloor = await loadSystemFloor(workspaceDir, hotFacts);
+  const systemFloor = await loadSystemFloor(workspaceDir, graphFacts);
 
   // 1b. Library breadcrumbs — top-10 relevant items by embedding similarity
   // Injected into system floor so the LLM sees available domain knowledge
