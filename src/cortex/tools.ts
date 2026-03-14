@@ -460,7 +460,8 @@ export function executeCodeSearch(args: { query: string; limit?: number }): stri
       { cwd: openclawDir, timeout: 30_000, encoding: "utf-8" },
     );
 
-    return output.trim();
+    // Fix 4: Append path hint so Cortex knows paths are relative to install root
+    return output.trim() + "\n\nNote: Paths above are relative to the OpenClaw install root, not the agent workspace. Use code snippets directly or resolve with the install path.";
   } catch (err) {
     return JSON.stringify({
       error: `Code search failed: ${err instanceof Error ? err.message : String(err)}`,
