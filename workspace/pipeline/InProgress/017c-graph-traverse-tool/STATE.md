@@ -1,9 +1,9 @@
 # STATE — 017c
-## Status: Not Started
+## Status: Complete
 ## Milestones
-- [ ] traverseGraph() function in hippocampus.ts
-- [ ] GRAPH_TRAVERSE_TOOL definition + SYNC_TOOL_NAMES updated
-- [ ] Registered in llm-caller.ts
-- [ ] Execution handler in loop.ts
-- [ ] Tests written and passing
-- [ ] Branch committed
+- [x] traverseGraph() function in hippocampus.ts
+- [x] GRAPH_TRAVERSE_TOOL definition + SYNC_TOOL_NAMES updated
+- [x] Registered in llm-caller.ts
+- [x] Execution handler in loop.ts
+- [x] Tests written and passing (9 tests)
+- [x] Branch committed

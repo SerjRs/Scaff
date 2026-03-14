@@ -182,8 +182,22 @@ tag distribution. Use when the user asks about Library health or what knowledge 
   },
 };
 
+export const GRAPH_TRAVERSE_TOOL = {
+  name: "graph_traverse",
+  description: "Walk the knowledge graph from a fact node. Returns connected facts and their relationships up to N hops. Use when a hot memory breadcrumb shows a connection worth exploring.",
+  parameters: {
+    type: "object" as const,
+    properties: {
+      fact_id: { type: "string", description: "Starting fact ID (visible in hot memory breadcrumbs)" },
+      depth: { type: "number", description: "Hops to traverse (default 2, max 4)" },
+      direction: { type: "string", enum: ["outgoing", "incoming", "both"], description: "Edge direction to follow (default: both)" },
+    },
+    required: ["fact_id"],
+  },
+};
+
 /** All Hippocampus tools */
-export const HIPPOCAMPUS_TOOLS = [FETCH_CHAT_HISTORY_TOOL, MEMORY_QUERY_TOOL];
+export const HIPPOCAMPUS_TOOLS = [FETCH_CHAT_HISTORY_TOOL, MEMORY_QUERY_TOOL, GRAPH_TRAVERSE_TOOL];
 
 /** Library tools — sync retrieval + async ingestion */
 export const LIBRARY_TOOLS = [LIBRARY_INGEST_TOOL, LIBRARY_GET_TOOL, LIBRARY_SEARCH_TOOL, LIBRARY_STATS_TOOL];
@@ -347,7 +361,7 @@ cortex_config({ action: 'set_channel', channel: 'whatsapp', mode: 'off' }).`,
 };
 
 /** Tool names that are handled synchronously (round-trip within same turn) */
-export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file", "write_file", "move_file", "delete_file", "pipeline_status", "pipeline_transition", "cortex_config"]);
+export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "graph_traverse", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file", "write_file", "move_file", "delete_file", "pipeline_status", "pipeline_transition", "cortex_config"]);
 
 // ---------------------------------------------------------------------------
 // Embed Function Type

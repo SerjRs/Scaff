@@ -24,6 +24,7 @@ import { routeOutput, parseResponse, isSilentResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates, storeDispatch, getDispatch } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeWriteFile, executeMoveFile, executeDeleteFile, executePipelineStatus, executePipelineTransition, executeCortexConfig, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
+import { traverseGraph } from "./hippocampus.js";
 import {
   assignMessageWithBoundaryDetection,
   assignMessageToShard,
@@ -412,6 +413,14 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                   channel: args.channel as string | undefined,
                   mode: args.mode as string | undefined,
                 });
+              } else if (tc.name === "graph_traverse") {
+                const args = tc.arguments as Record<string, unknown>;
+                result = traverseGraph(
+                  db,
+                  args.fact_id as string,
+                  typeof args.depth === "number" ? Math.min(args.depth, 4) : 2,
+                  (args.direction as "outgoing" | "incoming" | "both" | undefined) ?? "both",
+                );
               } else {
                 result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
               }

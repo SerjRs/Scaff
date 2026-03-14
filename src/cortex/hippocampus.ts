@@ -499,6 +499,186 @@ export function touchGraphFact(db: DatabaseSync, factId: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Graph Traversal
+// ---------------------------------------------------------------------------
+
+/** A node in a graph traversal result */
+export interface TraversalNode {
+  factId: string;
+  factText: string;
+  factType: string;
+  status: string;
+  depth: number;
+  edges: Array<{
+    edgeType: string;
+    direction: "outgoing" | "incoming";
+    targetFactId: string;
+    targetText: string;
+    isStub: boolean;
+    stubTopic: string | null;
+  }>;
+}
+
+/**
+ * Walk the knowledge graph N hops from a starting fact.
+ * Uses a recursive CTE to collect reachable fact IDs.
+ * Caps at depth=4 max, 50 total nodes max.
+ * Returns a formatted string showing the subgraph.
+ */
+export function traverseGraph(
+  db: DatabaseSync,
+  startFactId: string,
+  depth: number = 2,
+  direction: "outgoing" | "incoming" | "both" = "both",
+): string {
+  // Enforce caps
+  const maxDepth = Math.min(Math.max(depth, 1), 4);
+  const maxNodes = 50;
+
+  // Check starting fact exists
+  const startRow = db.prepare(
+    `SELECT id, fact_text, fact_type, status FROM hippocampus_facts WHERE id = ?`,
+  ).get(startFactId) as Record<string, unknown> | undefined;
+
+  if (!startRow) {
+    return `Error: fact "${startFactId}" not found in knowledge graph.`;
+  }
+
+  // Build direction-specific edge conditions for the CTE
+  let edgeJoin: string;
+  if (direction === "outgoing") {
+    edgeJoin = `SELECT e.to_fact_id AS next_id, r.depth + 1 AS depth
+                FROM hippocampus_edges e
+                JOIN reachable r ON e.from_fact_id = r.fact_id
+                WHERE r.depth < ?`;
+  } else if (direction === "incoming") {
+    edgeJoin = `SELECT e.from_fact_id AS next_id, r.depth + 1 AS depth
+                FROM hippocampus_edges e
+                JOIN reachable r ON e.to_fact_id = r.fact_id
+                WHERE r.depth < ?`;
+  } else {
+    edgeJoin = `SELECT CASE WHEN e.from_fact_id = r.fact_id THEN e.to_fact_id ELSE e.from_fact_id END AS next_id,
+                       r.depth + 1 AS depth
+                FROM hippocampus_edges e
+                JOIN reachable r ON (e.from_fact_id = r.fact_id OR e.to_fact_id = r.fact_id)
+                WHERE r.depth < ?`;
+  }
+
+  // Recursive CTE to find all reachable facts within maxDepth hops
+  const cteQuery = `
+    WITH RECURSIVE reachable(fact_id, depth) AS (
+      SELECT ?, 0
+      UNION
+      ${edgeJoin}
+    )
+    SELECT DISTINCT fact_id, MIN(depth) AS depth
+    FROM reachable
+    GROUP BY fact_id
+    ORDER BY depth ASC
+    LIMIT ?
+  `;
+
+  const reachableRows = db.prepare(cteQuery).all(
+    startFactId, maxDepth, maxNodes,
+  ) as Array<{ fact_id: string; depth: number }>;
+
+  // Build a map of fact_id -> TraversalNode
+  const nodes = new Map<string, TraversalNode>();
+
+  for (const r of reachableRows) {
+    const factRow = db.prepare(
+      `SELECT id, fact_text, fact_type, status FROM hippocampus_facts WHERE id = ?`,
+    ).get(r.fact_id) as Record<string, unknown> | undefined;
+
+    if (!factRow) continue;
+
+    nodes.set(r.fact_id, {
+      factId: r.fact_id,
+      factText: factRow.fact_text as string,
+      factType: factRow.fact_type as string,
+      status: factRow.status as string,
+      depth: r.depth,
+      edges: [],
+    });
+  }
+
+  // Populate edges for each node (only edges that connect to other nodes in the result set)
+  for (const [factId, node] of nodes) {
+    // Outgoing edges
+    const outEdges = db.prepare(`
+      SELECT e.edge_type, e.to_fact_id, e.is_stub, e.stub_topic, f.fact_text AS target_text
+      FROM hippocampus_edges e
+      LEFT JOIN hippocampus_facts f ON f.id = e.to_fact_id
+      WHERE e.from_fact_id = ?
+    `).all(factId) as Array<Record<string, unknown>>;
+
+    for (const e of outEdges) {
+      const targetId = e.to_fact_id as string;
+      const isStub = (e.is_stub as number) === 1;
+      // Only include edges to nodes in our result set, or stub edges
+      if (nodes.has(targetId) || isStub) {
+        node.edges.push({
+          edgeType: e.edge_type as string,
+          direction: "outgoing",
+          targetFactId: targetId,
+          targetText: isStub ? "" : (e.target_text as string ?? ""),
+          isStub,
+          stubTopic: (e.stub_topic as string) ?? null,
+        });
+      }
+    }
+
+    // Incoming edges
+    const inEdges = db.prepare(`
+      SELECT e.edge_type, e.from_fact_id, e.is_stub, e.stub_topic, f.fact_text AS source_text
+      FROM hippocampus_edges e
+      LEFT JOIN hippocampus_facts f ON f.id = e.from_fact_id
+      WHERE e.to_fact_id = ?
+    `).all(factId) as Array<Record<string, unknown>>;
+
+    for (const e of inEdges) {
+      const sourceId = e.from_fact_id as string;
+      const isStub = (e.is_stub as number) === 1;
+      if (nodes.has(sourceId) || isStub) {
+        node.edges.push({
+          edgeType: e.edge_type as string,
+          direction: "incoming",
+          targetFactId: sourceId,
+          targetText: isStub ? "" : (e.source_text as string ?? ""),
+          isStub,
+          stubTopic: (e.stub_topic as string) ?? null,
+        });
+      }
+    }
+  }
+
+  // Format output
+  const startNode = nodes.get(startFactId)!;
+  const lines: string[] = [
+    `Subgraph from "${startNode.factText}" (depth=${maxDepth}, ${nodes.size} nodes):`,
+    "",
+  ];
+
+  for (const [, node] of nodes) {
+    const statusSuffix = node.status !== "active" ? ` [${node.status.toUpperCase()}]` : "";
+    lines.push(`[${node.factId}] ${node.factText} (${node.factType})${statusSuffix}`);
+
+    for (const edge of node.edges) {
+      const arrow = edge.direction === "outgoing" ? "→" : "←";
+      if (edge.isStub) {
+        lines.push(`  ${arrow} ${edge.edgeType} [EVICTED: ${edge.stubTopic ?? "unknown"}]`);
+      } else {
+        lines.push(`  ${arrow} ${edge.edgeType} [${edge.targetFactId}] ${edge.targetText}`);
+      }
+    }
+
+    lines.push("");
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

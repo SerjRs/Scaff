@@ -14,7 +14,7 @@
  */
 
 import type { AssembledContext } from "./context.js";
-import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS, READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL } from "./tools.js";
+import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS, READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL, GRAPH_TRAVERSE_TOOL } from "./tools.js";
 import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 
 // ---------------------------------------------------------------------------
@@ -253,6 +253,7 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "- **pipeline_transition**: Move a pipeline task between stages. Enforces the state machine: " +
     "Cooking → InProgress → InReview → Done. Cannot skip stages (e.g., InProgress → Done is blocked — must go through InReview). " +
     "Automatically updates SPEC.md frontmatter. Use this instead of move_file for pipeline.\n" +
+    "- **graph_traverse**: Walk the knowledge graph from a fact. Use when hot memory breadcrumbs show a connection you want to explore deeper. The fact_id is shown in brackets in the Knowledge Graph section.\n" +
     "- **cortex_config**: Read or modify your own Cortex config (channel modes). " +
     "Use to switch channels on/off. Example: cortex_config({ action: 'set_channel', channel: 'whatsapp', mode: 'off' }) " +
     "to hand off to the main agent.\n" +
@@ -261,7 +262,7 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "This routes to the coding_run template (opus tier, 15min timeout). Default (\"auto\") uses the standard LLM executor.\n\n" +
     "## Sync vs Async Tools\n" +
     "Sync tools execute instantly in the same LLM turn — use for all local operations:\n" +
-    "  read_file, write_file, move_file, delete_file, code_search, memory_query,\n" +
+    "  read_file, write_file, move_file, delete_file, code_search, memory_query, graph_traverse,\n" +
     "  pipeline_status, pipeline_transition, cortex_config, get_task_status, fetch_chat_history\n\n" +
     "sessions_spawn dispatches to an external executor (Router → Claude Code or LLM agent). " +
     "Use ONLY for work that requires writing/modifying code, running tests, creating branches/PRs, " +
@@ -679,7 +680,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           }
 
           // Select tools: sessions_spawn + get_task_status + library + file I/O always; hippocampus when enabled
-          const FILE_IO_TOOLS = [READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL];
+          const FILE_IO_TOOLS = [READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL, GRAPH_TRAVERSE_TOOL];
           const tools = context.hippocampusEnabled
             ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS, ...LIBRARY_TOOLS, ...FILE_IO_TOOLS]
             : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...LIBRARY_TOOLS, ...FILE_IO_TOOLS];
