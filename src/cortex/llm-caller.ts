@@ -280,7 +280,10 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "Your context includes Library breadcrumbs — titles and tags of relevant items. " +
     "Use library_get(id) to pull full details when you need them for answering. " +
     "Use library_search(query) to explore different angles or find items the breadcrumbs don't show. " +
-    "You decide how deep to go — skip the Library for casual questions, pull multiple items for deep analysis.",
+    "You decide how deep to go — skip the Library for casual questions, pull multiple items for deep analysis.\n\n" +
+    "When you detect a knowledge gap — the user asks about something you can't answer well " +
+    "and Library search returns no results — suggest they share relevant links: " +
+    "\"I don't have deep context on [topic]. If you have docs or articles, drop a link and I'll learn it.\"",
   );
 
   const system = systemParts.join("\n\n---\n\n");

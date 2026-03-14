@@ -1126,11 +1126,41 @@ export function executeLibraryStats(): string {
         "SELECT id, title, tags, ingested_at FROM items WHERE status = 'active' ORDER BY ingested_at DESC LIMIT 5",
       ).all() as { id: number; title: string; tags: string; ingested_at: string }[];
 
+      // Embedding health: try sqlite-vec virtual table, gracefully degrade
       let embeddingCount = 0;
+      let embeddingHealthLine = "";
       try {
         const row = libraryDb.prepare("SELECT COUNT(*) as c FROM item_embeddings").get() as { c: number };
         embeddingCount = row.c;
-      } catch { /* item_embeddings may not exist */ }
+        const activeCount = byStatus.find((s) => s.status === "active")?.c ?? total.c;
+        const pct = activeCount > 0 ? Math.round((embeddingCount / activeCount) * 100) : 0;
+        const missing = activeCount - embeddingCount;
+        if (pct < 80) {
+          embeddingHealthLine = `Embedding health: ${embeddingCount}/${activeCount} ⚠️ (${missing} items invisible to search)`;
+        } else {
+          embeddingHealthLine = `Embedding health: ${embeddingCount}/${activeCount} ✅`;
+        }
+      } catch {
+        embeddingHealthLine = "Embedding health: unavailable (sqlite-vec not loaded)";
+      }
+
+      // Weekly trend: group items by ISO week from ingested_at (last 3 weeks)
+      const weeklyTrendParts: string[] = [];
+      try {
+        const now = new Date();
+        for (let w = 0; w < 3; w++) {
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - now.getDay() + 1 - (w * 7)); // Monday of week
+          weekStart.setHours(0, 0, 0, 0);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 7);
+          const row = libraryDb.prepare(
+            "SELECT COUNT(*) as c FROM items WHERE ingested_at >= ? AND ingested_at < ? AND status = 'active'",
+          ).get(weekStart.toISOString(), weekEnd.toISOString()) as { c: number };
+          const label = w === 0 ? "This week" : w === 1 ? "Last week" : "2 weeks ago";
+          weeklyTrendParts.push(`${label}: ${row.c}`);
+        }
+      } catch { /* best-effort */ }
 
       // Tag frequency
       const allTags = libraryDb.prepare(
@@ -1150,11 +1180,45 @@ export function executeLibraryStats(): string {
         .slice(0, 15)
         .map(([tag, count]) => `${tag} (${count})`);
 
+      // Domain coverage: cluster tags into high-level categories
+      const domainMap: Record<string, string[]> = {
+        "AI/Agents": ["ai", "agents", "llm", "machine-learning", "ml", "ai-agents", "nlp", "embeddings", "rag", "prompt-engineering"],
+        "Security": ["security", "auth", "authentication", "authorization", "encryption", "oauth", "vulnerabilities"],
+        "Infrastructure": ["infrastructure", "devops", "cloud", "kubernetes", "docker", "ci-cd", "monitoring", "deployment"],
+        "Frontend": ["frontend", "react", "vue", "angular", "css", "ui", "ux", "web"],
+        "Backend": ["backend", "api", "database", "sql", "rest", "graphql", "microservices"],
+      };
+
+      const domainCounts = new Map<string, number>();
+      let categorizedTotal = 0;
+      for (const [domain, keywords] of Object.entries(domainMap)) {
+        let count = 0;
+        for (const [tag, tagCount] of tagCounts) {
+          if (keywords.some((kw) => tag.toLowerCase().includes(kw))) {
+            count += tagCount;
+          }
+        }
+        if (count > 0) {
+          domainCounts.set(domain, count);
+          categorizedTotal += count;
+        }
+      }
+      // "Other" = items with tags that didn't match any domain
+      const totalTagged = [...tagCounts.values()].reduce((a, b) => a + b, 0);
+      const otherCount = totalTagged - categorizedTotal;
+      if (otherCount > 0) {
+        domainCounts.set("Other", otherCount);
+      }
+
+      const domainLines = [...domainCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([domain, count]) => `  ${domain}: ${count} items`);
+
       const lines = [
         `📚 Library Statistics`,
-        `Total items: ${total.c}`,
-        `By status: ${byStatus.map((s) => `${s.status}: ${s.c}`).join(", ")}`,
-        `With embeddings: ${embeddingCount}`,
+        `Total items: ${total.c} (${byStatus.map((s) => `${s.status}: ${s.c}`).join(", ")})`,
+        embeddingHealthLine,
+        weeklyTrendParts.length > 0 ? weeklyTrendParts.join(" | ") : "",
         ``,
         `Recent ingestions:`,
         ...recent.map((r) => {
@@ -1164,7 +1228,9 @@ export function executeLibraryStats(): string {
         }),
         ``,
         `Top tags: ${topTags.join(", ")}`,
-      ];
+        ``,
+        ...(domainLines.length > 0 ? [`Domain coverage:`, ...domainLines] : []),
+      ].filter((line) => line !== undefined);
 
       return lines.join("\n");
     } finally {
