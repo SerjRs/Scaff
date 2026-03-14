@@ -1,12 +1,11 @@
-# STATE — 017d
+# STATE — 017h
 ## Status: Done
 ## Milestones
-- [x] `hippocampus_facts_vec` table created + `initGraphVecTable()` function
-- [x] `insertFact()` fixed to use `hippocampus_facts_vec` instead of `cortex_hot_memory_vec`
-- [x] `searchGraphFacts()` function added
-- [x] Extraction prompt rewritten for structured JSON (facts + edges + types)
-- [x] `dedupAndInsertGraphFact()` function added
-- [x] `runFactExtractor()` updated to use graph insertion
-- [x] `initGraphVecTable()` called at startup in index.ts
-- [x] Tests written and passing (25/25)
-- [x] Branch pushed, PR created (https://github.com/SerjRs/Scaff/pull/10)
+- [x] `getStaleGraphFacts()` added
+- [x] `evictFact()` — cold storage + status + edge stubs
+- [x] `reviveFact()` — status restore + edge reconnection
+- [x] `pruneOldStubs()` — cleanup old bilateral stubs
+- [x] `runVectorEvictor()` updated with graph eviction pass
+- [x] `executeMemoryQuery()` updated with revival logic
+- [x] Tests written and passing (9/9)
+- [x] Branch pushed, PR created

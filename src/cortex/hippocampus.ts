@@ -537,6 +537,106 @@ export function touchGraphFact(db: DatabaseSync, factId: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Graph Eviction / Revival
+// ---------------------------------------------------------------------------
+
+/** Get stale graph facts: old + low hit count (eviction candidates). Only active facts. */
+export function getStaleGraphFacts(
+  db: DatabaseSync,
+  olderThanDays = 14,
+  maxHitCount = 3,
+): GraphFact[] {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - olderThanDays);
+  const cutoffIso = cutoff.toISOString();
+
+  const rows = db.prepare(`
+    SELECT id, fact_text, fact_type, confidence, status, source_type, source_ref,
+           created_at, last_accessed_at, hit_count
+    FROM hippocampus_facts
+    WHERE status = 'active' AND last_accessed_at < ? AND hit_count <= ?
+    ORDER BY hit_count ASC, last_accessed_at ASC
+  `).all(cutoffIso, maxHitCount) as Record<string, unknown>[];
+
+  return rows.map(rowToGraphFact);
+}
+
+/** Evict a graph fact to cold storage, marking edges as stubs. */
+export function evictFact(
+  db: DatabaseSync,
+  factId: string,
+  embedding: Float32Array,
+): void {
+  // 1. Read the fact
+  const factRow = db.prepare(
+    `SELECT fact_text FROM hippocampus_facts WHERE id = ?`,
+  ).get(factId) as { fact_text: string } | undefined;
+  if (!factRow) return;
+
+  // 2. Insert into cold storage
+  const coldRowid = insertColdFact(db, factRow.fact_text, embedding);
+
+  // 3. Update fact status
+  db.prepare(`
+    UPDATE hippocampus_facts
+    SET status = 'evicted', cold_vector_id = ?
+    WHERE id = ?
+  `).run(coldRowid, factId);
+
+  // 4. Mark touching edges as stubs
+  const stubTopic = factRow.fact_text.slice(0, 50);
+  db.prepare(`
+    UPDATE hippocampus_edges
+    SET is_stub = 1, stub_topic = ?
+    WHERE from_fact_id = ? OR to_fact_id = ?
+  `).run(stubTopic, factId, factId);
+}
+
+/** Revive an evicted graph fact back to active status. Reconnects edges where the other endpoint is active. */
+export function reviveFact(db: DatabaseSync, factId: string): void {
+  // 1. Restore fact status
+  db.prepare(`
+    UPDATE hippocampus_facts
+    SET status = 'active', hit_count = 1, last_accessed_at = ?, cold_vector_id = NULL
+    WHERE id = ?
+  `).run(new Date().toISOString(), factId);
+
+  // 2. Reconnect edges where the OTHER endpoint is active
+  // Edges where this fact is from_fact_id: check to_fact_id status
+  db.prepare(`
+    UPDATE hippocampus_edges
+    SET is_stub = 0, stub_topic = NULL
+    WHERE from_fact_id = ? AND is_stub = 1
+      AND to_fact_id IN (SELECT id FROM hippocampus_facts WHERE status = 'active')
+  `).run(factId);
+
+  // Edges where this fact is to_fact_id: check from_fact_id status
+  db.prepare(`
+    UPDATE hippocampus_edges
+    SET is_stub = 0, stub_topic = NULL
+    WHERE to_fact_id = ? AND is_stub = 1
+      AND from_fact_id IN (SELECT id FROM hippocampus_facts WHERE status = 'active')
+  `).run(factId);
+}
+
+/** Prune old stub edges where both endpoints are evicted. Returns count of deleted edges. */
+export function pruneOldStubs(db: DatabaseSync, olderThanDays = 90): number {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - olderThanDays);
+  const cutoffIso = cutoff.toISOString();
+
+  const result = db.prepare(`
+    DELETE FROM hippocampus_edges
+    WHERE is_stub = 1
+      AND created_at < ?
+      AND from_fact_id IN (SELECT id FROM hippocampus_facts WHERE status = 'evicted')
+      AND to_fact_id IN (SELECT id FROM hippocampus_facts WHERE status = 'evicted')
+  `).run(cutoffIso);
+
+  return Number(result.changes);
+}
+
+// ---------------------------------------------------------------------------
 // Graph Traversal
 // ---------------------------------------------------------------------------
 
