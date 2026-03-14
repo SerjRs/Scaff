@@ -16,9 +16,9 @@ Script: `~/.openclaw/rebuild.ps1` — builds, kills gateway, restarts, wakes Sca
 
 **Usage (always detached — inline kills your session mid-exec):**
 ```powershell
-# Use the cmd wrapper to avoid PowerShell escaping issues in exec tool:
-Start-Process cmd -ArgumentList '/c "C:\Users\Temp User\.openclaw\do-rebuild.cmd" > "C:\Users\Temp User\.openclaw\rebuild.log" 2>&1' -WindowStyle Hidden
+Start-Process powershell -ArgumentList '-File "C:\Users\Temp User\.openclaw\rebuild.ps1" -Build' -WindowStyle Hidden -RedirectStandardOutput "C:\Users\Temp User\.openclaw\rebuild.log" -RedirectStandardError "C:\Users\Temp User\.openclaw\rebuild-err.log"
 ```
+**Do NOT use `do-rebuild.cmd`** — it's a stale hardcoded script with a fixed PID. `rebuild.ps1` finds the gateway PID dynamically.
 - `-Build` flag: run `pnpm build` before restart. Omit for restart-only.
 - Wake-up: one-shot cron fires ~90s after restart with `REBUILD_WAKEUP` system event
 - **When you receive `REBUILD_WAKEUP`**: send a WhatsApp message to Serj confirming you're back online
