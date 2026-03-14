@@ -3,10 +3,10 @@ id: "011"
 title: "Cortex loop silence bugs"
 priority: high
 author: user
-status: in-progress
+status: done
 executor: claude-opus
 branch: feat/011-cortex-loop-silence-bugs
-pr: pending
+pr: 9
 moved_at: "2026-03-14"
 ---
 
