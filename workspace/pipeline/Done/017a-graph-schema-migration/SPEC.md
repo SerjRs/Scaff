@@ -4,7 +4,7 @@ title: "Graph schema (hippocampus_facts + hippocampus_edges) + migration"
 created: "2026-03-14"
 author: "scaff"
 priority: "critical"
-status: "in_progress"
+status: "done"
 moved_at: "2026-03-14"
 depends_on: []
 parent: "017"
