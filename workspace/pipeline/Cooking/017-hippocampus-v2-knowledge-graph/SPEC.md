@@ -117,16 +117,33 @@ Each bracket is a pull-cord. The LLM sees the connections and can decide to pull
 
 ---
 
-## Library Becomes an Ingestion Pipeline, Not a Separate Store
+## Library Becomes a Content Store, Hippocampus Holds the Knowledge
 
-Articles stop living in a separate database. When the Librarian processes a URL:
+Library and Hippocampus have distinct roles:
 
-1. **Extract facts** — not just a summary blob. Individual claims, entities, relationships.
-2. **Create nodes** — each fact becomes a node in the Hippocampus graph.
-3. **Create edges** — facts from the same article are connected (`part_of` → article). Cross-article connections are found during consolidation.
-4. **Provenance** — every fact traces back to its source (URL, article title, ingestion date).
+- **Library** = what we read. Raw content store. Holds URLs, titles, full_text, ingestion dates. The archive of source material. Cortex can always pull the original article when needed.
+- **Hippocampus** = what we know. The knowledge graph. Holds facts, entities, edges, reasoning chains — extracted from articles AND conversations.
+- **The link between them** = `sourced_from` edges. Every fact extracted from an article traces back to its Library item. "Where did I learn this?" is always answerable.
 
-The Library database may still exist as a staging area (raw content, full_text for re-processing), but the *knowledge* lives in Hippocampus. One graph. One system.
+```
+[Hippocampus Graph]
+  fact: "O-RAN reduces TCO by 30%"
+    → sourced_from: library://item/14
+    → related_to: "North region budget"
+    → contradicts: "Vendor Q3 estimate"
+
+[Library]
+  item/14: { url, title, full_text, ingested_at }
+```
+
+When the Librarian processes a URL:
+
+1. **Store raw content** in Library — URL, title, full_text. This is the permanent source record.
+2. **Extract facts** — not a summary blob. Individual claims, entities, relationships.
+3. **Create nodes** in Hippocampus — each fact becomes a node in the knowledge graph.
+4. **Create edges** — facts from the same article connect to each other (`part_of`). Each fact connects back to the Library item (`sourced_from`). Cross-article connections are found during consolidation.
+
+Library stays as `library.sqlite`. Hippocampus stays in `bus.sqlite` (or wherever the graph tables live). They're separate databases with different purposes, linked by `sourced_from` edges. Not merged — complementary.
 
 ---
 
@@ -182,8 +199,9 @@ When assembling context for an LLM turn:
 
 ## What Gets Retired (Cortex-side only)
 
-- **Library as a separate knowledge store** — becomes an ingestion pipeline into Hippocampus. `library.sqlite` may persist for raw content storage and re-processing, but the *knowledge* (facts, entities, connections) lives in Hippocampus. Cortex queries one graph, not two databases.
+- **Library as a knowledge store** — Library keeps raw content (URLs, full_text) but stops being where Cortex looks for knowledge. Knowledge (facts, entities, edges) is extracted into Hippocampus during ingestion. Library becomes the archive; Hippocampus becomes the brain.
 - **Flat `cortex_hot_memory`** — replaced by the hot memory graph (facts + edges). Same table, extended with relationships.
+- **Library breadcrumbs in system prompt** — replaced by hot memory graph breadcrumbs. Instead of injecting article titles, Cortex sees facts with their connections. The facts link back to Library items via `sourced_from` edges when Cortex needs the source.
 
 > **Not affected:** The main agent's MEMORY.md, memory/*.md daily files, and session JSONL backups are a separate system and are not part of this spec.
 
