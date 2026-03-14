@@ -14,7 +14,7 @@
  */
 
 import type { AssembledContext } from "./context.js";
-import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS, READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL } from "./tools.js";
+import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS, READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL } from "./tools.js";
 import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 
 // ---------------------------------------------------------------------------
@@ -235,6 +235,7 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "- **write_file**: Write or append to local files. Creates parent dirs. Paths relative to workspace.\n" +
     "- **move_file**: Move or rename files. Use for pipeline transitions. Paths relative to workspace.\n" +
     "- **delete_file**: Delete a file. Files only, no directories. Use with care.\n" +
+    "- **pipeline_status**: Get pipeline overview — task counts and summaries per stage. Use read_file to drill into specific tasks.\n" +
     "- **sessions_spawn executor param**: Pass `executor: \"coding\"` when the task requires multi-file code changes, " +
     "running tests, creating branches/PRs, or any work best handled by Claude Code CLI. " +
     "This routes to the coding_run template (opus tier, 15min timeout). Default (\"auto\") uses the standard LLM executor.\n\n" +
@@ -640,7 +641,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           }
 
           // Select tools: sessions_spawn + get_task_status + library + file I/O always; hippocampus when enabled
-          const FILE_IO_TOOLS = [READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL];
+          const FILE_IO_TOOLS = [READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL];
           const tools = context.hippocampusEnabled
             ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS, ...LIBRARY_TOOLS, ...FILE_IO_TOOLS]
             : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...LIBRARY_TOOLS, ...FILE_IO_TOOLS];
