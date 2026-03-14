@@ -239,6 +239,18 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "- **sessions_spawn executor param**: Pass `executor: \"coding\"` when the task requires multi-file code changes, " +
     "running tests, creating branches/PRs, or any work best handled by Claude Code CLI. " +
     "This routes to the coding_run template (opus tier, 15min timeout). Default (\"auto\") uses the standard LLM executor.\n\n" +
+    "## Sync vs Async Tools\n" +
+    "Sync tools execute instantly in the same LLM turn — use for all local operations:\n" +
+    "  read_file, write_file, move_file, delete_file, code_search, memory_query,\n" +
+    "  pipeline_status, get_task_status, fetch_chat_history\n\n" +
+    "sessions_spawn dispatches to an external executor (Router → Claude Code or LLM agent). " +
+    "Use ONLY for work that requires writing/modifying code, running tests, creating branches/PRs, " +
+    "or complex multi-step tasks needing their own agent. " +
+    "NEVER use sessions_spawn to move files, read files, or do anything a sync tool handles. " +
+    "A file move that takes 1 sync tool call should not become a 30-second async dispatch.\n\n" +
+    "## Pipeline Tasks\n" +
+    "When a pipeline task completes, a [PIPELINE REVIEW REQUIRED] checklist will be appended to the result. " +
+    "Follow every step before replying to the user. Do not leave tasks in InProgress after the executor reports success.\n\n" +
     "## Library\n" +
     "When the user shares a URL, always call library_ingest(url) to store it in the Library. " +
     "Every link the user shares is domain knowledge worth retaining.\n\n" +

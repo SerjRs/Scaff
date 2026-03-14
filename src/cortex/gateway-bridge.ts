@@ -400,13 +400,34 @@ export async function initGatewayCortex(params: {
 
         if (job.status === "completed") {
           const result = job.result ?? "Task completed.";
+
+          // Detect pipeline tasks: description or result references pipeline paths or key files
+          const isPipelineTask =
+            taskDescription.includes("pipeline/InProgress/") ||
+            taskDescription.includes("CLAUDE.md") ||
+            taskDescription.includes("SPEC.md") ||
+            taskDescription.includes("STATE.md") ||
+            result.includes("pipeline/InProgress/") ||
+            result.includes("CLAUDE.md") ||
+            result.includes("feat/");  // branch names from coding executor PRs
+
+          const reviewChecklist = isPipelineTask
+            ? "\n\n[PIPELINE REVIEW REQUIRED]\n" +
+              "The executor reports success. Before replying to the user, complete each step:\n" +
+              "1. Review: did the build pass? Check result for errors.\n" +
+              "2. Merge: if a PR was created, merge it (gh pr merge <number> --squash)\n" +
+              "3. Move: move task folder from InProgress to Done (use move_file)\n" +
+              "4. Update STATE.md with final status\n" +
+              "5. Inform the user: what was done, PR link, merged status"
+            : "";
+
           // Write result directly to session as a foreground message
           appendTaskResult(instance.db, {
             taskId: jobId,
             description: taskDescription,
             status: "completed",
             channel: replyChannel,
-            result,
+            result: result + reviewChecklist,
             completedAt,
             issuer: cortexIssuer,
           });
