@@ -207,6 +207,52 @@ When assembling context for an LLM turn:
 
 ---
 
+## Fact Eviction: How the Graph Forgets Without Losing
+
+The knowledge graph grows continuously — every conversation, every article adds facts and edges. Unbounded growth kills performance and pollutes the hot memory selection. Facts need to fade.
+
+### Three tiers of memory
+
+```
+Hot graph (System Floor)     →  top-N facts + edges, injected every turn
+Full knowledge graph (DB)    →  all active facts + edges, zero token cost
+Cold storage (vectors)       →  evicted facts, searchable but disconnected from graph
+```
+
+### How eviction works
+
+The Gardener's **Vector Evictor** (weekly) scans the full knowledge graph:
+
+```
+SELECT * FROM facts
+WHERE last_accessed_at < datetime('now', '-14 days')
+AND hit_count < 3
+```
+
+For each stale fact:
+1. **Embed** the fact text into cold vector storage (sqlite-vec)
+2. **Remove the fact node** from the knowledge graph (content gone)
+3. **Keep edge stubs** — lightweight pointers remain: `{ from: stub, to: connected_fact, type: "because" }`. The stub records the evicted fact's ID, a topic hint, and its cold storage vector ID. No content, just skeleton.
+
+Edge stubs are tiny (two IDs + a type + a topic hint). They preserve the graph's structure even as fact content comes and goes.
+
+### How revival works
+
+When a semantic search (`memory_query`) hits an evicted fact in cold storage:
+1. **Re-insert** the fact into the knowledge graph as an active node
+2. **Reconnect** using the edge stubs — the connections are already there, just reattach
+3. **Reset** hit_count and last_accessed_at — the fact is alive again
+
+This is how forgetting works in a brain: you don't lose the memory, you lose instant access. A trigger (relevant conversation, related article) brings it back, fully connected.
+
+### Graph size stays bounded
+
+- Active facts in the full graph: bounded by eviction policy (e.g., facts accessed in the last 14 days OR with hit_count ≥ 3)
+- Edge stubs: tiny, grow slowly, can be pruned if both endpoints are evicted and the stub is >90 days old
+- Cold vectors: grow forever but cost nothing (no graph traversal, no token injection)
+
+---
+
 ## What Stays
 
 - **4-layer model** — unchanged. System Floor, Foreground, Background, Archived.
