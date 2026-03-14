@@ -101,6 +101,25 @@ export interface SessionMessage {
   shardId?: string;
 }
 
+/** Task dispatch context stored by Cortex at spawn time */
+export interface TaskDispatch {
+  taskId: string;
+  channel: string;
+  channelContext: Record<string, unknown> | null;
+  counterpartId: string | null;
+  counterpartName: string | null;
+  shardId: string | null;
+  taskSummary: string | null;
+  dispatchedAt: string;
+  priority: string;
+  executor: string | null;
+  issuer: string | null;
+  status: string;
+  completedAt: string | null;
+  result: string | null;
+  error: string | null;
+}
+
 /** Append an inbound message to the unified session */
 export function appendToSession(db: DatabaseSync, envelope: CortexEnvelope, issuer = "agent:main:cortex"): void {
   const stmt = db.prepare(`
@@ -157,8 +176,7 @@ export function appendStructuredContent(
 }
 
 /** Write a task result directly to the session as a foreground message.
- *  This replaces the old cortex_pending_ops → System Floor path so the LLM
- *  sees completed/failed results as conversation messages it naturally responds to. */
+ *  Task results are written directly to cortex_session as foreground messages. */
 export function appendTaskResult(db: DatabaseSync, params: {
   taskId: string;
   description: string;
@@ -333,6 +351,90 @@ export function getChannelStates(db: DatabaseSync): ChannelState[] {
 }
 
 // ---------------------------------------------------------------------------
+// Task Dispatch Context (007)
+// ---------------------------------------------------------------------------
+
+/** Record dispatch context when Cortex spawns a task. */
+export function storeDispatch(db: DatabaseSync, params: {
+  taskId: string;
+  channel: string;
+  channelContext?: Record<string, unknown> | null;
+  counterpartId?: string | null;
+  counterpartName?: string | null;
+  shardId?: string | null;
+  taskSummary: string;
+  priority?: string;
+  executor?: string | null;
+  issuer?: string;
+}): void {
+  db.prepare(`
+    INSERT INTO cortex_task_dispatch
+      (task_id, channel, channel_context, counterpart_id, counterpart_name,
+       shard_id, task_summary, dispatched_at, priority, executor, issuer)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    params.taskId,
+    params.channel,
+    params.channelContext ? JSON.stringify(params.channelContext) : null,
+    params.counterpartId ?? null,
+    params.counterpartName ?? null,
+    params.shardId ?? null,
+    params.taskSummary,
+    new Date().toISOString(),
+    params.priority ?? "normal",
+    params.executor ?? null,
+    params.issuer ?? "agent:main:cortex",
+  );
+}
+
+/** Look up dispatch context by taskId. Returns null if not found. */
+export function getDispatch(db: DatabaseSync, taskId: string): TaskDispatch | null {
+  const row = db.prepare(
+    `SELECT * FROM cortex_task_dispatch WHERE task_id = ?`
+  ).get(taskId) as Record<string, unknown> | undefined;
+
+  if (!row) return null;
+
+  let channelContext: Record<string, unknown> | null = null;
+  if (typeof row.channel_context === "string") {
+    try { channelContext = JSON.parse(row.channel_context); } catch { /* best-effort */ }
+  }
+
+  return {
+    taskId: row.task_id as string,
+    channel: row.channel as string,
+    channelContext,
+    counterpartId: (row.counterpart_id as string) ?? null,
+    counterpartName: (row.counterpart_name as string) ?? null,
+    shardId: (row.shard_id as string) ?? null,
+    taskSummary: (row.task_summary as string) ?? null,
+    dispatchedAt: row.dispatched_at as string,
+    priority: (row.priority as string) ?? "normal",
+    executor: (row.executor as string) ?? null,
+    issuer: (row.issuer as string) ?? null,
+    status: (row.status as string) ?? "pending",
+    completedAt: (row.completed_at as string) ?? null,
+    result: (row.result as string) ?? null,
+    error: (row.error as string) ?? null,
+  };
+}
+
+/** Update dispatch record when a task completes or fails. */
+export function completeDispatch(
+  db: DatabaseSync,
+  taskId: string,
+  status: "completed" | "failed",
+  result?: string,
+  error?: string,
+): void {
+  db.prepare(`
+    UPDATE cortex_task_dispatch
+    SET status = ?, completed_at = ?, result = ?, error = ?
+    WHERE task_id = ?
+  `).run(status, new Date().toISOString(), result ?? null, error ?? null, taskId);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -390,4 +492,33 @@ function _migrateSchema(db: DatabaseSync): void {
     // Already exists or table not ready
   }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_shards_issuer ON cortex_shards(issuer)`);
+
+  // 007: Drop dead cortex_pending_ops, create cortex_task_dispatch
+  // cortex_pending_ops has no production readers/writers — safe to drop.
+  // Check if cortex_task_dispatch already exists to make migration idempotent.
+  const dispatchExists = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='cortex_task_dispatch'`
+  ).get();
+  if (!dispatchExists) {
+    db.exec(`DROP TABLE IF EXISTS cortex_pending_ops`);
+    db.exec(`
+      CREATE TABLE cortex_task_dispatch (
+        task_id          TEXT PRIMARY KEY,
+        channel          TEXT NOT NULL,
+        channel_context  TEXT,
+        counterpart_id   TEXT,
+        counterpart_name TEXT,
+        shard_id         TEXT,
+        task_summary     TEXT,
+        dispatched_at    TEXT NOT NULL,
+        priority         TEXT DEFAULT 'normal',
+        executor         TEXT,
+        issuer           TEXT,
+        status           TEXT DEFAULT 'pending',
+        completed_at     TEXT,
+        result           TEXT,
+        error            TEXT
+      )
+    `);
+  }
 }
