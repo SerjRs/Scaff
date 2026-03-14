@@ -20,7 +20,7 @@ import {
 import type { AdapterRegistry } from "./channel-adapter.js";
 import { assembleContext, type AssembledContext, type ToolResultEntry } from "./context.js";
 import type { CortexLLMResult } from "./llm-caller.js";
-import { routeOutput, parseResponse } from "./output.js";
+import { routeOutput, parseResponse, isSilentResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates, storeDispatch, getDispatch } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeWriteFile, executeMoveFile, executeDeleteFile, executePipelineStatus, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
@@ -301,6 +301,10 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         // @see workspace/docs/working/06_compressed-reference-loop.md
         const allRoundTrips: Array<{ previousContent: unknown[]; toolResults: ToolResultEntry[] }> = [];
 
+        // Fix 3: Sync tool dedup — cache identical calls within a single turn
+        // to prevent wasted API calls when the LLM repeats the same tool call.
+        const syncToolCache = new Map<string, string>();
+
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           // Check for sync tool calls
           const syncCalls = llmResult.toolCalls.filter((tc) => SYNC_TOOL_NAMES.has(tc.name));
@@ -315,6 +319,20 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           const toolResults: ToolResultEntry[] = [];
           for (const tc of syncCalls) {
             let result: string;
+
+            // Fix 3: Check dedup cache before executing
+            const dedupKey = crypto.createHash("sha256")
+              .update(tc.name + JSON.stringify(tc.arguments))
+              .digest("hex");
+            const cachedResult = syncToolCache.get(dedupKey);
+            if (cachedResult !== undefined) {
+              result = cachedResult + "\n[Cached — identical call already executed this turn]";
+              appendStructuredContent(db, msg.envelope.id, "user", "internal",
+                [{ type: "tool_result", tool_use_id: tc.id, content: result }], issuer, assignedShardId);
+              toolResults.push({ toolCallId: tc.id, toolName: tc.name, content: result });
+              continue;
+            }
+
             try {
               if (tc.name === "fetch_chat_history") {
                 const args = tc.arguments as Record<string, unknown>;
@@ -387,6 +405,8 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             } catch (err) {
               result = JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
             }
+            // Fix 3: Store result in dedup cache
+            syncToolCache.set(dedupKey, result);
             // Store tool result as structured content block
             appendStructuredContent(db, msg.envelope.id, "user", "internal",
               [{ type: "tool_result", tool_use_id: tc.id, content: result }], issuer, assignedShardId);
@@ -405,6 +425,41 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             toolRoundTrips: allRoundTrips,
           };
           llmResult = await callLLM(context);
+        }
+
+        // Fix 2: Post-sync-loop text guard — if sync tools ran but LLM produced
+        // no user-facing text, nudge it once to summarize, then fall back to raw summary.
+        if (allRoundTrips.length > 0 && isSilentResponse(llmResult.text)) {
+          // Inject system nudge and re-call LLM once
+          const nudgeRoundTrip = {
+            previousContent: llmResult._rawContent ?? [],
+            toolResults: [{
+              toolCallId: "__nudge__",
+              toolName: "__system__",
+              content: "[System: You used tools but produced no response. Summarize your findings for the user.]",
+            }],
+          };
+          context = {
+            ...context,
+            toolRoundTrips: [...allRoundTrips, nudgeRoundTrip],
+          };
+          llmResult = await callLLM(context);
+
+          // If nudge still failed, produce a raw tool summary
+          if (isSilentResponse(llmResult.text)) {
+            const toolNames = allRoundTrips
+              .flatMap((rt) => rt.toolResults.map((tr) => tr.toolName))
+              .filter((n) => n !== "__system__");
+            const uniqueTools = [...new Set(toolNames)];
+            llmResult = {
+              ...llmResult,
+              text: `I used ${uniqueTools.join(", ")} but couldn't produce a summary. Here's what I found:\n\n${
+                allRoundTrips.flatMap((rt) => rt.toolResults.map((tr) =>
+                  `**${tr.toolName}**: ${tr.content.slice(0, 200)}${tr.content.length > 200 ? "…" : ""}`
+                )).join("\n")
+              }`,
+            };
+          }
         }
 
         const llmResponse = llmResult.text;
@@ -628,6 +683,13 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
           }
         }
 
+        // Fix 1: Async dispatch fallback — if async tools were dispatched but the LLM
+        // produced no text, synthesize a fallback so the user gets feedback.
+        let llmResponseFinal = llmResponse;
+        if (asyncCalls.length > 0 && isSilentResponse(llmResponseFinal)) {
+          llmResponseFinal = "On it — working in the background.";
+        }
+
         // 6. Parse response
         // For ops triggers: resolve the reply channel from the dispatch context
         // so the LLM's response routes to the correct channel (e.g., webchat) instead
@@ -659,7 +721,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         }
 
         const output = parseResponse({
-          llmResponse,
+          llmResponse: llmResponseFinal,
           triggerEnvelope: effectiveEnvelope,
         });
 
