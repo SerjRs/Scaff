@@ -4,7 +4,7 @@ title: "System Floor injection with edge breadcrumbs"
 created: "2026-03-14"
 author: "scaff"
 priority: "critical"
-status: "cooking"
+status: "in_progress"
 moved_at: "2026-03-14"
 depends_on: ["017a"]
 parent: "017"
