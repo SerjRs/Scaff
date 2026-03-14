@@ -9,4 +9,4 @@
 - [x] `runFactExtractor()` updated to use graph insertion
 - [x] `initGraphVecTable()` called at startup in index.ts
 - [x] Tests written and passing (25/25)
-- [ ] Branch pushed, PR created
+- [x] Branch pushed, PR created (https://github.com/SerjRs/Scaff/pull/10)
