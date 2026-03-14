@@ -22,7 +22,7 @@ import { assembleContext, type AssembledContext, type ToolResultEntry } from "./
 import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse } from "./output.js";
 import crypto from "node:crypto";
-import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates } from "./session.js";
+import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates, storeDispatch, getDispatch } from "./session.js";
 import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeWriteFile, executeMoveFile, executeDeleteFile, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
 import {
   assignMessageWithBoundaryDetection,
@@ -49,7 +49,6 @@ export interface ResolvedResource {
 /** Parameters passed to the onSpawn callback when Cortex delegates to the Router */
 export interface SpawnParams {
   task: string;
-  replyChannel: string | null;
   resultPriority: "urgent" | "normal" | "background";
   envelopeId: string;
   /** Pre-generated task ID — Cortex owns the UUID, Router stores it as-is */
@@ -504,12 +503,24 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
 
             // 3. Spawn via Router
             const taskId = crypto.randomUUID();
-            const replyChannel = (msg.envelope.channel !== "router" && msg.envelope.channel !== "cron")
-              ? msg.envelope.channel : null;
+
+            // Record dispatch context — stays in Cortex, never enters the pipeline
+            const { channel: _, ...channelAttrs } = msg.envelope.replyContext ?? { channel: msg.envelope.channel };
+            storeDispatch(db, {
+              taskId,
+              channel: msg.envelope.channel,
+              channelContext: channelAttrs,
+              counterpartId: msg.envelope.sender?.id,
+              counterpartName: msg.envelope.sender?.name,
+              shardId: assignedShardId,
+              taskSummary: librarianPrompt.slice(0, 200),
+              priority: "normal",
+              executor: null,
+              issuer,
+            });
 
             const jobId = onSpawn?.({
               task: librarianPrompt,
-              replyChannel,
               resultPriority: "normal",
               envelopeId: msg.envelope.id,
               taskId,
@@ -535,13 +546,24 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             const task = args.task ?? "";
             const resultPriority = (args.priority as "urgent" | "normal" | "background") ?? "normal";
             const executor = args.executor === "coding" ? "coding" as const : undefined;
-            // Reply channel = source channel if user-facing, null if internal/system
-            const replyChannel = (msg.envelope.channel !== "router" && msg.envelope.channel !== "cron")
-              ? msg.envelope.channel
-              : null;
 
             // Cortex owns the UUID — Router stores it as-is
             const taskId = crypto.randomUUID();
+
+            // Record dispatch context — stays in Cortex, never enters the pipeline
+            const { channel: _, ...channelAttrs } = msg.envelope.replyContext ?? { channel: msg.envelope.channel };
+            storeDispatch(db, {
+              taskId,
+              channel: msg.envelope.channel,
+              channelContext: channelAttrs,
+              counterpartId: msg.envelope.sender?.id,
+              counterpartName: msg.envelope.sender?.name,
+              shardId: assignedShardId,
+              taskSummary: task.slice(0, 200),
+              priority: resultPriority,
+              executor: executor ?? null,
+              issuer,
+            });
 
             // Resolve resources — read files from workspace, pass text as-is
             const resolvedResources: ResolvedResource[] = [];
@@ -573,7 +595,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
 
             // Fire spawn — Router result will arrive via gateway-bridge → appendTaskResult
             const jobId = onSpawn({
-              task, replyChannel, resultPriority, envelopeId: msg.envelope.id, taskId,
+              task, resultPriority, envelopeId: msg.envelope.id, taskId,
               resources: resolvedResources.length > 0 ? resolvedResources : undefined,
               executor,
             });
@@ -584,7 +606,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 taskId,
                 description: task.slice(0, 200),
                 status: "failed",
-                channel: replyChannel ?? msg.envelope.channel,
+                channel: msg.envelope.channel,
                 error: "Router spawn failed",
                 completedAt: new Date().toISOString(),
                 issuer,
@@ -601,17 +623,32 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
         }
 
         // 6. Parse response
-        // For ops triggers: resolve the reply channel from the trigger metadata
+        // For ops triggers: resolve the reply channel from the dispatch context
         // so the LLM's response routes to the correct channel (e.g., webchat) instead
         // of defaulting to the trigger's channel ("router").
         let effectiveEnvelope = msg.envelope;
         if (isOpsTrigger) {
-          const replyChannel = msg.envelope.metadata?.replyChannel as string | undefined;
-          if (replyChannel) {
+          const taskId = msg.envelope.metadata?.taskId as string;
+          const dispatch = taskId ? getDispatch(db, taskId) : null;
+
+          if (dispatch) {
+            const ctx = dispatch.channelContext ?? {};
             effectiveEnvelope = {
               ...msg.envelope,
-              replyContext: { ...msg.envelope.replyContext, channel: replyChannel },
+              replyContext: {
+                channel: dispatch.channel as import("./types.js").ChannelId,
+                ...ctx,
+              },
             };
+          } else {
+            // Fallback for in-flight tasks spawned before upgrade
+            const replyChannel = msg.envelope.metadata?.replyChannel as string | undefined;
+            if (replyChannel) {
+              effectiveEnvelope = {
+                ...msg.envelope,
+                replyContext: { ...msg.envelope.replyContext, channel: replyChannel },
+              };
+            }
           }
         }
 

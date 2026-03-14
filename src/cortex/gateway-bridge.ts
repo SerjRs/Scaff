@@ -187,7 +187,7 @@ export async function initGatewayCortex(params: {
       }
     },
     // Fire-and-forget delegation to the Router when Cortex calls sessions_spawn
-    onSpawn: ({ task, replyChannel, resultPriority, taskId, resources, executor }) => {
+    onSpawn: ({ task, resultPriority, taskId, resources, executor }) => {
       try {
         const router = getGatewayRouter();
         if (!router) {
@@ -199,7 +199,7 @@ export async function initGatewayCortex(params: {
 
         const payload: Record<string, unknown> = {
           message: task,
-          context: JSON.stringify({ replyChannel, resultPriority, source: "cortex" }),
+          context: JSON.stringify({ source: "cortex" }),
         };
         if (resources && resources.length > 0) {
           payload.resources = resources;
@@ -301,7 +301,7 @@ export async function initGatewayCortex(params: {
   // The Router Notifier (§3.7) handles delivery for non-Cortex issuers via callGateway.
   const cortexIssuer = getCortexSessionKey("main");
   const { createEnvelope } = await import("./types.js");
-  const { appendTaskResult } = await import("./session.js");
+  const { appendTaskResult, getDispatch, completeDispatch } = await import("./session.js");
 
   try {
     const { routerEvents } = await import("../router/worker.js");
@@ -310,15 +310,15 @@ export async function initGatewayCortex(params: {
       if (job.issuer !== cortexIssuer) return; // Not a Cortex-issued job
 
       try {
-        // Extract replyChannel from the job context (stored at dispatch time)
-        let replyChannel = "webchat";
         let taskDescription = "";
         try {
           const payload = JSON.parse(job.payload ?? "{}");
           taskDescription = payload.message ?? "";
-          const ctx = JSON.parse(payload.context ?? "{}");
-          replyChannel = ctx.replyChannel ?? "webchat";
         } catch { /* best-effort parse */ }
+
+        // Restore channel from dispatch context (owned by Cortex, not the pipeline)
+        const dispatch = getDispatch(instance.db, jobId);
+        const replyChannel = dispatch?.channel ?? "webchat";
 
         const completedAt = new Date().toISOString();
 
@@ -422,6 +422,13 @@ export async function initGatewayCortex(params: {
             issuer: cortexIssuer,
           });
         }
+
+        // Update dispatch lifecycle
+        completeDispatch(instance.db, jobId,
+          job.status === "completed" ? "completed" : "failed",
+          job.result,
+          job.error,
+        );
 
         // Send ops trigger to wake the Cortex loop — carry result inline so the loop
         // doesn't depend on the LLM finding it in session history.
