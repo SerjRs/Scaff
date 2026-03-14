@@ -4,7 +4,9 @@ title: "pipeline_transition sync tool — enforced state machine for task stages
 created: "2026-03-14"
 author: "scaff"
 priority: "critical"
-status: "cooking"
+status: "done"
+pr: "pending"
+branch: "feat/012-016-cortex-improvements"
 moved_at: "2026-03-14"
 ---
 

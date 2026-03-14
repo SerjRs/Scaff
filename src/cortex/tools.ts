@@ -210,7 +210,7 @@ For large files, use offset and limit to read specific line ranges.`,
       },
       limit: {
         type: "number",
-        description: "Maximum number of lines to read (optional, default 200)",
+        description: "Maximum number of lines to read (optional, default 500, max 1000)",
       },
     },
     required: ["path"],
@@ -296,8 +296,58 @@ Use read_file to drill into specific tasks.`,
   },
 };
 
+export const PIPELINE_TRANSITION_TOOL = {
+  name: "pipeline_transition",
+  description: `Move a pipeline task to a new stage. Enforces the state machine: \
+Cooking → InProgress → InReview → Done. Cannot skip stages. \
+Use this instead of move_file for all pipeline transitions. \
+Automatically updates SPEC.md frontmatter (status, moved_at).`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      task: {
+        type: "string",
+        description: "Task ID or folder name (e.g. '011' or '011-cortex-loop-silence-bugs')",
+      },
+      to: {
+        type: "string",
+        enum: ["InProgress", "InReview", "Done", "Canceled"],
+        description: "Target stage",
+      },
+    },
+    required: ["task", "to"],
+  },
+};
+
+export const CORTEX_CONFIG_TOOL = {
+  name: "cortex_config",
+  description: `Read or modify Cortex's own configuration. Use to check current channel modes \
+or to switch channels on/off. Example: to hand off WhatsApp to the main agent, call \
+cortex_config({ action: 'set_channel', channel: 'whatsapp', mode: 'off' }).`,
+  parameters: {
+    type: "object" as const,
+    properties: {
+      action: {
+        type: "string",
+        enum: ["read", "set_channel"],
+        description: "'read' returns the full config. 'set_channel' changes a channel mode.",
+      },
+      channel: {
+        type: "string",
+        description: "Channel name for set_channel (e.g. 'whatsapp', 'webchat')",
+      },
+      mode: {
+        type: "string",
+        enum: ["off", "live", "shadow"],
+        description: "New mode for the channel",
+      },
+    },
+    required: ["action"],
+  },
+};
+
 /** Tool names that are handled synchronously (round-trip within same turn) */
-export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file", "write_file", "move_file", "delete_file", "pipeline_status"]);
+export const SYNC_TOOL_NAMES = new Set(["fetch_chat_history", "memory_query", "get_task_status", "code_search", "library_get", "library_search", "library_stats", "read_file", "write_file", "move_file", "delete_file", "pipeline_status", "pipeline_transition", "cortex_config"]);
 
 // ---------------------------------------------------------------------------
 // Embed Function Type
@@ -518,8 +568,8 @@ export function executeReadFile(
   args: { path: string; offset?: number; limit?: number },
   workspaceDir: string,
 ): string {
-  const MAX_LINES = 500;
-  const DEFAULT_LINES = 200;
+  const MAX_LINES = 1000;
+  const DEFAULT_LINES = 500;
   const MAX_BYTES = 100_000; // 100KB cap
 
   // Resolve path: relative paths resolve against workspace
@@ -570,8 +620,14 @@ export function executeReadFile(
 
   // Header with metadata
   const header = `File: ${args.path} (${totalLines} lines, ${(stat.size / 1024).toFixed(1)}KB)`;
+  const endLine = offset + slice.length - 1;
   if (slice.length < totalLines) {
-    return `${header}\nShowing lines ${offset}-${offset + slice.length - 1} of ${totalLines}:\n\n${result}`;
+    const remaining = totalLines - endLine;
+    let paginationHint = "";
+    if (remaining > 0) {
+      paginationHint = `\n\n[${remaining} more lines. Use offset=${endLine + 1} to continue reading.]`;
+    }
+    return `${header}\nShowing lines ${offset}-${endLine} of ${totalLines}:\n\n${result}${paginationHint}`;
   }
   return `${header}\n\n${result}`;
 }
@@ -863,6 +919,192 @@ export async function executeLibrarySearch(
     }
   } catch (err) {
     return { content: `Library search failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline Transition Executor
+// ---------------------------------------------------------------------------
+
+const PIPELINE_STAGES = ["Cooking", "ToDo", "InProgress", "InReview", "Done", "Canceled"] as const;
+
+/** Valid transitions — state machine enforcement */
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  Cooking: ["InProgress"],
+  ToDo: ["InProgress"],
+  InProgress: ["InReview", "Canceled"],
+  InReview: ["Done", "InProgress", "Canceled"],
+};
+
+/** Execute pipeline_transition — move a task to a new stage with validation */
+export function executePipelineTransition(
+  args: { task: string; to: string },
+  workspaceDir: string,
+): string {
+  const pipelineRoot = path.join(workspaceDir, "pipeline");
+  if (!fs.existsSync(pipelineRoot)) {
+    return "Error: pipeline directory not found.";
+  }
+
+  // Validate target stage
+  const validStages = ["InProgress", "InReview", "Done", "Canceled"];
+  if (!validStages.includes(args.to)) {
+    return `Error: invalid target stage "${args.to}". Valid: ${validStages.join(", ")}`;
+  }
+
+  // Find the task folder by scanning all stages
+  let currentStage: string | null = null;
+  let taskFolder: string | null = null;
+
+  for (const stage of PIPELINE_STAGES) {
+    const stageDir = path.join(pipelineRoot, stage);
+    if (!fs.existsSync(stageDir)) continue;
+
+    const entries = fs.readdirSync(stageDir).filter((e) => {
+      try { return fs.statSync(path.join(stageDir, e)).isDirectory(); } catch { return false; }
+    });
+
+    for (const entry of entries) {
+      // Match by task ID prefix (e.g. "011" matches "011-cortex-loop-silence-bugs")
+      // or by full folder name
+      if (entry === args.task || entry.startsWith(args.task + "-")) {
+        currentStage = stage;
+        taskFolder = entry;
+        break;
+      }
+    }
+    if (currentStage) break;
+  }
+
+  if (!currentStage || !taskFolder) {
+    return `Error: task "${args.task}" not found in any pipeline stage.`;
+  }
+
+  // Check if already in target stage
+  if (currentStage === args.to) {
+    return `Task "${taskFolder}" is already in ${args.to}.`;
+  }
+
+  // Validate transition
+  const allowed = VALID_TRANSITIONS[currentStage];
+  if (!allowed || !allowed.includes(args.to)) {
+    return `Error: invalid transition ${currentStage} → ${args.to}. From ${currentStage}, allowed targets: ${allowed?.join(", ") ?? "none (final state)"}.`;
+  }
+
+  // Move the entire folder
+  const srcDir = path.join(pipelineRoot, currentStage, taskFolder);
+  const destDir = path.join(pipelineRoot, args.to, taskFolder);
+
+  // Create target stage directory if needed
+  const targetStageDir = path.join(pipelineRoot, args.to);
+  if (!fs.existsSync(targetStageDir)) {
+    fs.mkdirSync(targetStageDir, { recursive: true });
+  }
+
+  // Copy files recursively (fs.renameSync fails across drives on Windows)
+  _copyDirSync(srcDir, destDir);
+  _rmDirSync(srcDir);
+
+  // Update SPEC.md frontmatter
+  const specPath = path.join(destDir, "SPEC.md");
+  if (fs.existsSync(specPath)) {
+    let specContent = fs.readFileSync(specPath, "utf-8");
+    const today = new Date().toISOString().slice(0, 10);
+    const statusMap: Record<string, string> = {
+      InProgress: "in_progress",
+      InReview: "in_review",
+      Done: "done",
+      Canceled: "canceled",
+    };
+    const newStatus = statusMap[args.to] ?? args.to.toLowerCase();
+
+    // Update status field
+    specContent = specContent.replace(
+      /^(status:\s*)["']?[^"'\n]+["']?/m,
+      `$1"${newStatus}"`,
+    );
+    // Update moved_at field
+    specContent = specContent.replace(
+      /^(moved_at:\s*)["']?[^"'\n]+["']?/m,
+      `$1"${today}"`,
+    );
+
+    fs.writeFileSync(specPath, specContent, "utf-8");
+  }
+
+  return `✅ Moved "${taskFolder}": ${currentStage} → ${args.to}`;
+}
+
+/** Recursively copy a directory */
+function _copyDirSync(src: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src)) {
+    const srcPath = path.join(src, entry);
+    const destPath = path.join(dest, entry);
+    if (fs.statSync(srcPath).isDirectory()) {
+      _copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+/** Recursively remove a directory */
+function _rmDirSync(dir: string): void {
+  for (const entry of fs.readdirSync(dir)) {
+    const entryPath = path.join(dir, entry);
+    if (fs.statSync(entryPath).isDirectory()) {
+      _rmDirSync(entryPath);
+    } else {
+      fs.unlinkSync(entryPath);
+    }
+  }
+  fs.rmdirSync(dir);
+}
+
+// ---------------------------------------------------------------------------
+// Cortex Config Executor
+// ---------------------------------------------------------------------------
+
+/** Execute cortex_config — read or modify Cortex's own config */
+export function executeCortexConfig(
+  args: { action: string; channel?: string; mode?: string },
+): string {
+  try {
+    const { resolveStateDir } = require("../config/paths.js");
+    const stateDir = resolveStateDir(process.env);
+    const configPath = path.join(stateDir, "cortex", "config.json");
+
+    if (!fs.existsSync(configPath)) {
+      return "Error: cortex config not found.";
+    }
+
+    if (args.action === "read") {
+      const content = fs.readFileSync(configPath, "utf-8");
+      return `Cortex config (${configPath}):\n${content}`;
+    }
+
+    if (args.action === "set_channel") {
+      if (!args.channel) return "Error: channel is required for set_channel.";
+      if (!args.mode) return "Error: mode is required for set_channel.";
+
+      const validModes = ["off", "live", "shadow"];
+      if (!validModes.includes(args.mode)) {
+        return `Error: invalid mode "${args.mode}". Valid: ${validModes.join(", ")}`;
+      }
+
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      if (!config.channels) config.channels = {};
+      const oldMode = config.channels[args.channel] ?? "unset";
+      config.channels[args.channel] = args.mode;
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 4), "utf-8");
+
+      return `✅ Cortex channel "${args.channel}": ${oldMode} → ${args.mode}`;
+    }
+
+    return `Error: unknown action "${args.action}". Valid: read, set_channel.`;
+  } catch (err) {
+    return `Error: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 

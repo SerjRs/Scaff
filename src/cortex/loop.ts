@@ -23,7 +23,7 @@ import type { CortexLLMResult } from "./llm-caller.js";
 import { routeOutput, parseResponse, isSilentResponse } from "./output.js";
 import crypto from "node:crypto";
 import { appendToSession, appendResponse, appendToolCall, appendStructuredContent, appendTaskResult, updateChannelState, getChannelStates, storeDispatch, getDispatch } from "./session.js";
-import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeWriteFile, executeMoveFile, executeDeleteFile, executePipelineStatus, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
+import { SYNC_TOOL_NAMES, executeFetchChatHistory, executeMemoryQuery, executeGetTaskStatus, executeCodeSearch, executeReadFile, executeWriteFile, executeMoveFile, executeDeleteFile, executePipelineStatus, executePipelineTransition, executeCortexConfig, executeLibraryGet, executeLibrarySearch, executeLibraryStats, type EmbedFunction, type LibraryToolResult } from "./tools.js";
 import {
   assignMessageWithBoundaryDetection,
   assignMessageToShard,
@@ -399,6 +399,19 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                 }
               } else if (tc.name === "library_stats") {
                 result = executeLibraryStats();
+              } else if (tc.name === "pipeline_transition") {
+                const args = tc.arguments as Record<string, unknown>;
+                result = executePipelineTransition(
+                  { task: args.task as string, to: args.to as string },
+                  workspaceDir,
+                );
+              } else if (tc.name === "cortex_config") {
+                const args = tc.arguments as Record<string, unknown>;
+                result = executeCortexConfig({
+                  action: args.action as string,
+                  channel: args.channel as string | undefined,
+                  mode: args.mode as string | undefined,
+                });
               } else {
                 result = JSON.stringify({ error: `Unknown sync tool: ${tc.name}` });
               }
@@ -650,6 +663,35 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
                   resolvedResources.push({ name, content: `[URL: ${res.url}]` });
                 } else if (res.type === "text" && typeof res.content === "string") {
                   resolvedResources.push({ name, content: res.content });
+                }
+              }
+            }
+
+            // Auto-attach SPEC.md for pipeline tasks (016)
+            // If task text mentions a pipeline task ID pattern (3-digit number),
+            // scan pipeline directories for a matching SPEC.md and auto-attach if not already included.
+            const pipelineIdMatch = task.match(/\b0(\d{2})\b/);
+            if (pipelineIdMatch) {
+              const taskIdPrefix = pipelineIdMatch[0];
+              const hasSpec = resolvedResources.some((r) =>
+                r.name.toLowerCase().includes("spec") || r.content.includes("id: \"" + taskIdPrefix + "\""));
+              if (!hasSpec) {
+                const STAGES = ["Cooking", "ToDo", "InProgress", "InReview"];
+                for (const stage of STAGES) {
+                  const stageDir = path.join(workspaceDir, "pipeline", stage);
+                  if (!fs.existsSync(stageDir)) continue;
+                  const entries = fs.readdirSync(stageDir).filter((e) => e.startsWith(taskIdPrefix));
+                  if (entries.length > 0) {
+                    const specPath = path.join(stageDir, entries[0], "SPEC.md");
+                    if (fs.existsSync(specPath)) {
+                      try {
+                        const specContent = fs.readFileSync(specPath, "utf-8");
+                        resolvedResources.push({ name: "SPEC.md (auto-attached)", content: specContent });
+                        onError(new Error(`[cortex-loop] Auto-attached SPEC.md from pipeline/${stage}/${entries[0]}`));
+                      } catch { /* best-effort */ }
+                    }
+                    break;
+                  }
                 }
               }
             }

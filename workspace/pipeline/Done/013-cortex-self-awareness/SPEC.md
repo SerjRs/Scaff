@@ -4,7 +4,9 @@ title: "Cortex filesystem self-awareness — key paths in system prompt"
 created: "2026-03-14"
 author: "scaff"
 priority: "medium"
-status: "cooking"
+status: "done"
+pr: "pending"
+branch: "feat/012-016-cortex-improvements"
 moved_at: "2026-03-14"
 ---
 

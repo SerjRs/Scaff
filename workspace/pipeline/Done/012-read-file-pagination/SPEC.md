@@ -4,7 +4,9 @@ title: "read_file default limit too low — causes false truncation loops"
 created: "2026-03-14"
 author: "scaff"
 priority: "high"
-status: "cooking"
+status: "done"
+pr: "pending"
+branch: "feat/012-016-cortex-improvements"
 moved_at: "2026-03-14"
 ---
 

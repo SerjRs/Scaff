@@ -4,7 +4,9 @@ title: "cortex_config sync tool — self-management without path guessing"
 created: "2026-03-14"
 author: "scaff"
 priority: "medium"
-status: "cooking"
+status: "done"
+pr: "pending"
+branch: "feat/012-016-cortex-improvements"
 moved_at: "2026-03-14"
 ---
 
