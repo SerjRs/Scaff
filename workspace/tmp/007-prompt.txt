@@ -1,0 +1,24 @@
+You are implementing task 007 — Cortex Task Dispatch Context.
+
+READ THESE FILES FIRST (in order):
+1. workspace/pipeline/Cooking/007-cortex-task-context-ownership/SPEC.md — architecture and design
+2. workspace/pipeline/Cooking/007-cortex-task-context-ownership/IMPLEMENTATION.md — exact code changes
+
+Then implement ALL changes described in IMPLEMENTATION.md:
+- File 1: src/cortex/session.ts — schema migration, storeDispatch/getDispatch/completeDispatch functions, TaskDispatch type
+- File 2: src/cortex/loop.ts — store dispatch at spawn, restore context at ops-trigger, remove replyChannel from SpawnParams
+- File 3: src/cortex/gateway-bridge.ts — strip metadata from pipeline, use getDispatch in onJobDelivered, add completeDispatch call
+- File 4: src/cortex/types.ts — remove replyChannel from SpawnParams if defined here
+- File 5: src/cortex/__tests__/e2e-op-lifecycle.test.ts — replace skipped test with cortex_task_dispatch tests
+
+After implementing, run: pnpm build
+Fix any TypeScript errors until build succeeds.
+
+IMPORTANT:
+- Do NOT modify src/cortex/output.ts, src/cortex/adapters/, or src/router/
+- Keep taskResult/taskDescription/taskStatus in ops-trigger metadata (loop still uses them)
+- Keep replyChannel in trigger metadata as fallback for in-flight tasks
+- Read the IMPLEMENTATION.md carefully — it has exact code locations and before/after examples
+
+When completely finished, run this command to notify me:
+openclaw system event --text "Done: 007 task dispatch context implemented" --mode now

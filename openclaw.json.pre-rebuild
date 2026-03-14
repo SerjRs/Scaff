@@ -1,13 +1,39 @@
 {
   "meta": {
     "lastTouchedVersion": "2026.2.25",
-    "lastTouchedAt": "2026-02-28T15:51:56.159Z"
+    "lastTouchedAt": "2026-03-14T06:59:15.124Z"
+  },
+  "wizard": {
+    "lastRunAt": "2026-03-14T06:59:15.064Z",
+    "lastRunVersion": "2026.2.25",
+    "lastRunCommand": "configure",
+    "lastRunMode": "local"
   },
   "update": {
     "channel": "beta"
   },
+  "auth": {
+    "profiles": {
+      "anthropic:scaff": {
+        "provider": "anthropic",
+        "mode": "token"
+      }
+    }
+  },
   "agents": {
     "defaults": {
+      "model": {
+        "primary": "anthropic/claude-opus-4-6",
+        "fallbacks": [
+          "anthropic/claude-sonnet-4-6",
+          "anthropic/claude-haiku-4-6"
+        ]
+      },
+      "models": {
+        "anthropic/claude-haiku-4-5": {},
+        "anthropic/claude-opus-4-6": {},
+        "anthropic/claude-sonnet-4-6": {}
+      },
       "compaction": {
         "mode": "safeguard"
       },
@@ -37,6 +63,31 @@
       "groupPolicy": "allowlist",
       "debounceMs": 0,
       "mediaMaxMb": 50
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "f49a7d1e0c1bea428544a7bd32eef13480983bcdcdeb48b7"
+    }
+  },
+  "plugins": {
+    "allow": [
+      "whatsapp",
+      "voice-call",
+      "device-pair",
+      "memory-core",
+      "feishu",
+      "open-prose",
+      "zalouser",
+      "talk-voice",
+      "lobster"
+    ],
+    "load": {
+      "paths": [
+        "~/.openclaw/extensions"
+      ]
     }
   },
   "router": {
@@ -69,31 +120,6 @@
         ],
         "model": "anthropic/claude-opus-4-6"
       }
-    }
-  },
-  "plugins": {
-    "allow": [
-      "whatsapp",
-      "voice-call",
-      "device-pair",
-      "memory-core",
-      "feishu",
-      "open-prose",
-      "zalouser",
-      "talk-voice",
-      "lobster"
-    ],
-    "load": {
-      "paths": [
-        "~/.openclaw/extensions"
-      ]
-    }
-  },
-  "gateway": {
-    "mode": "local",
-    "auth": {
-      "mode": "token",
-      "token": "f49a7d1e0c1bea428544a7bd32eef13480983bcdcdeb48b7"
     }
   }
 }

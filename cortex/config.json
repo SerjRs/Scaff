@@ -1,11 +1,11 @@
 {
     "enabled":  true,
     "model":  "claude-opus-4-6",
-    "thinking":  "low",
+    "thinking":  "high",
     "defaultMode":  "off",
     "channels":  {
-                     "webchat":  "live",
-                     "whatsapp":  "live"
+                     "webchat":  "off",
+                     "whatsapp":  "off"
                  },
     "hippocampus":  {
                         "enabled":  true,
