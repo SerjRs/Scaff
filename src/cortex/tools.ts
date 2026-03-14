@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getSessionHistory } from "./session.js";
 import { getShardMessages } from "./shards.js";
-import { searchColdFacts, insertHotFact, touchHotFact } from "./hippocampus.js";
+import { searchColdFacts, insertHotFact, touchHotFact, reviveFact, touchGraphFact } from "./hippocampus.js";
 
 // ---------------------------------------------------------------------------
 // Tool Definitions
@@ -547,6 +547,28 @@ export async function executeMemoryQuery(
 
   // Search cold storage
   const results = searchColdFacts(db, queryEmbedding, limit);
+
+  // Check if any cold results match evicted graph facts — revive them
+  for (const fact of results) {
+    const evictedMatch = db.prepare(
+      `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'evicted'`,
+    ).get(fact.factText) as { id: string } | undefined;
+
+    if (evictedMatch) {
+      reviveFact(db, evictedMatch.id);
+    }
+  }
+
+  // Touch graph facts that match active results
+  for (const fact of results) {
+    const graphMatch = db.prepare(
+      `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'active'`,
+    ).get(fact.factText) as { id: string } | undefined;
+
+    if (graphMatch) {
+      touchGraphFact(db, graphMatch.id);
+    }
+  }
 
   // Tracking hook: retrieved facts stay hot
   for (const fact of results) {

@@ -22,6 +22,9 @@ import {
   insertFact,
   insertEdge,
   searchGraphFacts,
+  getStaleGraphFacts,
+  evictFact,
+  pruneOldStubs,
   type HotFact,
 } from "./hippocampus.js";
 import {
@@ -588,6 +591,21 @@ export async function runVectorEvictor(params: {
       result.errors.push(`${fact.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  // Graph-aware eviction
+  const staleGraphFacts = getStaleGraphFacts(db, olderThanDays, maxHitCount);
+  for (const fact of staleGraphFacts) {
+    try {
+      const embedding = await embedFn(fact.factText);
+      evictFact(db, fact.id, embedding);
+      result.processed++;
+    } catch (err) {
+      result.errors.push(`graph:${fact.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Prune old stubs
+  pruneOldStubs(db, 90);
 
   return result;
 }

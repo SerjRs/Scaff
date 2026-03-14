@@ -1,2 +1,1 @@
-Read CLAUDE.md, SPEC.md, and STATE.md. Then implement everything described in CLAUDE.md. Do not ask questions — use best judgment. Work through each milestone in STATE.md and update it as you go. When completely finished, run this exact command to notify:
-openclaw system event --text "Done: 017d conversation fact extraction with edges"
+Read CLAUDE.md, SPEC.md, and STATE.md in this directory. Then implement everything described in CLAUDE.md. Do not ask questions, use best judgment. Update STATE.md milestones as you go. When finished, commit all changes and push the branch, create a PR. Then run: openclaw system event --text "Done 017h eviction edge stubs"
