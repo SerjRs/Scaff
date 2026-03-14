@@ -45,6 +45,22 @@ export async function initHotMemoryVecTable(db: DatabaseSync): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Graph Vec Table
+// ---------------------------------------------------------------------------
+
+/** Initialize the hippocampus_facts vector table (requires sqlite-vec loaded) */
+export async function initGraphVecTable(db: DatabaseSync): Promise<void> {
+  const result = await loadSqliteVecExtension({ db });
+  if (!result.ok) {
+    throw new Error(`Failed to load sqlite-vec extension: ${result.error}`);
+  }
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS hippocampus_facts_vec
+    USING vec0(embedding float[768])
+  `);
+}
+
+// ---------------------------------------------------------------------------
 // Cold Storage Schema
 // ---------------------------------------------------------------------------
 
@@ -410,7 +426,7 @@ export function insertFact(
     const row = db.prepare(`SELECT rowid FROM hippocampus_facts WHERE id = ?`).get(id) as { rowid: number | bigint };
     const rowidNum = Number(row.rowid);
     db.prepare(`
-      INSERT INTO cortex_hot_memory_vec (rowid, embedding)
+      INSERT INTO hippocampus_facts_vec (rowid, embedding)
       VALUES (CAST(? AS INTEGER), ?)
     `).run(rowidNum, new Uint8Array(opts.embedding.buffer));
   }
@@ -435,6 +451,28 @@ export function insertEdge(
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(id, opts.fromFactId, opts.toFactId, opts.edgeType, opts.confidence ?? "medium", now);
   return id;
+}
+
+/** Search graph facts by vector similarity (KNN). Only returns active facts. */
+export function searchGraphFacts(
+  db: DatabaseSync,
+  queryEmbedding: Float32Array,
+  limit = 5,
+): (GraphFact & { distance: number })[] {
+  const rows = db.prepare(`
+    SELECT v.rowid, v.distance, f.id, f.fact_text, f.fact_type, f.confidence, f.status,
+           f.source_type, f.source_ref, f.created_at, f.last_accessed_at, f.hit_count
+    FROM hippocampus_facts_vec v
+    JOIN hippocampus_facts f ON f.rowid = v.rowid
+    WHERE v.embedding MATCH ? AND k = ?
+      AND f.status = 'active'
+    ORDER BY v.distance
+  `).all(new Uint8Array(queryEmbedding.buffer), limit) as Record<string, unknown>[];
+
+  return rows.map((row) => ({
+    ...rowToGraphFact(row),
+    distance: row.distance as number,
+  }));
 }
 
 /** Get a single fact with its edges (both directions) */

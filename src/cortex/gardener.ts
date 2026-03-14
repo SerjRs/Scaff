@@ -19,6 +19,9 @@ import {
   insertColdFact,
   searchHotFacts,
   updateHotFact,
+  insertFact,
+  insertEdge,
+  searchGraphFacts,
   type HotFact,
 } from "./hippocampus.js";
 import {
@@ -47,6 +50,29 @@ export interface GardenerRunResult {
   task: string;
   processed: number;
   errors: string[];
+}
+
+/** A single extracted fact from a conversation */
+export interface ExtractedFact {
+  /** Temporary local id like "f1", "f2" — NOT a UUID */
+  id: string;
+  text: string;
+  type: "fact" | "decision" | "outcome" | "correction";
+  confidence: "high" | "medium" | "low";
+}
+
+/** A relationship between two extracted facts */
+export interface ExtractedEdge {
+  /** References ExtractedFact.id (e.g. "f1") */
+  from: string;
+  to: string;
+  type: "because" | "informed_by" | "resulted_in" | "contradicts" | "updated_by" | "related_to";
+}
+
+/** Structured result from fact extraction */
+export interface ExtractionResult {
+  facts: ExtractedFact[];
+  edges: ExtractedEdge[];
 }
 
 // ---------------------------------------------------------------------------
@@ -209,13 +235,23 @@ export async function runFactExtractor(params: {
         ? `\nThis conversation is about: "${shard.topic}". Extract facts relevant to this topic.\n`
         : "";
 
-      const facts = await extractFactsFromTranscript(extractLLM, transcript, topicContext);
+      const extraction = await extractFactsFromTranscript(extractLLM, transcript, topicContext);
 
-      for (const factText of facts) {
-        if (typeof factText === "string" && factText.trim().length > 0) {
-          const trimmed = factText.trim();
-          const dedupResult = await dedupAndInsertFact(db, trimmed, embedFn);
-          if (dedupResult) result.processed++;
+      // Map local IDs to real UUIDs
+      const idMap = new Map<string, string>();
+
+      for (const fact of extraction.facts) {
+        if (!fact.text?.trim()) continue;
+        const { factId, inserted } = await dedupAndInsertGraphFact(db, fact, "conversation", embedFn);
+        idMap.set(fact.id, factId);
+        if (inserted) result.processed++;
+      }
+
+      for (const edge of extraction.edges) {
+        const fromId = idMap.get(edge.from);
+        const toId = idMap.get(edge.to);
+        if (fromId && toId && fromId !== toId) {
+          insertEdge(db, { fromFactId: fromId, toFactId: toId, edgeType: edge.type });
         }
       }
 
@@ -245,13 +281,23 @@ export async function runFactExtractor(params: {
 
       console.log(`[gardener] Transcript length: ${transcript.length} chars, sending to LLM...`);
 
-      const facts = await extractFactsFromTranscript(extractLLM, transcript);
+      const extraction = await extractFactsFromTranscript(extractLLM, transcript);
 
-      for (const factText of facts) {
-        if (typeof factText === "string" && factText.trim().length > 0) {
-          const trimmed = factText.trim();
-          const dedupResult = await dedupAndInsertFact(db, trimmed, embedFn);
-          if (dedupResult) result.processed++;
+      // Map local IDs to real UUIDs
+      const idMap = new Map<string, string>();
+
+      for (const fact of extraction.facts) {
+        if (!fact.text?.trim()) continue;
+        const { factId, inserted } = await dedupAndInsertGraphFact(db, fact, "conversation", embedFn);
+        idMap.set(fact.id, factId);
+        if (inserted) result.processed++;
+      }
+
+      for (const edge of extraction.edges) {
+        const fromId = idMap.get(edge.from);
+        const toId = idMap.get(edge.to);
+        if (fromId && toId && fromId !== toId) {
+          insertEdge(db, { fromFactId: fromId, toFactId: toId, edgeType: edge.type });
         }
       }
     } catch (err) {
@@ -262,25 +308,43 @@ export async function runFactExtractor(params: {
   return result;
 }
 
-/** Shared extraction logic — builds prompt, calls LLM, parses JSON array of facts. */
+/** Shared extraction logic — builds prompt, calls LLM, parses structured JSON result. */
 async function extractFactsFromTranscript(
   extractLLM: FactExtractorLLM,
   transcript: string,
   topicContext = "",
-): Promise<string[]> {
-  const prompt = `Extract ONLY facts that are EXPLICITLY stated in this conversation. \
-Facts are things like user preferences, personal details, project decisions, \
-technical choices, system configurations, or relationships.
-${topicContext}
-RULES:
-- ONLY extract what is directly said or clearly demonstrated. Do NOT infer, assume, or fabricate.
-- If the user says "I live in Bucharest" → extract that. If they don't mention where they live → extract nothing about location.
-- Prefer specific, verifiable facts that would be useful weeks or months later.
-- Skip: greetings, filler, routine acknowledgments, one-off computation results, task dispatch IDs, stress test data, ephemeral status observations, temporary debugging output.
-- Each fact should be a standalone statement useful in future conversations.
-- If no facts are found, return an empty array [].
+): Promise<ExtractionResult> {
+  const emptyResult: ExtractionResult = { facts: [], edges: [] };
 
-Return ONLY a JSON array of strings, one fact per entry.
+  const prompt = `From this conversation, extract facts and relationships between them.
+${topicContext}
+CATEGORIES:
+- fact: specific claims, preferences, personal details, configurations
+- decision: explicit choices ("we decided...", "let's go with...")
+- outcome: results of actions ("it worked", "it failed", "we learned...")
+- correction: something was wrong ("actually...", "that was incorrect...")
+
+RELATIONSHIPS between facts (only when clearly stated):
+- because: A happened because of B
+- informed_by: A was informed by B
+- resulted_in: A led to B
+- contradicts: A contradicts B
+- updated_by: A supersedes/updates B
+- related_to: A and B are about the same topic
+
+RULES:
+- ONLY extract what is directly said or clearly demonstrated. Do NOT infer.
+- Prefer specific, verifiable facts useful weeks or months later.
+- Skip: greetings, filler, routine acks, one-off results, task IDs, ephemeral status.
+- Each fact must be a standalone statement.
+- If no facts are found, return {"facts": [], "edges": []}.
+- Assign confidence: high (explicitly stated), medium (clearly implied), low (loosely implied).
+
+Return ONLY valid JSON:
+{
+  "facts": [{"id": "f1", "text": "...", "type": "fact", "confidence": "high"}, ...],
+  "edges": [{"from": "f1", "to": "f2", "type": "because"}, ...]
+}
 
 Conversation:
 ${transcript}`;
@@ -288,13 +352,48 @@ ${transcript}`;
   const response = await extractLLM(prompt);
   console.log(`[gardener] LLM response: ${response.substring(0, 200)}`);
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(response);
-    return Array.isArray(parsed) ? parsed : [];
+    parsed = JSON.parse(response);
   } catch {
-    const match = response.match(/\[[\s\S]*?\]/);
-    return match ? JSON.parse(match[0]) : [];
+    // Try extracting {...} from response
+    const match = response.match(/\{[\s\S]*\}/);
+    if (!match) return emptyResult;
+    try {
+      parsed = JSON.parse(match[0]);
+    } catch {
+      return emptyResult;
+    }
   }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return emptyResult;
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const rawFacts = Array.isArray(obj.facts) ? obj.facts : [];
+  const rawEdges = Array.isArray(obj.edges) ? obj.edges : [];
+
+  const facts: ExtractedFact[] = rawFacts
+    .filter((f): f is Record<string, unknown> => f && typeof f === "object")
+    .filter((f) => f.id && f.text && f.type)
+    .map((f) => ({
+      id: String(f.id),
+      text: String(f.text),
+      type: f.type as ExtractedFact["type"],
+      confidence: (f.confidence as ExtractedFact["confidence"]) ?? "medium",
+    }));
+
+  const edges: ExtractedEdge[] = rawEdges
+    .filter((e): e is Record<string, unknown> => e && typeof e === "object")
+    .filter((e) => e.from && e.to && e.type)
+    .map((e) => ({
+      from: String(e.from),
+      to: String(e.to),
+      type: e.type as ExtractedEdge["type"],
+    }));
+
+  return { facts, edges };
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +458,99 @@ async function dedupAndInsertFact(
   // 5. New unique fact
   insertHotFact(db, { factText, embedding });
   return true;
+}
+
+/**
+ * Dedup-aware insert of an extracted fact into the graph tables (hippocampus_facts).
+ * Returns the UUID of the fact (new or existing) and whether it was inserted.
+ */
+async function dedupAndInsertGraphFact(
+  db: DatabaseSync,
+  fact: ExtractedFact,
+  sourceType: string,
+  embedFn?: EmbedFunction,
+): Promise<{ factId: string; inserted: boolean }> {
+  // 1. Exact match
+  const exactMatch = db.prepare(
+    `SELECT id FROM hippocampus_facts WHERE fact_text = ?`,
+  ).get(fact.text) as { id: string } | undefined;
+
+  if (exactMatch) return { factId: exactMatch.id, inserted: false };
+
+  // 2. No embedFn — insert without embedding
+  if (!embedFn) {
+    const id = insertFact(db, {
+      factText: fact.text,
+      factType: fact.type,
+      confidence: fact.confidence,
+      sourceType,
+    });
+    return { factId: id, inserted: true };
+  }
+
+  // 3. Embed the fact text
+  let embedding: Float32Array;
+  try {
+    embedding = await embedFn(fact.text);
+  } catch (err) {
+    console.log(`[gardener] Embed failed for "${fact.text.slice(0, 60)}": ${err instanceof Error ? err.message : String(err)}`);
+    const id = insertFact(db, {
+      factText: fact.text,
+      factType: fact.type,
+      confidence: fact.confidence,
+      sourceType,
+    });
+    return { factId: id, inserted: true };
+  }
+
+  // 4. Search graph facts vec for top-1 nearest
+  let similar: ReturnType<typeof searchGraphFacts>;
+  try {
+    similar = searchGraphFacts(db, embedding, 1);
+  } catch {
+    // Vec table may be empty or not initialized — insert with embedding
+    const id = insertFact(db, {
+      factText: fact.text,
+      factType: fact.type,
+      confidence: fact.confidence,
+      sourceType,
+      embedding,
+    });
+    return { factId: id, inserted: true };
+  }
+
+  if (similar.length > 0 && similar[0].distance < DEDUP_SIMILARITY_THRESHOLD) {
+    const existing = similar[0];
+    console.log(`[gardener] Graph dedup: "${fact.text.slice(0, 60)}" similar to existing (dist=${existing.distance.toFixed(3)})`);
+
+    if (fact.text.length > existing.factText.length) {
+      // New text is longer/more specific — update existing
+      db.prepare(`
+        UPDATE hippocampus_facts SET fact_text = ?, last_accessed_at = ? WHERE id = ?
+      `).run(fact.text, new Date().toISOString(), existing.id);
+
+      // Update vec embedding
+      const row = db.prepare(`SELECT rowid FROM hippocampus_facts WHERE id = ?`).get(existing.id) as { rowid: number | bigint } | undefined;
+      if (row) {
+        const rowidNum = Number(row.rowid);
+        db.prepare(`DELETE FROM hippocampus_facts_vec WHERE rowid = ?`).run(rowidNum);
+        db.prepare(`INSERT INTO hippocampus_facts_vec (rowid, embedding) VALUES (CAST(? AS INTEGER), ?)`).run(rowidNum, new Uint8Array(embedding.buffer));
+      }
+      return { factId: existing.id, inserted: true };
+    }
+    // Existing is good enough — skip
+    return { factId: existing.id, inserted: false };
+  }
+
+  // 5. New unique fact — insert with embedding
+  const id = insertFact(db, {
+    factText: fact.text,
+    factType: fact.type,
+    confidence: fact.confidence,
+    sourceType,
+    embedding,
+  });
+  return { factId: id, inserted: true };
 }
 
 // ---------------------------------------------------------------------------

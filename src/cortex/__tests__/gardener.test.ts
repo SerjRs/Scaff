@@ -62,12 +62,15 @@ const mockSummarize: FactExtractorLLM = async (prompt: string) => {
   return "Serj discussed project setup and preferred dark mode.";
 };
 
-/** Mock fact extractor that returns canned facts */
+/** Mock fact extractor that returns canned facts (structured format) */
 const mockExtractLLM: FactExtractorLLM = async (prompt: string) => {
-  return JSON.stringify([
-    "Serj prefers dark mode",
-    "Project uses TypeScript",
-  ]);
+  return JSON.stringify({
+    facts: [
+      { id: "f1", text: "Serj prefers dark mode", type: "fact", confidence: "high" },
+      { id: "f2", text: "Project uses TypeScript", type: "fact", confidence: "high" },
+    ],
+    edges: [],
+  });
 };
 
 /** Mock embed function */
@@ -203,7 +206,7 @@ describe("Fact Extractor", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("extracts facts from recent session messages into hot memory", async () => {
+  it("extracts facts from recent session messages into graph tables", async () => {
     updateChannelState(db, "webchat", {
       lastMessageAt: new Date().toISOString(),
       layer: "foreground",
@@ -220,14 +223,16 @@ describe("Fact Extractor", () => {
     expect(result.processed).toBe(2);
     expect(result.errors).toHaveLength(0);
 
-    const facts = getTopHotFacts(db);
+    const facts = db.prepare(`SELECT fact_text FROM hippocampus_facts ORDER BY created_at`).all() as Array<{ fact_text: string }>;
     expect(facts).toHaveLength(2);
-    expect(facts.map((f) => f.factText)).toContain("Serj prefers dark mode");
-    expect(facts.map((f) => f.factText)).toContain("Project uses TypeScript");
+    expect(facts.map((f) => f.fact_text)).toContain("Serj prefers dark mode");
+    expect(facts.map((f) => f.fact_text)).toContain("Project uses TypeScript");
   });
 
-  it("skips duplicate facts already in hot memory", async () => {
-    insertHotFact(db, { factText: "Serj prefers dark mode" });
+  it("skips duplicate facts already in graph tables", async () => {
+    // Pre-insert a fact into hippocampus_facts
+    db.prepare(`INSERT INTO hippocampus_facts (id, fact_text, fact_type, confidence, status, source_type, created_at, last_accessed_at, hit_count)
+      VALUES ('existing-1', 'Serj prefers dark mode', 'fact', 'high', 'active', 'conversation', datetime('now'), datetime('now'), 0)`).run();
 
     updateChannelState(db, "webchat", {
       lastMessageAt: new Date().toISOString(),
@@ -243,7 +248,8 @@ describe("Fact Extractor", () => {
 
     // Only "Project uses TypeScript" should be new
     expect(result.processed).toBe(1);
-    expect(getTopHotFacts(db)).toHaveLength(2); // 1 existing + 1 new
+    const count = db.prepare(`SELECT COUNT(*) as cnt FROM hippocampus_facts`).get() as { cnt: number };
+    expect(count.cnt).toBe(2); // 1 existing + 1 new
   });
 
   it("handles LLM returning non-JSON gracefully", async () => {
@@ -273,7 +279,7 @@ describe("Fact Extractor", () => {
     appendToSession(db, makeEnvelope("webchat", "test"));
 
     const codeLLM: FactExtractorLLM = async () =>
-      '```json\n["fact from code block"]\n```';
+      '```json\n{"facts": [{"id": "f1", "text": "fact from code block", "type": "fact", "confidence": "high"}], "edges": []}\n```';
 
     const result = await runFactExtractor({
       db,
@@ -282,8 +288,9 @@ describe("Fact Extractor", () => {
     });
 
     expect(result.processed).toBe(1);
-    const facts = getTopHotFacts(db);
-    expect(facts[0].factText).toBe("fact from code block");
+    const row = db.prepare(`SELECT fact_text FROM hippocampus_facts WHERE fact_text = 'fact from code block'`).get() as { fact_text: string } | undefined;
+    expect(row).toBeDefined();
+    expect(row!.fact_text).toBe("fact from code block");
   });
 });
 
@@ -435,7 +442,7 @@ describe("gardener lifecycle e2e", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("full lifecycle: extract facts → age them → evict to cold storage", async () => {
+  it("full lifecycle: extract facts into graph tables, evict stale hot facts to cold storage", async () => {
     if (!vecAvailable) return;
 
     // 1. Set up a channel with messages
@@ -446,7 +453,7 @@ describe("gardener lifecycle e2e", () => {
     appendToSession(db, makeEnvelope("webchat", "My IP is 192.168.1.50"));
     appendToSession(db, makeEnvelope("webchat", "I always use dark mode"));
 
-    // 2. Run fact extractor
+    // 2. Run fact extractor — facts now go into hippocampus_facts (graph tables)
     const extractResult = await runFactExtractor({
       db,
       extractLLM: mockExtractLLM,
@@ -454,11 +461,16 @@ describe("gardener lifecycle e2e", () => {
     });
     expect(extractResult.processed).toBe(2);
 
-    // Verify facts in hot memory
-    let hotFacts = getTopHotFacts(db);
-    expect(hotFacts).toHaveLength(2);
+    // Verify facts in graph tables
+    const graphFacts = db.prepare(`SELECT id, fact_text FROM hippocampus_facts ORDER BY created_at`).all() as Array<{ id: string; fact_text: string }>;
+    expect(graphFacts).toHaveLength(2);
+    expect(graphFacts.map((f) => f.fact_text)).toContain("Serj prefers dark mode");
+    expect(graphFacts.map((f) => f.fact_text)).toContain("Project uses TypeScript");
 
-    // 3. Simulate aging: backdate the facts to 30 days ago
+    // 3. Separately test evictor: insert stale facts into cortex_hot_memory
+    insertHotFact(db, { factText: "Old stale fact 1" });
+    insertHotFact(db, { factText: "Old stale fact 2" });
+    const hotFacts = getTopHotFacts(db);
     const oldDate = new Date();
     oldDate.setDate(oldDate.getDate() - 30);
     for (const fact of hotFacts) {
@@ -476,11 +488,8 @@ describe("gardener lifecycle e2e", () => {
     expect(evictResult.processed).toBe(2);
     expect(evictResult.errors).toHaveLength(0);
 
-    // 5. Verify: hot memory is empty, cold storage has the facts
-    hotFacts = getTopHotFacts(db);
-    expect(hotFacts).toHaveLength(0);
-
-    // Cold storage should have both facts
+    // 5. Verify: hot memory is empty, cold storage has the evicted facts
+    expect(getTopHotFacts(db)).toHaveLength(0);
     const coldMeta = db.prepare(`SELECT COUNT(*) as cnt FROM cortex_cold_memory`).get() as { cnt: number };
     expect(coldMeta.cnt).toBe(2);
   });
