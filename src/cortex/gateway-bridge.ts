@@ -341,6 +341,7 @@ export async function initGatewayCortex(params: {
                 const parsed = JSON.parse(jsonStr) as {
                   title: string; summary: string; key_concepts: string[];
                   tags: string[]; content_type: string; source_quality: string;
+                  full_text?: string;
                 };
 
                 // Write to Library DB
@@ -350,6 +351,7 @@ export async function initGatewayCortex(params: {
                     url: libraryUrl, title: parsed.title, summary: parsed.summary,
                     key_concepts: parsed.key_concepts, tags: parsed.tags,
                     content_type: parsed.content_type, source_quality: parsed.source_quality,
+                    full_text: parsed.full_text,
                   });
 
                   // Generate embedding async (fire-and-forget — item is stored regardless)

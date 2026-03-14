@@ -29,7 +29,8 @@ Output ONLY valid JSON, no markdown, no explanation:
   "key_concepts": ["atomic statement 1", "atomic statement 2", ...],
   "tags": ["kebab-case-tag-1", "kebab-case-tag-2", ...],
   "content_type": "article|documentation|tutorial|research|tool|discussion",
-  "source_quality": "high|medium|low"
+  "source_quality": "high|medium|low",
+  "full_text": "raw article content (see rules)"
 }
 
 Rules:
@@ -38,6 +39,7 @@ Rules:
 - tags: 3-10 tags, kebab-case, specific. Not generic ("ai", "tech"). Specific ("erlang-supervisors", "o-ran-fronthaul").
 - content_type: pick the most accurate classification.
 - source_quality: "high" = deep, well-cited, authoritative. "medium" = useful but surface-level. "low" = opinion, thin, or questionable.
+- full_text: Include the raw article content in full_text. Cap at 50KB. If content exceeds 50KB, truncate and append "[TRUNCATED]".
 
 Output ONLY the JSON object.`;
 }
