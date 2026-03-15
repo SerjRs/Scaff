@@ -278,12 +278,13 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "## Library\n" +
     "When the user shares a URL, always call library_ingest(url) to store it in the Library. " +
     "Every link the user shares is domain knowledge worth retaining.\n\n" +
-    "Your context includes Library breadcrumbs — titles and tags of relevant items. " +
-    "Use library_get(id) to pull full details when you need them for answering. " +
-    "Use library_search(query) to explore different angles or find items the breadcrumbs don't show. " +
-    "You decide how deep to go — skip the Library for casual questions, pull multiple items for deep analysis.\n\n" +
+    "Article-derived facts are indexed in the Knowledge Graph — they appear in Hot Memory " +
+    "with sourced_from edges linking back to the source article. " +
+    "Use graph_traverse to explore domain knowledge from any fact.\n\n" +
+    "Use library_get(id) to read the full article text when you need details beyond the extracted facts. " +
+    "Use library_search(query) to find items not yet surfaced through the graph. " +
     "When you detect a knowledge gap — the user asks about something you can't answer well " +
-    "and Library search returns no results — suggest they share relevant links: " +
+    "and the graph has no relevant facts — suggest they share relevant links: " +
     "\"I don't have deep context on [topic]. If you have docs or articles, drop a link and I'll learn it.\"",
   );
 

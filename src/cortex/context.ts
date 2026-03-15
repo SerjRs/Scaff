@@ -419,33 +419,6 @@ export async function assembleContext(params: {
   // 1. System floor — always loaded first
   const systemFloor = await loadSystemFloor(workspaceDir, graphFacts);
 
-  // 1b. Library breadcrumbs — top-10 relevant items by embedding similarity
-  // Injected into system floor so the LLM sees available domain knowledge
-  try {
-    const { openLibraryDbReadonly, getBreadcrumbs, formatBreadcrumbs } = await import("../library/retrieval.js");
-    const libraryDb = openLibraryDbReadonly();
-    if (libraryDb) {
-      try {
-        // Use the trigger envelope's content as the query for similarity search
-        const userMessage = triggerEnvelope.content;
-        if (userMessage && userMessage.trim().length > 5) {
-          const { generateEmbedding } = await import("../library/embeddings.js");
-          const queryEmbedding = await generateEmbedding(userMessage);
-          const breadcrumbs = getBreadcrumbs(libraryDb, new Float32Array(queryEmbedding), 10);
-          if (breadcrumbs.length > 0) {
-            const breadcrumbText = formatBreadcrumbs(breadcrumbs);
-            systemFloor.content += `\n\n---\n\n${breadcrumbText}`;
-            systemFloor.tokens = estimateTokens(systemFloor.content);
-          }
-        }
-      } finally {
-        libraryDb.close();
-      }
-    }
-  } catch {
-    // Library not available — skip breadcrumbs silently
-  }
-
   // 2. Background summaries — small fixed cost
   // When using issuer-based context, all channels are in the foreground — skip background
   const background = issuer

@@ -1,8 +1,7 @@
-# STATE — 017e
-## Status: Done
+# STATE — 017f
+## Status: InProgress
 ## Milestones
-- [x] Librarian prompt extended with facts + edges schema
-- [x] gateway-bridge.ts parsed type updated
-- [x] Graph ingestion logic added (source node + facts + edges)
-- [x] Tests written and passing (7/7)
-- [x] Branch pushed, PR created
+- [x] Library breadcrumb injection removed from context.ts
+- [x] System prompt Library section updated in llm-caller.ts
+- [x] Tests written and passing
+- [ ] Branch pushed, PR created
