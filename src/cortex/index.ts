@@ -215,3 +215,9 @@ export async function stopCortex(instance: CortexInstance): Promise<void> {
 export function _resetSingleton(): void {
   activeInstance = null;
 }
+
+// ---------------------------------------------------------------------------
+// Re-exports
+// ---------------------------------------------------------------------------
+
+export { runConsolidation, type ConsolidationResult } from "./consolidator.js";

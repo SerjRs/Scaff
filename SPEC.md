@@ -1,57 +1,64 @@
 ---
-id: "017f"
-title: "Replace Library breadcrumbs with graph breadcrumbs"
+id: "017g"
+title: "Consolidator — find cross-connections between facts daily"
 created: "2026-03-14"
 author: "scaff"
 priority: "medium"
 status: "cooking"
 moved_at: "2026-03-14"
-depends_on: ["017b", "017e"]
+depends_on: ["017a", "017d", "017e"]
 parent: "017"
 ---
 
-# 017f — Replace Library Breadcrumbs with Graph Breadcrumbs
+# 017g — Consolidator
 
 ## Depends on
-- 017b (graph injection in System Floor working)
-- 017e (articles in graph with sourced_from edges)
+- 017a (graph schema)
+- 017d (conversation facts in graph)
+- 017e (article facts in graph)
 
 ## Touches
-- `src/cortex/llm-caller.ts`
-- `src/cortex/context.ts` (if Library retrieval is called here)
+- New file: `src/cortex/consolidator.ts`
+- Cron configuration for scheduling
 
-## What to Change
+## What to Build
 
-**`llm-caller.ts`** — remove Library breadcrumb injection from system prompt. Currently injects top-10 Library item titles + tags. Replace with:
+New module `consolidator.ts` with function `runConsolidation(db, embedFn, llmFn)`:
 
-```
-Library items are indexed in the Knowledge Graph. Article-derived facts appear in Hot Memory
-with sourced_from edges. Use graph_traverse to explore domain knowledge.
-Use library_get(id) to read the full article source text when needed.
-```
+1. **Find recent facts** created since last consolidation:
+   ```sql
+   SELECT * FROM hippocampus_facts WHERE created_at > ? AND status = 'active'
+   ```
 
-**`context.ts`** — remove Library retrieval call in `assembleContext()` if breadcrumbs are fetched there.
+2. **Find candidate connections** for each recent fact:
+   - **Entity overlap:** extract key terms from fact_text, find existing facts with same terms (simple string matching, no LLM)
+   - **Embedding similarity:** embed the fact, find top-5 similar existing facts via sqlite-vec
 
-## What to Delete
-- Library breadcrumb injection code in system prompt builder
-- Library retrieval call for breadcrumb generation in context assembly
+3. **Ask LLM for relationships:**
+   ```
+   Given these new facts: [...]
+   And these existing facts: [...]
+   Identify relationships. Output: { edges: [{ from, to, type, confidence }] }
+   Only output relationships you're confident about. Do not invent connections.
+   ```
 
-## What NOT to Delete
-- `library.sqlite` — stays as content store
-- `library_get` tool — Cortex can still pull full article text
-- `library_search` tool — Cortex can still explicitly search Library
-- `library_stats` tool — stays
-- `library_ingest` tool — stays (feeds graph via 017e)
-- Library embedding infrastructure — stays (used by library_search)
+4. **Insert discovered edges** into `hippocampus_edges` (skip duplicates)
+
+5. **Log** the run: timestamp, facts scanned, edges discovered
+
+### Scheduling
+- Frequency: daily (configurable)
+- Also triggered after article ingestion completes
+- Model: Ollama llama3.2:3b (local, free)
 
 ## Tests
-- System prompt no longer contains Library breadcrumb section
-- Article-derived facts visible in hot memory graph with `sourced_from` edges
-- `library_get(id)` still works
-- `library_search(query)` still works
+- Two unconnected facts about same topic → consolidation finds edge
+- Facts from different sources (conversation + article) → cross-source edge
+- Already-connected facts → no duplicate edges
+- Empty recent facts → no-op, no errors
 
 ## Files
 | File | Change |
 |------|--------|
-| `src/cortex/llm-caller.ts` | Remove breadcrumb injection, add graph guidance |
-| `src/cortex/context.ts` | Remove Library retrieval call if present |
+| `src/cortex/consolidator.ts` | New module — consolidation logic |
+| Cron config | New daily job for consolidation |
