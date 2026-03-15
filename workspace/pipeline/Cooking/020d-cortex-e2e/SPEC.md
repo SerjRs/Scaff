@@ -43,10 +43,11 @@ depends_on: ["019", "023"]
 > import { embedViaOllama } from "../tools.js"; // or the embed function from hippocampus
 > ```
 >
-> **What to add:**
-> - E4-integration: insert graph fact, call `executeMemoryQuery` with real embeddings, assert graph fact appears in results (depends on 023)
-> - E7-integration: send a webchat message through `createGatewayLLMCaller` → verify no tool duplicate error, auth works, response is non-empty
-> - Guard with `describe.skipIf(!process.env.RUN_INTEGRATION)`
+> **What to do:**
+> - Replace all mocked `callLLM` with `createGatewayLLMCaller()` — real auth, real tool assembly, real API calls
+> - Replace `mockEmbedFn` with real Ollama `nomic-embed-text` embeddings
+> - E4 must verify memory_query results actually contain graph facts, not just check mock responded
+> - If tests fail with real LLM, that's a real bug — fix it
 
 ## Goal
 Test hippocampus knowledge graph integration through the full Cortex loop: hot memory in system floor, graph facts with edges, fact extraction via Gardener, cold search, eviction stubs, and revival — all exercised through webchat messages.

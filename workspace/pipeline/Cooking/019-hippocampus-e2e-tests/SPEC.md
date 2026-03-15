@@ -36,11 +36,11 @@ depends_on: ["017a", "017b", "017c", "017d", "017e", "017f", "017g", "017h", "01
 > // This is the path that was completely untested and had 2 bugs.
 > ```
 >
-> **What to add (not replace — keep existing mocked tests for speed):**
-> - 1 integration test calling `createGatewayLLMCaller` with real auth → verifies tool list has no duplicates, auth resolves, API responds
-> - 1 integration test calling `executeMemoryQuery` with real embeddings → verifies graph facts appear in results (depends on 023 fix)
-> - 1 integration test calling `extractFactsFromTranscript` with real Sonnet → verifies structured JSON extraction works end-to-end
-> - Mark integration tests with `describe.skipIf(!process.env.RUN_INTEGRATION)` so CI doesn't require API keys
+> **What to do:**
+> - Replace all mocked LLM calls with real Sonnet calls via `complete()` or `createGatewayLLMCaller()`
+> - Replace `mockEmbedFn` with real Ollama `nomic-embed-text` embeddings
+> - Tests must exercise the actual auth path, actual tool assembly, actual API responses
+> - If a test was passing with mocks but fails with real LLM, that's a real bug — fix it
 
 ## Goal
 Comprehensive end-to-end test suite that validates the entire Hippocampus v2 knowledge graph lifecycle — from fact storage to extraction to graph building to system floor injection to eviction to revival. Every test logs its output so you can **see** the data flowing through the system at each stage.
