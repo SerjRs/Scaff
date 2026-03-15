@@ -5,11 +5,42 @@ created: "2026-03-15"
 author: "scaff"
 priority: "high"
 status: "cooking"
-moved_at: "2026-03-15"
+moved_at: "2026-03-16"
 depends_on: ["017a", "017b", "017c", "017d", "017e", "017f", "017g", "017h", "017i", "018"]
 ---
 
 # 019 — Hippocampus E2E Test Suite
+
+> ## ⚠️ RE-OPENED: LLM Mocking Gap (2026-03-16)
+>
+> **Problem:** All 61 tests use `mockLLM` / `mockEmbedFn` — no test ever calls a real LLM.
+> This means the tests validate data flow and DB operations but miss integration bugs:
+> - `getProfileCandidates` was deleted but tests passed (mock bypasses entire auth path)
+> - `memory_query` doesn't search `hippocampus_facts_vec` but E4 passed (mock LLM always returns canned response regardless of actual search results)
+> - Duplicate tool names (`graph_traverse`) not caught (mock never sends tools to a real API)
+>
+> **Fix:** Add a subset of integration tests that use **real Sonnet calls** via the reusable LLM client (018).
+>
+> **How to call the real LLM from tests:**
+> ```typescript
+> import { complete } from "../../llm/simple-complete.js";
+>
+> // For fact extraction tests:
+> const realExtractLLM: FactExtractorLLM = async (prompt: string) => {
+>   return complete(prompt, { model: "claude-sonnet-4-5", maxTokens: 2048 });
+> };
+>
+> // For Cortex loop tests (callLLM):
+> // Use createGatewayLLMCaller(params) from llm-caller.ts — the REAL caller
+> // that resolves auth profiles, assembles tools, and calls the Anthropic API.
+> // This is the path that was completely untested and had 2 bugs.
+> ```
+>
+> **What to add (not replace — keep existing mocked tests for speed):**
+> - 1 integration test calling `createGatewayLLMCaller` with real auth → verifies tool list has no duplicates, auth resolves, API responds
+> - 1 integration test calling `executeMemoryQuery` with real embeddings → verifies graph facts appear in results (depends on 023 fix)
+> - 1 integration test calling `extractFactsFromTranscript` with real Sonnet → verifies structured JSON extraction works end-to-end
+> - Mark integration tests with `describe.skipIf(!process.env.RUN_INTEGRATION)` so CI doesn't require API keys
 
 ## Goal
 Comprehensive end-to-end test suite that validates the entire Hippocampus v2 knowledge graph lifecycle — from fact storage to extraction to graph building to system floor injection to eviction to revival. Every test logs its output so you can **see** the data flowing through the system at each stage.
