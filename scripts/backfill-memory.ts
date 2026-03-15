@@ -10,6 +10,10 @@
  *   npx tsx scripts/backfill-memory.ts --help
  */
 
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
+
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { join, basename, relative } from "node:path";
@@ -592,6 +596,21 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (attempt === maxRetries) throw err;
+      const isRateLimit = err?.status === 429 || err?.message?.includes('429');
+      const waitMs = isRateLimit ? 5000 * attempt : 1000 * attempt;
+      console.warn(`  Retry ${attempt}/${maxRetries} (wait ${waitMs}ms): ${err?.message ?? err}`);
+      await delay(waitMs);
+    }
+  }
+  throw new Error('callWithRetry: unreachable');
+}
+
 // ---------------------------------------------------------------------------
 // Main processing
 // ---------------------------------------------------------------------------
@@ -609,8 +628,8 @@ async function processChunk(
     return;
   }
 
-  // Extract facts via Haiku
-  const extraction = await extractFacts(chunk.text);
+  // Extract facts via Haiku (with retry)
+  const extraction = await callWithRetry(() => extractFacts(chunk.text));
 
   if (extraction.facts.length === 0) {
     stats.emptyExtractions++;
@@ -751,13 +770,20 @@ async function main(): Promise<void> {
       const chunks = readAndChunk(filePath, source, base);
       console.log(`  Chunks: ${chunks.length}`);
 
-      for (const chunk of chunks) {
+      const totalChunks = chunks.length;
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = chunks[i];
         try {
           await processChunk(db!, chunk, source, dryRun, stats);
           stats.chunksProcessed++;
 
-          // Rate limit: 200ms between Haiku calls
-          await delay(200);
+          // Progress logging every 10 chunks
+          if ((i + 1) % 10 === 0) {
+            console.log(`  Progress: ${i + 1}/${totalChunks} chunks, ${stats.factsExtracted} facts so far`);
+          }
+
+          // Rate limit: 500ms between Haiku calls
+          await delay(500);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`  ERROR (chunk ${chunk.sourceRef}): ${msg}`);
