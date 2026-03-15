@@ -1,64 +1,57 @@
 ---
-id: "017e"
-title: "Article ingestion to graph — extend Librarian + gateway-bridge"
+id: "017f"
+title: "Replace Library breadcrumbs with graph breadcrumbs"
 created: "2026-03-14"
 author: "scaff"
-priority: "high"
+priority: "medium"
 status: "cooking"
 moved_at: "2026-03-14"
-depends_on: ["017a", "017d"]
+depends_on: ["017b", "017e"]
 parent: "017"
 ---
 
-# 017e — Article Ingestion → Graph
+# 017f — Replace Library Breadcrumbs with Graph Breadcrumbs
 
 ## Depends on
-- 017a (graph schema)
-- 017d (same extraction JSON format)
+- 017b (graph injection in System Floor working)
+- 017e (articles in graph with sourced_from edges)
 
 ## Touches
-- `src/library/librarian-prompt.ts`
-- `src/cortex/gateway-bridge.ts`
+- `src/cortex/llm-caller.ts`
+- `src/cortex/context.ts` (if Library retrieval is called here)
 
 ## What to Change
 
-**`librarian-prompt.ts`** — extend Librarian output schema:
+**`llm-caller.ts`** — remove Library breadcrumb injection from system prompt. Currently injects top-10 Library item titles + tags. Replace with:
 
-Add to the JSON output alongside existing title/summary/tags/key_concepts/full_text:
 ```
-"facts": [
-  { "id": "f1", "text": "O-RAN reduces TCO by 30%", "type": "fact", "confidence": "high" }
-],
-"edges": [
-  { "from": "f1", "to": "f2", "type": "because" }
-]
+Library items are indexed in the Knowledge Graph. Article-derived facts appear in Hot Memory
+with sourced_from edges. Use graph_traverse to explore domain knowledge.
+Use library_get(id) to read the full article source text when needed.
 ```
 
-**`gateway-bridge.ts`** — Library task handler (~line 349):
+**`context.ts`** — remove Library retrieval call in `assembleContext()` if breadcrumbs are fetched there.
 
-After existing `insertItem()` call (which stores raw content in library.sqlite), add:
-1. Parse `parsed.facts` and `parsed.edges` from executor output
-2. Create article source node in `hippocampus_facts`:
-   `{ fact_type: 'source', fact_text: 'Article: {title}', source_type: 'article', source_ref: 'library://item/{id}' }`
-3. Insert each extracted fact into `hippocampus_facts` with `source_type='article'`, `source_ref='library://item/{id}'`
-4. Insert edges from extraction output into `hippocampus_edges`
-5. Add `sourced_from` edge from each fact to the article source node
+## What to Delete
+- Library breadcrumb injection code in system prompt builder
+- Library retrieval call for breadcrumb generation in context assembly
 
-**Graceful fallback:** If executor output lacks facts/edges (old Librarian prompt), skip graph insertion — Library storage still works.
-
-## What NOT to Change
-- `insertItem()` in library/db.ts — still stores raw content
-- Library tools — all stay
-- Library breadcrumbs — removed in 017f, not here
+## What NOT to Delete
+- `library.sqlite` — stays as content store
+- `library_get` tool — Cortex can still pull full article text
+- `library_search` tool — Cortex can still explicitly search Library
+- `library_stats` tool — stays
+- `library_ingest` tool — stays (feeds graph via 017e)
+- Library embedding infrastructure — stays (used by library_search)
 
 ## Tests
-- Ingest article → facts + edges appear in hippocampus tables
-- `sourced_from` edge links each fact to article source node
-- Article source node has `source_ref = 'library://item/{id}'`
-- Old executor output (no facts/edges) → graceful skip, Library storage works
+- System prompt no longer contains Library breadcrumb section
+- Article-derived facts visible in hot memory graph with `sourced_from` edges
+- `library_get(id)` still works
+- `library_search(query)` still works
 
 ## Files
 | File | Change |
 |------|--------|
-| `src/library/librarian-prompt.ts` | Add facts + edges to output schema |
-| `src/cortex/gateway-bridge.ts` | Parse facts/edges, write to hippocampus tables |
+| `src/cortex/llm-caller.ts` | Remove breadcrumb injection, add graph guidance |
+| `src/cortex/context.ts` | Remove Library retrieval call if present |
