@@ -1,64 +1,57 @@
 ---
-id: "017g"
-title: "Consolidator — find cross-connections between facts daily"
+id: "017i"
+title: "Migration script — existing Library items to graph"
 created: "2026-03-14"
 author: "scaff"
-priority: "medium"
+priority: "low"
 status: "cooking"
 moved_at: "2026-03-14"
-depends_on: ["017a", "017d", "017e"]
+depends_on: ["017a", "017d", "017e", "017g"]
 parent: "017"
 ---
 
-# 017g — Consolidator
+# 017i — Migration Script: Library Items → Graph
+
+> Last task. Run after everything else is deployed.
 
 ## Depends on
-- 017a (graph schema)
-- 017d (conversation facts in graph)
-- 017e (article facts in graph)
+All previous tasks (017a through 017h).
 
 ## Touches
-- New file: `src/cortex/consolidator.ts`
-- Cron configuration for scheduling
+- New script: `scripts/library-to-graph.mjs`
 
 ## What to Build
 
-New module `consolidator.ts` with function `runConsolidation(db, embedFn, llmFn)`:
+One-time migration script that processes all existing Library items (currently 21):
 
-1. **Find recent facts** created since last consolidation:
-   ```sql
-   SELECT * FROM hippocampus_facts WHERE created_at > ? AND status = 'active'
-   ```
+1. For each active item in `library.sqlite`:
+   - Read title, summary, key_concepts, tags
+   - Call Ollama (or Sonnet for better quality) with the fact extraction prompt from 017e
+   - Create article source node in `hippocampus_facts`
+   - Insert extracted facts with `source_type='article'`, `source_ref='library://item/{id}'`
+   - Insert edges + `sourced_from` edges to article source node
 
-2. **Find candidate connections** for each recent fact:
-   - **Entity overlap:** extract key terms from fact_text, find existing facts with same terms (simple string matching, no LLM)
-   - **Embedding similarity:** embed the fact, find top-5 similar existing facts via sqlite-vec
+2. After all items processed:
+   - Run the Consolidator (017g) to find cross-article connections
+   - Log summary: items processed, facts extracted, edges created
 
-3. **Ask LLM for relationships:**
-   ```
-   Given these new facts: [...]
-   And these existing facts: [...]
-   Identify relationships. Output: { edges: [{ from, to, type, confidence }] }
-   Only output relationships you're confident about. Do not invent connections.
-   ```
+## Constraints
+- **Idempotent:** check for existing `source_ref` before inserting — safe to run multiple times
+- **Timeout:** 30s per item for LLM extraction
+- **Sequential:** process one at a time (don't overload Ollama)
+- **Model:** Use Sonnet for better extraction quality on the initial migration (one-time cost is acceptable)
 
-4. **Insert discovered edges** into `hippocampus_edges` (skip duplicates)
-
-5. **Log** the run: timestamp, facts scanned, edges discovered
-
-### Scheduling
-- Frequency: daily (configurable)
-- Also triggered after article ingestion completes
-- Model: Ollama llama3.2:3b (local, free)
+## Run command
+```
+node scripts/library-to-graph.mjs
+```
 
 ## Tests
-- Two unconnected facts about same topic → consolidation finds edge
-- Facts from different sources (conversation + article) → cross-source edge
-- Already-connected facts → no duplicate edges
-- Empty recent facts → no-op, no errors
+- Run on existing 21 items → all produce facts + edges
+- Run twice → no duplicates (idempotent)
+- Consolidator finds cross-article connections after migration
 
 ## Files
 | File | Change |
 |------|--------|
-| `src/cortex/consolidator.ts` | New module — consolidation logic |
-| Cron config | New daily job for consolidation |
+| `scripts/library-to-graph.mjs` | New — one-time migration script |

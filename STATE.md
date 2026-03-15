@@ -1,9 +1,9 @@
-# STATE — 017g
+# STATE — 017i
 ## Status: Done
 ## Milestones
-- [x] `consolidator.ts` created with `runConsolidation()`
-- [x] Dedup logic for existing edges
-- [x] Consolidator added to Gardener scheduler
-- [x] Exported from index.ts
-- [x] Tests written and passing
-- [x] Branch pushed, PR created (#14)
+- [x] Script created at `scripts/library-to-graph.mjs`
+- [x] Idempotency check (skip already-migrated items)
+- [x] LLM extraction via Ollama
+- [x] Graph insertion (source node + facts + edges)
+- [x] --dry-run and --limit flags
+- [x] Branch pushed, PR created — https://github.com/SerjRs/Scaff/pull/15
