@@ -30,7 +30,15 @@ Output ONLY valid JSON, no markdown, no explanation:
   "tags": ["kebab-case-tag-1", "kebab-case-tag-2", ...],
   "content_type": "article|documentation|tutorial|research|tool|discussion",
   "source_quality": "high|medium|low",
-  "full_text": "raw article content (see rules)"
+  "full_text": "raw article content (see rules)",
+  "facts": [
+    {"id": "f1", "text": "...", "type": "fact|decision|outcome|correction", "confidence": "high|medium|low"},
+    ...
+  ],
+  "edges": [
+    {"from": "f1", "to": "f2", "type": "because|informed_by|resulted_in|contradicts|updated_by|related_to"},
+    ...
+  ]
 }
 
 Rules:
@@ -40,6 +48,8 @@ Rules:
 - content_type: pick the most accurate classification.
 - source_quality: "high" = deep, well-cited, authoritative. "medium" = useful but surface-level. "low" = opinion, thin, or questionable.
 - full_text: Include the raw article content in full_text. Cap at 50KB. If content exceeds 50KB, truncate and append "[TRUNCATED]".
+- facts: Extract 3-10 key facts from the article. Each should be a standalone statement of knowledge. Types: fact (claims, data points), decision (recommendations, conclusions), outcome (results, findings), correction (debunking, errata).
+- edges: Identify relationships between extracted facts. Only include edges where the relationship is clearly stated in the article. If no clear relationships exist, use an empty array.
 
 Output ONLY the JSON object.`;
 }

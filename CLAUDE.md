@@ -1,158 +1,155 @@
-# Claude Code Instructions — 017h
+# Claude Code Instructions — 017e
 
 ## Branch
-`feat/017h-eviction-edge-stubs`
+`feat/017e-article-ingestion-graph`
 
 ## Context
-The knowledge graph has `hippocampus_facts` (active facts) and `hippocampus_edges` (relationships). Cold storage exists in `cortex_cold_memory` + `cortex_cold_memory_vec` tables. Currently the Vector Evictor in `gardener.ts` evicts from `cortex_hot_memory` → cold storage. This task adds graph-aware eviction that preserves edge structure via stubs, and revival when cold facts get queried.
+When a URL is ingested via the Librarian executor, the result is parsed in `gateway-bridge.ts` and stored in the Library DB (`library.sqlite`). This task extends that pipeline to ALSO extract facts+edges from articles and store them in the knowledge graph (`hippocampus_facts` + `hippocampus_edges` in `bus.sqlite`).
 
 ## What to Build
 
-### 1. Add `getStaleGraphFacts()` in `hippocampus.ts`
+### 1. Extend Librarian prompt — `src/library/librarian-prompt.ts`
 
-```typescript
-export function getStaleGraphFacts(
-  db: DatabaseSync,
-  olderThanDays = 14,
-  maxHitCount = 3,
-): GraphFact[]
+Add facts and edges to the JSON output schema. After the existing `"full_text"` field in the schema example, add:
+
 ```
-Same logic as `getStaleHotFacts` but queries `hippocampus_facts WHERE status = 'active'`.
-
-### 2. Add `evictFact()` in `hippocampus.ts`
-
-```typescript
-export function evictFact(
-  db: DatabaseSync,
-  factId: string,
-  embedding: Float32Array,
-): void
+  "facts": [
+    {"id": "f1", "text": "...", "type": "fact|decision|outcome|correction", "confidence": "high|medium|low"},
+    ...
+  ],
+  "edges": [
+    {"from": "f1", "to": "f2", "type": "because|informed_by|resulted_in|contradicts|updated_by|related_to"},
+    ...
+  ]
 ```
 
-Steps:
-1. Read the fact from `hippocampus_facts`
-2. Insert into cold storage via existing `insertColdFact(db, factText, embedding)` — returns a rowid
-3. Update `hippocampus_facts` SET `status = 'evicted'`, `cold_vector_id = <rowid from step 2>`
-4. For each edge in `hippocampus_edges` where `from_fact_id = factId OR to_fact_id = factId`:
-   - SET `is_stub = 1`, `stub_topic = <first 50 chars of fact_text>`
-
-### 3. Add `reviveFact()` in `hippocampus.ts`
-
-```typescript
-export function reviveFact(db: DatabaseSync, factId: string): void
+Add these rules to the Rules section:
+```
+- facts: Extract 3-10 key facts from the article. Each should be a standalone statement of knowledge. Types: fact (claims, data points), decision (recommendations, conclusions), outcome (results, findings), correction (debunking, errata).
+- edges: Identify relationships between extracted facts. Only include edges where the relationship is clearly stated in the article. If no clear relationships exist, use an empty array.
 ```
 
-Steps:
-1. Update `hippocampus_facts` SET `status = 'active'`, `hit_count = 1`, `last_accessed_at = now`, `cold_vector_id = NULL`
-2. For each edge where `from_fact_id = factId OR to_fact_id = factId` AND `is_stub = 1`:
-   - Check if the OTHER endpoint fact is still active (or also being revived)
-   - If the other endpoint is active: SET `is_stub = 0`, `stub_topic = NULL`
-   - If the other endpoint is evicted: leave as stub (only clear this fact's side)
+### 2. Parse facts/edges in gateway-bridge.ts — after Library DB write
 
-Note: For simplicity, just clear `is_stub` on any edge touching the revived fact where the OTHER endpoint has `status = 'active'`. Edges where both endpoints are evicted stay as stubs.
+In `src/cortex/gateway-bridge.ts`, find the Library task handler (around line 325-410). After the existing `insertItem()` call and embedding generation, add graph ingestion.
 
-### 4. Add `pruneOldStubs()` in `hippocampus.ts`
+**Location:** Inside the `if (libraryUrl)` + `if (job.status === "completed")` block, after the `job.result = ...` lines (around line 384-385), but still inside the `try` block before the `finally { libraryDb.close(); }`.
+
+**Add this code:**
 
 ```typescript
-export function pruneOldStubs(db: DatabaseSync, olderThanDays = 90): number
-```
+// --- Graph ingestion (017e): extract facts+edges into hippocampus ---
+try {
+  const hippo = require("./hippocampus.js");
+  const parsedFacts = parsed.facts as Array<{ id: string; text: string; type?: string; confidence?: string }> | undefined;
+  const parsedEdges = parsed.edges as Array<{ from: string; to: string; type: string }> | undefined;
 
-Delete edges from `hippocampus_edges` WHERE:
-- `is_stub = 1`
-- `created_at < <cutoff>`
-- BOTH `from_fact_id` and `to_fact_id` have `status = 'evicted'` in `hippocampus_facts`
+  if (parsedFacts && parsedFacts.length > 0) {
+    // Create article source node
+    const sourceFactId = hippo.insertFact(instance.db, {
+      factText: `Article: ${parsed.title}`,
+      factType: "source",
+      confidence: "high",
+      sourceType: "article",
+      sourceRef: `library://item/${itemId}`,
+    });
 
-Return count of deleted edges.
+    // Map local IDs (f1, f2...) to real UUIDs
+    const idMap = new Map<string, string>();
 
-### 5. Update `runVectorEvictor()` in `gardener.ts`
+    for (const f of parsedFacts) {
+      if (!f.text?.trim()) continue;
+      const factId = hippo.insertFact(instance.db, {
+        factText: f.text.trim(),
+        factType: f.type ?? "fact",
+        confidence: f.confidence ?? "medium",
+        sourceType: "article",
+        sourceRef: `library://item/${itemId}`,
+      });
+      idMap.set(f.id, factId);
 
-Add a second pass that evicts stale graph facts:
-```typescript
-// After existing cortex_hot_memory eviction...
+      // Link fact to article source
+      hippo.insertEdge(instance.db, {
+        fromFactId: factId,
+        toFactId: sourceFactId,
+        edgeType: "sourced_from",
+      });
+    }
 
-// Graph-aware eviction
-const staleGraphFacts = getStaleGraphFacts(db, olderThanDays, maxHitCount);
-for (const fact of staleGraphFacts) {
-  try {
-    const embedding = await embedFn(fact.factText);
-    evictFact(db, fact.id, embedding);
-    result.processed++;
-  } catch (err) {
-    result.errors.push(`graph:${fact.id}: ${err instanceof Error ? err.message : String(err)}`);
+    // Insert edges between facts
+    if (parsedEdges) {
+      for (const e of parsedEdges) {
+        const fromId = idMap.get(e.from);
+        const toId = idMap.get(e.to);
+        if (fromId && toId && fromId !== toId) {
+          hippo.insertEdge(instance.db, {
+            fromFactId: fromId,
+            toFactId: toId,
+            edgeType: e.type,
+          });
+        }
+      }
+    }
+
+    params.log.info?.(`[library] Graph: ${parsedFacts.length} facts + ${parsedEdges?.length ?? 0} edges from "${parsed.title}"`);
   }
-}
-
-// Prune old stubs
-pruneOldStubs(db, 90);
-```
-
-Import `getStaleGraphFacts`, `evictFact`, `pruneOldStubs` from `./hippocampus.js`.
-
-### 6. Update `executeMemoryQuery()` in `tools.ts`
-
-After searching cold storage and finding results, check if any cold fact matches an evicted graph fact and revive it:
-
-After the existing `searchColdFacts` call and before returning results, add:
-```typescript
-// Check if any cold results match evicted graph facts — revive them
-for (const fact of results) {
-  const evictedMatch = db.prepare(
-    `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'evicted'`
-  ).get(fact.factText) as { id: string } | undefined;
-  
-  if (evictedMatch) {
-    reviveFact(db, evictedMatch.id);
-  }
+} catch (graphErr) {
+  // Graph ingestion is best-effort — don't fail the Library write
+  params.log.warn?.(`[library] Graph ingestion failed: ${graphErr instanceof Error ? graphErr.message : String(graphErr)}`);
 }
 ```
 
-Import `reviveFact` from `./hippocampus.js` at the top of tools.ts.
+**Important:** Also update the `parsed` type annotation (around line 347) to include the new fields:
 
-Also update the tracking hook section to work with graph facts too:
+Change:
 ```typescript
-// After revival check, also touch graph facts
-for (const fact of results) {
-  const graphMatch = db.prepare(
-    `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'active'`
-  ).get(fact.factText) as { id: string } | undefined;
-  
-  if (graphMatch) {
-    touchGraphFact(db, graphMatch.id);
-  }
-}
+const parsed = JSON.parse(jsonStr) as {
+  title: string; summary: string; key_concepts: string[];
+  tags: string[]; content_type: string; source_quality: string;
+  full_text?: string;
+};
+```
+To:
+```typescript
+const parsed = JSON.parse(jsonStr) as {
+  title: string; summary: string; key_concepts: string[];
+  tags: string[]; content_type: string; source_quality: string;
+  full_text?: string;
+  facts?: Array<{ id: string; text: string; type?: string; confidence?: string }>;
+  edges?: Array<{ from: string; to: string; type: string }>;
+};
 ```
 
-Import `touchGraphFact` from `./hippocampus.js`.
+### 3. Ensure `initGraphTables` is called at startup
+
+Check that `initHotMemoryTable(db)` is called during Cortex startup (it should already be — it was added in 017a). This ensures `hippocampus_facts` and `hippocampus_edges` tables exist when gateway-bridge tries to write to them. No changes needed if it's already called.
 
 ## Files to Modify
 | File | Change |
 |------|--------|
-| `src/cortex/hippocampus.ts` | `getStaleGraphFacts`, `evictFact`, `reviveFact`, `pruneOldStubs` |
-| `src/cortex/gardener.ts` | Add graph eviction pass to `runVectorEvictor()` |
-| `src/cortex/tools.ts` | Add revival logic to `executeMemoryQuery()` |
+| `src/library/librarian-prompt.ts` | Add facts + edges to output schema and rules |
+| `src/cortex/gateway-bridge.ts` | Parse facts/edges from executor result, write to graph |
 
 ## Tests
 
-Write tests in `src/cortex/__tests__/eviction-stubs.test.ts`:
+Write tests in `src/cortex/__tests__/article-ingestion-graph.test.ts`:
 
-1. **`evictFact` moves fact to cold + sets edges as stubs** — insert fact + edges, evict, verify status='evicted', edges have is_stub=1 and stub_topic set
-2. **`evictFact` stores cold_vector_id** — verify hippocampus_facts.cold_vector_id is set after eviction
-3. **Evicted facts excluded from getTopFactsWithEdges** — evicted facts don't appear in hot results
-4. **`reviveFact` restores status and reconnects edges** — evict then revive, verify status='active', hit_count=1, edges with active endpoints have is_stub=0
-5. **`reviveFact` leaves stubs for still-evicted endpoints** — two facts connected by edge, evict both, revive only one, edge stays as stub
-6. **`pruneOldStubs` deletes old stubs where both endpoints evicted** — create old stub edge between two evicted facts, prune, verify deleted
-7. **`pruneOldStubs` keeps stubs where one endpoint is active** — edge with one active endpoint survives pruning
-8. **`getStaleGraphFacts` returns only active stale facts** — mix of active and evicted facts, only active returned
-9. **`executeMemoryQuery` revives evicted graph fact on cold hit** — full E2E: insert graph fact, evict it, query cold storage, verify revival
+1. **Librarian prompt includes facts/edges schema** — import `buildLibrarianPrompt`, verify output contains "facts" and "edges" fields
+2. **Graph ingestion creates source node + facts + edges** — simulate the gateway-bridge graph ingestion logic directly:
+   - Set up bus.sqlite with `initBus()` + `initHotMemoryTable()`
+   - Call `insertFact` and `insertEdge` in the same pattern as gateway-bridge
+   - Verify article source node exists with `fact_type='source'`
+   - Verify extracted facts have `source_type='article'` and `source_ref` set
+   - Verify `sourced_from` edges connect facts to source node
+   - Verify inter-fact edges exist
+3. **Graceful skip when no facts in output** — parsed object without `facts` field, verify no graph writes happen and no errors
+4. **Edge insertion skips invalid references** — edge with `from: "f99"` (nonexistent), verify silently skipped
 
-For test setup:
-- Use `initBus()` + `initSessionTables()` + `initHotMemoryTable()` (creates graph tables too)
-- Use `initColdStorage(db)` for cold storage vec table
-- Use `initGraphVecTable(db)` for graph fact vec table (from hippocampus.ts, added in 017d)
-- Mock embedFn with deterministic seed-based embeddings (see gardener.test.ts for pattern)
-- For `pruneOldStubs` test: manually INSERT edges with old `created_at` timestamps
+Use `initBus()` + `initSessionTables()` + `initHotMemoryTable()` for DB setup.
+Import `insertFact`, `insertEdge`, `getFactWithEdges` from hippocampus.ts for assertions.
 
 ## Constraints
-- Do NOT remove existing `cortex_hot_memory` eviction from `runVectorEvictor` — keep it as-is, add graph eviction as a second pass
-- All new functions must be exported from hippocampus.ts
-- When done, commit, push branch, create PR, then run: `openclaw system event --text "Done 017h eviction edge stubs"`
+- Do NOT modify `insertItem()` or any Library DB functions
+- Graph ingestion must be best-effort — wrapped in try/catch, Library storage works even if graph fails
+- Use `require()` for hippocampus import in gateway-bridge (existing pattern in that file — it uses require for library/db.js too)
+- When done, commit, push branch, create PR, then run: `openclaw system event --text "Done 017e article ingestion graph"`
