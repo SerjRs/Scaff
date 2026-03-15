@@ -1,7 +1,9 @@
-# STATE — 017f
-## Status: InReview
+# STATE — 017g
+## Status: Done
 ## Milestones
-- [x] Library breadcrumb injection removed from context.ts
-- [x] System prompt Library section updated in llm-caller.ts
+- [x] `consolidator.ts` created with `runConsolidation()`
+- [x] Dedup logic for existing edges
+- [x] Consolidator added to Gardener scheduler
+- [x] Exported from index.ts
 - [x] Tests written and passing
-- [x] Branch pushed, PR created
+- [x] Branch pushed, PR created (#14)

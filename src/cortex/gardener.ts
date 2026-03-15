@@ -634,6 +634,7 @@ export function startGardener(params: {
   compactorIntervalMs?: number;
   extractorIntervalMs?: number;
   evictorIntervalMs?: number;
+  consolidatorIntervalMs?: number;
 }): GardenerInstance {
   const {
     db,
@@ -644,6 +645,7 @@ export function startGardener(params: {
     compactorIntervalMs = 60 * 60 * 1000,       // 1 hour
     extractorIntervalMs = 6 * 60 * 60 * 1000,    // 6 hours
     evictorIntervalMs = 7 * 24 * 60 * 60 * 1000, // 1 week
+    consolidatorIntervalMs = 24 * 60 * 60 * 1000, // 1 day
   } = params;
 
   const timers: ReturnType<typeof setInterval>[] = [];
@@ -675,10 +677,21 @@ export function startGardener(params: {
     }
   };
 
-  console.log(`[gardener] Started — compactor: ${compactorIntervalMs}ms, extractor: ${extractorIntervalMs}ms, evictor: ${evictorIntervalMs}ms`);
+  const runConsolidator = async () => {
+    try {
+      const { runConsolidation } = await import("./consolidator.js");
+      const result = await runConsolidation({ db, embedFn, llmFn: extractLLM });
+      console.log(`[gardener] Consolidator done: scanned=${result.factsScanned}, edges=${result.edgesDiscovered}`);
+    } catch (err) {
+      onError(err instanceof Error ? err : new Error(String(err)));
+    }
+  };
+
+  console.log(`[gardener] Started — compactor: ${compactorIntervalMs}ms, extractor: ${extractorIntervalMs}ms, evictor: ${evictorIntervalMs}ms, consolidator: ${consolidatorIntervalMs}ms`);
   timers.push(setInterval(runCompactor, compactorIntervalMs));
   timers.push(setInterval(runExtractor, extractorIntervalMs));
   timers.push(setInterval(runEvictor, evictorIntervalMs));
+  timers.push(setInterval(runConsolidator, consolidatorIntervalMs));
 
   return {
     stop() {
@@ -690,6 +703,9 @@ export function startGardener(params: {
       results.push(await runChannelCompactor({ db, summarize }));
       results.push(await runFactExtractor({ db, extractLLM, embedFn }));
       results.push(await runVectorEvictor({ db, embedFn }));
+      const { runConsolidation } = await import("./consolidator.js");
+      const consResult = await runConsolidation({ db, embedFn, llmFn: summarize });
+      results.push({ task: "consolidator", processed: consResult.edgesDiscovered, errors: consResult.errors });
       return results;
     },
   };
