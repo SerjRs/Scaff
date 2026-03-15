@@ -6,4 +6,4 @@
 - [x] LLM extraction via Ollama
 - [x] Graph insertion (source node + facts + edges)
 - [x] --dry-run and --limit flags
-- [ ] Branch pushed, PR created
+- [x] Branch pushed, PR created — https://github.com/SerjRs/Scaff/pull/15
