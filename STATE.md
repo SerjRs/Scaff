@@ -6,4 +6,4 @@
 - [x] Consolidator added to Gardener scheduler
 - [x] Exported from index.ts
 - [x] Tests written and passing
-- [ ] Branch pushed, PR created
+- [x] Branch pushed, PR created (#14)
