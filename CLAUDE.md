@@ -1,191 +1,306 @@
-# Claude Code Instructions — 018
+# Claude Code Instructions — 019
 
 ## Branch
-`feat/018-reusable-llm-client`
+`feat/019-hippocampus-e2e-tests`
 
 ## Context
-Standalone scripts can't make authenticated LLM calls because the auth infrastructure is buried in bundled gateway code. This task creates a clean, importable module that handles auth profile resolution and API calls, usable by both gateway internals and standalone scripts via `tsx`.
-
-**Critical discovery:** OAuth tokens (`sk-ant-oat01-*`) require `Authorization: Bearer` header + special beta headers, NOT `x-api-key`. The Anthropic SDK (`new Anthropic({ authToken })`) handles this. Direct `fetch()` must replicate this behavior.
+The Hippocampus v2 knowledge graph was built across tasks 017a–017i + 018. This task creates a comprehensive E2E test suite that validates the entire lifecycle: storage → extraction → graph building → system floor injection → promotion → eviction → revival. Every test writes its expected/actual results to TEST-RESULTS.md for human review.
 
 ## What to Build
 
-### 1. New file: `src/llm/resolve-auth.ts`
+### 1. Test Reporter — `src/cortex/__tests__/helpers/hippo-test-utils.ts`
 
-Reads the OpenClaw auth-profiles.json and returns a valid API key/token.
+Create a shared helper file with:
 
+**TestReporter class:**
 ```typescript
-export interface ResolvedAuth {
-  token: string;
-  isOAuth: boolean;  // true if token starts with "sk-ant-oat01-"
-  provider: string;
-  profileId: string;
+interface TestResult {
+  id: string;          // "A1", "B2"
+  name: string;
+  category: string;
+  passed: boolean;
+  expected: string;
+  actual: string;
+  data?: string;       // table dumps, etc.
+  error?: string;
+  durationMs?: number;
 }
 
-/**
- * Resolve auth credentials from OpenClaw auth profiles.
- * Reads auth-profiles.json from the agent directory.
- * 
- * @param provider - Provider to resolve (default: "anthropic")
- * @param agentDir - Agent directory (default: ~/.openclaw/agents/main/agent)
- */
-export function resolveAuth(opts?: {
-  provider?: string;
-  agentDir?: string;
-}): ResolvedAuth
+class TestReporter {
+  private results: TestResult[] = [];
+  private startTime = Date.now();
+
+  record(result: TestResult): void {
+    this.results.push(result);
+  }
+
+  writeReport(outputPath: string): void {
+    const totalMs = Date.now() - this.startTime;
+    const passed = this.results.filter(r => r.passed).length;
+    const failed = this.results.filter(r => !r.passed).length;
+
+    let md = `# Hippocampus E2E Test Results\n`;
+    md += `Generated: ${new Date().toISOString()}\n\n`;
+    md += `## Summary\n`;
+    md += `- Total: ${this.results.length}\n`;
+    md += `- Passed: ${passed}\n`;
+    md += `- Failed: ${failed}\n`;
+    md += `- Duration: ${(totalMs / 1000).toFixed(1)}s\n\n`;
+
+    // Group by category
+    const categories = new Map<string, TestResult[]>();
+    for (const r of this.results) {
+      const cat = categories.get(r.category) ?? [];
+      cat.push(r);
+      categories.set(r.category, cat);
+    }
+
+    for (const [category, tests] of categories) {
+      md += `## ${category}\n\n`;
+      for (const t of tests) {
+        const icon = t.passed ? '✅' : '❌';
+        md += `### ${t.id}. ${t.name} ${icon}\n`;
+        md += `**Expected:** ${t.expected}\n`;
+        md += `**Result:** ${t.actual}\n`;
+        if (t.data) {
+          md += `**Data:**\n\`\`\`\n${t.data}\n\`\`\`\n`;
+        }
+        if (t.error) {
+          md += `**Error:**\n\`\`\`\n${t.error}\n\`\`\`\n`;
+        }
+        md += `\n`;
+      }
+    }
+
+    // Ensure directory exists
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(outputPath, md, 'utf-8');
+    console.log(`\nTest report written to: ${outputPath}`);
+  }
+}
 ```
 
-**Implementation:**
-1. Resolve agent dir: `opts.agentDir ?? path.join(homedir(), '.openclaw', 'agents', 'main', 'agent')`
-2. Read `auth-profiles.json` from that directory
-3. Find profiles matching the provider (default "anthropic"):
-   - Check `lastGood[provider]` first
-   - Fall back to first profile matching `${provider}:*`
-4. For `type: "token"` or `type: "api_key"`: extract the token/key
-5. For `type: "oauth"`: extract `access` field (the access token)
-6. Detect OAuth: `token.startsWith("sk-ant-oat01-")`
-7. If no valid credential found, throw descriptive error
-
-**Dependencies:** Only `node:fs`, `node:path`, `node:os`. Zero external imports.
-
-### 2. New file: `src/llm/simple-complete.ts`
-
+**Dump helpers** (return strings, don't just console.log):
 ```typescript
-export interface CompleteOptions {
-  model?: string;           // default: "claude-haiku-4-5"
-  provider?: string;        // default: "anthropic"
-  maxTokens?: number;       // default: 2048
-  temperature?: number;     // default: 0
-  systemPrompt?: string;
-  timeoutMs?: number;       // default: 60_000
-  agentDir?: string;        // override agent dir for auth resolution
+function dumpFacts(db: DatabaseSync, label: string): string {
+  const facts = db.prepare(
+    `SELECT id, substr(fact_text, 1, 60) as text, fact_type, confidence, status,
+            source_type, source_ref, hit_count, cold_vector_id
+     FROM hippocampus_facts ORDER BY created_at`
+  ).all();
+  let out = `${label} — hippocampus_facts (${facts.length} rows)\n`;
+  for (const f of facts) {
+    out += `  ${(f as any).text} | type=${(f as any).fact_type} status=${(f as any).status} hits=${(f as any).hit_count}\n`;
+  }
+  return out;
 }
 
-export async function complete(
-  prompt: string,
-  opts?: CompleteOptions,
-): Promise<string>
+function dumpEdges(db: DatabaseSync, label: string): string {
+  const edges = db.prepare(
+    `SELECT e.id,
+            substr(f1.fact_text, 1, 30) as from_fact,
+            substr(f2.fact_text, 1, 30) as to_fact,
+            e.edge_type, e.confidence, e.is_stub, e.stub_topic
+     FROM hippocampus_edges e
+     JOIN hippocampus_facts f1 ON e.from_fact_id = f1.id
+     JOIN hippocampus_facts f2 ON e.to_fact_id = f2.id
+     ORDER BY e.created_at`
+  ).all();
+  let out = `${label} — hippocampus_edges (${edges.length} rows)\n`;
+  for (const e of edges) {
+    const stub = (e as any).is_stub ? ` [STUB: ${(e as any).stub_topic}]` : '';
+    out += `  ${(e as any).from_fact} → ${(e as any).to_fact} (${(e as any).edge_type})${stub}\n`;
+  }
+  return out;
+}
+
+function dumpCold(db: DatabaseSync, label: string): string { ... }
+function dumpShards(db: DatabaseSync, label: string): string { ... }
 ```
 
-**Implementation:**
-1. Call `resolveAuth({ provider: opts.provider, agentDir: opts.agentDir })`
-2. Build the request based on whether token is OAuth or API key:
-
-**For OAuth tokens (`isOAuth: true`):**
+**Mock helpers:**
 ```typescript
-const headers = {
-  "content-type": "application/json",
-  "authorization": `Bearer ${auth.token}`,
-  "anthropic-version": "2023-06-01",
-  "anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
-  "anthropic-dangerous-direct-browser-access": "true",
+/** Deterministic 768-dim mock embedding seeded from text */
+function mockEmbedding(seed: number): Float32Array {
+  const emb = new Float32Array(768);
+  for (let i = 0; i < 768; i++) emb[i] = Math.sin(seed * (i + 1));
+  return emb;
+}
+
+const mockEmbedFn = async (text: string): Promise<Float32Array> => {
+  let seed = 0;
+  for (let i = 0; i < text.length; i++) seed = (seed * 31 + text.charCodeAt(i)) | 0;
+  return mockEmbedding(seed);
 };
 ```
 
-**For API keys (`isOAuth: false`):**
+Export everything: `TestReporter`, dump helpers, mock helpers.
+
+### 2. Main test file — `src/cortex/__tests__/e2e-hippocampus-full.test.ts`
+
+Read SPEC.md for the full list of 55 tests across categories A–J. Implement ALL of them.
+
+**Key structure:**
 ```typescript
-const headers = {
-  "content-type": "application/json",
-  "x-api-key": auth.token,
-  "anthropic-version": "2023-06-01",
-};
-```
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
+import { TestReporter, dumpFacts, dumpEdges, ... } from "./helpers/hippo-test-utils.js";
 
-3. POST to `https://api.anthropic.com/v1/messages`:
-```typescript
-const body = {
-  model: opts.model ?? "claude-haiku-4-5",
-  max_tokens: opts.maxTokens ?? 2048,
-  temperature: opts.temperature ?? 0,
-  messages: [{ role: "user", content: prompt }],
-  ...(opts.systemPrompt ? { system: opts.systemPrompt } : {}),
-};
-```
+const reporter = new TestReporter();
+const REPORT_PATH = path.resolve(__dirname, "../../../../workspace/pipeline/Cooking/019-hippocampus-e2e-tests/TEST-RESULTS.md");
 
-4. Parse response: `data.content[0].text`
-5. Handle errors with descriptive messages including model, profile ID, status code
+// ... setup/teardown ...
 
-**Dependencies:** Only `node:fs`, `node:path`, `node:os`, and `./resolve-auth.js`. Zero external imports. Uses native `fetch()`.
+afterAll(() => {
+  reporter.writeReport(REPORT_PATH);
+});
 
-### 3. New file: `src/llm/index.ts`
-
-```typescript
-export { complete, type CompleteOptions } from "./simple-complete.js";
-export { resolveAuth, type ResolvedAuth } from "./resolve-auth.js";
-```
-
-### 4. Refactor `createGardenerLLMFunction` in `src/cortex/llm-caller.ts`
-
-Replace the current implementation (lines ~817-875) that uses `resolveModel`, `getApiKeyForModel`, and `completeSimple` from `pi-ai` with a call to `complete()`:
-
-```typescript
-export function createGardenerLLMFunction(params: LLMCallerParams): (prompt: string) => Promise<string> {
-  return async (prompt: string): Promise<string> => {
-    const { complete } = await import("../llm/simple-complete.js");
-    return complete(prompt, {
-      model: params.modelId,
-      provider: params.provider,
-      maxTokens: params.maxResponseTokens ?? 2048,
-      agentDir: params.agentDir,
-      systemPrompt: "You are a concise assistant. Follow instructions exactly.",
+describe("A. Schema & Storage Foundation", () => {
+  it("A1. Graph tables created on init", () => {
+    // ... test logic ...
+    reporter.record({
+      id: "A1",
+      name: "Graph tables created on init",
+      category: "A. Schema & Storage Foundation",
+      passed: true, // or false
+      expected: "hippocampus_facts, hippocampus_edges, cortex_hot_memory, cortex_cold_memory exist",
+      actual: `Found tables: ${tableNames.join(", ")}`,
+      data: dumpFacts(db, "After init"),
     });
-  };
-}
+    expect(tableNames).toContain("hippocampus_facts");
+    // ...
+  });
+});
 ```
 
-This replaces ~50 lines of code with ~8 lines. The existing `getProfileCandidates` function (lines 783-806) can be removed since `resolveAuth` handles profile resolution.
-
-**Important:** Keep the `LLMCallerParams` interface and the function signature unchanged — only the implementation body changes. Existing callers (gateway-bridge.ts) must not need changes.
-
-### 5. Update migration script: `scripts/library-to-graph.mjs`
-
-Change the `callLLM` function to use the new module. Since it's an .mjs file, either:
-- Rename to `scripts/library-to-graph.ts` and use `tsx`
-- Or keep .mjs and use dynamic import: `const { complete } = await import('../src/llm/simple-complete.js')`
-
-The simplest approach: rename to `.ts` and import directly:
+**IMPORTANT:** Each test MUST:
+1. Call `reporter.record(...)` with expected, actual, and data (table dumps)
+2. ALSO use `expect()` assertions so vitest reports pass/fail
+3. If the test fails unexpectedly (throws), catch the error and record it:
 ```typescript
-import { complete } from "../src/llm/simple-complete.js";
-
-async function callLLM(prompt: string): Promise<string> {
-  return complete(prompt, { model: "claude-haiku-4-5" });
+try {
+  // test logic
+  reporter.record({ ..., passed: true, actual: "..." });
+  expect(...).toBe(...);
+} catch (err) {
+  reporter.record({ ..., passed: false, actual: "THREW", error: err.message });
+  throw err; // re-throw so vitest sees the failure
 }
 ```
 
-Update the script's shebang to `#!/usr/bin/env npx tsx`.
+### 3. Test setup pattern
 
-## Files to Create/Modify
-| File | Change |
-|------|--------|
-| `src/llm/resolve-auth.ts` | **New** — auth profile reader |
-| `src/llm/simple-complete.ts` | **New** — self-contained LLM completion |
-| `src/llm/index.ts` | **New** — exports |
-| `src/cortex/llm-caller.ts` | Refactor `createGardenerLLMFunction` to use `complete()` |
-| `scripts/library-to-graph.mjs` | Update to use `complete()` from llm module (rename to .ts) |
+Each test category gets its own `describe` block. Use `beforeEach` to create fresh temp dir + DB:
 
-## Tests
+```typescript
+let tmpDir: string;
+let db: DatabaseSync;
 
-Write tests in `src/llm/__tests__/simple-complete.test.ts`:
+beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hippo-e2e-"));
+  db = new DatabaseSync(path.join(tmpDir, "bus.sqlite"));
+  // Init all tables
+  initHotMemoryTable(db);
+  initGraphTables(db);
+});
 
-1. **`resolveAuth` reads auth-profiles.json correctly** — create a temp dir with a mock auth-profiles.json containing a token profile, verify it returns the token
-2. **`resolveAuth` detects OAuth tokens** — token starting with `sk-ant-oat01-` → `isOAuth: true`
-3. **`resolveAuth` detects API keys** — token starting with `sk-ant-api03-` → `isOAuth: false`
-4. **`resolveAuth` throws on missing profile** — empty profiles → descriptive error
-5. **`resolveAuth` uses lastGood profile** — multiple profiles, lastGood set → returns that one
-6. **OAuth tokens use Bearer header** — mock fetch, call `complete()` with an OAuth token, verify `Authorization: Bearer` header is used (not `x-api-key`)
-7. **API keys use x-api-key header** — mock fetch, call `complete()` with an API key, verify `x-api-key` header is used
-
-For fetch mocking, use `vi.stubGlobal('fetch', mockFetch)` in vitest. The mock should return a valid Anthropic Messages API response:
-```json
-{ "content": [{ "type": "text", "text": "mocked response" }] }
+afterEach(() => {
+  db.close();
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
 ```
 
-For `resolveAuth` tests, create temp directories with mock `auth-profiles.json` files.
+For tests that need vec tables (dedup, cold storage, eviction):
+```typescript
+beforeEach(async () => {
+  // ... base setup ...
+  await initGraphVecTable(db);
+  await initColdStorage(db);
+  await initHotMemoryVecTable(db);
+});
+```
+
+**Note:** Vec table init is async. If you can't use async beforeEach, call these at the start of each test that needs them.
+
+### 4. Specific test implementation notes
+
+**Category B (Fact Extraction):** Import `extractFactsFromTranscript` from `gardener.ts`. This function is not currently exported — you may need to check if it's exported. If not, test via `runFactExtractor` which calls it internally.
+
+Actually, check the gardener.ts exports first:
+```bash
+grep "export.*extractFactsFromTranscript" src/cortex/gardener.ts
+```
+If it's not exported, either:
+- Export it (preferred — add `export` keyword)
+- Or test extraction indirectly through `runFactExtractor` with a mock LLM
+
+**Category C (Shards):** Import shard functions from `shards.ts`:
+- `assignMessageWithBoundaryDetection`, `getActiveShard`, `getShardMessages`
+- To close a shard: `db.prepare("UPDATE cortex_shards SET status = 'closed' WHERE id = ?").run(shardId)`
+- The `facts_extracted` column is set by `markShardExtracted(db, shardId)` — import from gardener.ts internals or check shards.ts
+
+**Category D (System Floor):** Import `loadSystemFloor` from `context.ts` and `getTopFactsWithEdges` from `hippocampus.ts`. Create a temp workspace dir with a SOUL.md file.
+
+**Category E (Graph Traversal):** Import `traverseGraph` from `hippocampus.ts`. It returns `TraversalNode[]` with depth, edges, etc.
+
+**Category F (Library):** Don't actually import from library — just simulate the insertion pattern from gateway-bridge.ts: insert source node + facts + sourced_from edges manually.
+
+**Category G (Promotion/Demotion):** For setting old timestamps:
+```typescript
+db.prepare("UPDATE hippocampus_facts SET created_at = ?, last_accessed_at = ? WHERE id = ?")
+  .run(oldDate, oldDate, factId);
+```
+
+**Category J (Full Lifecycle):** These are integration tests that combine multiple categories. Use `startCortex` from `../index.js` for J1 and J6, or build up the state manually for others.
+
+### 5. Report path
+
+The TEST-RESULTS.md file MUST be written to:
+```
+workspace/pipeline/Cooking/019-hippocampus-e2e-tests/TEST-RESULTS.md
+```
+
+Use this path relative to the project root:
+```typescript
+const REPORT_PATH = path.resolve(
+  process.cwd(),
+  "workspace/pipeline/Cooking/019-hippocampus-e2e-tests/TEST-RESULTS.md"
+);
+```
+
+Or if running from worktree, resolve relative to `__dirname`:
+```typescript
+const REPORT_PATH = path.resolve(
+  __dirname, "../../../../workspace/pipeline/Cooking/019-hippocampus-e2e-tests/TEST-RESULTS.md"
+);
+```
+
+Check which approach works — the key is that the file ends up in the right place.
+
+## Files to Create
+| File | Description |
+|------|-------------|
+| `src/cortex/__tests__/helpers/hippo-test-utils.ts` | TestReporter, dump helpers, mock helpers |
+| `src/cortex/__tests__/e2e-hippocampus-full.test.ts` | All 55 tests across categories A–J |
+
+## After Implementation
+
+1. Run the tests:
+```bash
+cd /path/to/worktree && pnpm vitest run src/cortex/__tests__/e2e-hippocampus-full.test.ts --reporter=verbose 2>&1
+```
+
+2. Check TEST-RESULTS.md exists and has content
+
+3. Commit everything (including TEST-RESULTS.md from the first run)
+
+4. Push branch, create PR
+
+5. Run: `openclaw system event --text "Done 019 hippocampus e2e tests"`
 
 ## Constraints
-- **Zero bundler dependencies** in `src/llm/` — only Node built-ins
-- **Zero external package imports** — no `@mariozechner/pi-ai`, no `Anthropic` SDK
-- `resolveAuth` must be synchronous (reads file sync) — `complete` is async (makes HTTP call)
-- Do NOT modify `createGatewayLLMCaller` (the main Cortex conversation LLM) — only `createGardenerLLMFunction`
-- Keep `LLMCallerParams` interface unchanged
-- When done, commit, push branch, create PR, then run: `openclaw system event --text "Done 018 reusable LLM client"`
+- Do NOT modify any source files — this is a test-only task
+- Exception: you MAY add `export` to `extractFactsFromTranscript` in gardener.ts if it's not already exported
+- All tests must be deterministic (no real LLM calls, no network)
+- TEST-RESULTS.md must be generated by the test run, not hand-written
+- Use `console.log` for verbose output during test runs AND write to TEST-RESULTS.md
