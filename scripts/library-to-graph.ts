@@ -13,8 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { createGardenerLLMFunction } from "../src/cortex/llm-caller.js";
-import { resolveUserPath } from "../src/utils.js";
+import { complete } from "../src/llm/simple-complete.js";
 
 // ---------------------------------------------------------------------------
 // CLI flags
@@ -27,22 +26,18 @@ const LIMIT = limitIdx !== -1 ? parseInt(args[limitIdx + 1], 10) : Infinity;
 // ---------------------------------------------------------------------------
 // Database paths
 // ---------------------------------------------------------------------------
-const OPENCLAW_ROOT = resolveUserPath("~/.openclaw");
+import { homedir } from "node:os";
+const OPENCLAW_ROOT = join(homedir(), ".openclaw");
 
 const libraryDbPath = join(OPENCLAW_ROOT, "library", "library.sqlite");
 const busDbPath = join(OPENCLAW_ROOT, "cortex", "bus.sqlite");
 
 // ---------------------------------------------------------------------------
-// LLM via gateway auth (Haiku)
+// LLM via reusable client (Haiku)
 // ---------------------------------------------------------------------------
-const callLLM = createGardenerLLMFunction({
-  provider: "anthropic",
-  modelId: "claude-haiku-4-5",
-  agentDir: resolveUserPath("~/.openclaw/agents/main/agent"),
-  config: {} as any,
-  maxResponseTokens: 2048,
-  onError: (err: Error) => console.error(`  LLM error: ${err.message}`),
-});
+async function callLLM(prompt: string): Promise<string> {
+  return complete(prompt, { model: "claude-haiku-4-5" });
+}
 
 // ---------------------------------------------------------------------------
 // Graph helpers (self-contained SQL)
