@@ -26,6 +26,33 @@
         "lastDeliveryStatus": "not-requested",
         "consecutiveErrors": 0
       }
+    },
+    {
+      "id": "21712cfa-4e4e-41c0-b77b-370408e6c8c0",
+      "name": "rebuild-wake",
+      "enabled": false,
+      "deleteAfterRun": true,
+      "createdAtMs": 1773567481575,
+      "updatedAtMs": 1773568169091,
+      "schedule": {
+        "kind": "at",
+        "at": "2026-03-15T09:39:29.000Z"
+      },
+      "sessionTarget": "main",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "systemEvent",
+        "text": "REBUILD_WAKEUP: Gateway rebuilt and restarted. Send a WhatsApp message to Serj confirming you are back online."
+      },
+      "state": {
+        "lastRunAtMs": 1773567569065,
+        "lastRunStatus": "error",
+        "lastStatus": "error",
+        "lastDurationMs": 600026,
+        "lastError": "cron: job execution timed out",
+        "lastDeliveryStatus": "not-requested",
+        "consecutiveErrors": 1
+      }
     }
   ]
 }

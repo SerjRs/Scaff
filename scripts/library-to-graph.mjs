@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // CLI flags
@@ -37,30 +37,47 @@ const busDbPath =
   join(OPENCLAW_ROOT, "cortex", "bus.sqlite");
 
 // ---------------------------------------------------------------------------
-// Ollama
+// Anthropic Haiku
 // ---------------------------------------------------------------------------
-const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
-const MODEL = "llama3.2:3b";
-const TIMEOUT_MS = 30_000;
-const MAX_TEXT_BYTES = 10_000; // cap full_text at ~10KB
+
+const ANTHROPIC_MODEL = "claude-haiku-4-5";
+const TIMEOUT_MS = 60_000;
+const MAX_TEXT_BYTES = 10_000;
+
+function resolveApiKey() {
+  const authPath = join(OPENCLAW_ROOT, "agents", "main", "agent", "auth-profiles.json");
+  try {
+    const store = JSON.parse(readFileSync(authPath, "utf8"));
+    for (const profile of Object.values(store.profiles ?? {})) {
+      if (profile.provider === "anthropic" && profile.token) return profile.token;
+    }
+  } catch { /* fall through */ }
+  throw new Error("Anthropic API key not found in auth-profiles.json");
+}
+
+const API_KEY = resolveApiKey();
 
 async function callLLM(prompt) {
-  const res = await fetch(OLLAMA_URL, {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
     body: JSON.stringify({
-      model: MODEL,
-      prompt,
-      stream: false,
-      options: { temperature: 0.1 },
+      model: ANTHROPIC_MODEL,
+      max_tokens: 2048,
+      temperature: 0,
+      messages: [{ role: "user", content: prompt }],
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) {
-    throw new Error(`Ollama error ${res.status}: ${await res.text()}`);
+    throw new Error(`Anthropic error ${res.status}: ${await res.text()}`);
   }
   const data = await res.json();
-  return data.response;
+  return data.content?.[0]?.text ?? "";
 }
 
 // ---------------------------------------------------------------------------
