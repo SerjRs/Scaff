@@ -87,7 +87,7 @@ Source types:
   daily_log         Daily workspace logs (workspace/memory/*.md)
   agent_facts       All agent fact files (agents/*/memory/long-term/facts-*.md)
   pipeline_task     Pipeline task specs (workspace/pipeline/*/SPEC.md)
-  correction        Corrections from sessions (agents/*/sessions/*.jsonl)
+  correction        Corrections and feedback (learning/corrections.jsonl)
   main_session      Main agent sessions (agents/main/sessions/*.jsonl)
   cortex_archive    Cortex session archives (cortex/session-archive-*.json)
   executor_session  Router executor sessions (agents/router-executor/sessions/*.jsonl)
@@ -145,8 +145,9 @@ function discoverFiles(source: SourceType, base: string): string[] {
     }
 
     case "correction":
-      // Corrections are extracted from main sessions — use same files as main_session
-      return globDir(join(base, "agents", "main", "sessions"), /\.jsonl$/);
+      // Corrections live in learning/corrections.jsonl
+      const correctionsPath = join(base, "learning", "corrections.jsonl");
+      return existsSync(correctionsPath) ? [correctionsPath] : [];
 
     case "main_session":
       return globDir(join(base, "agents", "main", "sessions"), /\.jsonl$/);
@@ -276,30 +277,42 @@ function readJsonlChunks(
   for (const line of lines) {
     try {
       const obj = JSON.parse(line);
-      // Extract message content — session JSONL format
-      const role = obj.role ?? "unknown";
-      const sender = obj.sender_id ?? obj.senderId ?? role;
-      const text = obj.content ?? "";
-      if (!text || typeof text !== "string") continue;
 
-      // For correction source, only keep messages that look like corrections
+      // Correction source: learning/corrections.jsonl format
+      // { feedbackType, userPrompt, targetMessage: { role, content: [{type,text}] } }
       if (source === "correction") {
-        const lower = text.toLowerCase();
-        if (
-          !lower.includes("actually") &&
-          !lower.includes("incorrect") &&
-          !lower.includes("wrong") &&
-          !lower.includes("correction") &&
-          !lower.includes("instead") &&
-          !lower.includes("not that") &&
-          !lower.includes("let's not") &&
-          !lower.includes("don't ")
-        ) {
-          continue;
+        if (!obj.userPrompt && !obj.targetMessage) continue;
+        const parts: string[] = [];
+        if (obj.userPrompt) parts.push(`user: ${obj.userPrompt}`);
+        if (obj.targetMessage?.content && Array.isArray(obj.targetMessage.content)) {
+          const assistantText = obj.targetMessage.content
+            .filter((b: any) => b.type === "text" && b.text)
+            .map((b: any) => b.text)
+            .join("\n");
+          if (assistantText) parts.push(`assistant: ${assistantText}`);
         }
+        if (parts.length > 0) {
+          messages.push(parts.join("\n"));
+        }
+        continue;
       }
 
-      messages.push(`${sender} (${role}): ${text}`);
+      // Session JSONL format: { type:"message", message: { role, content: [{type,text}] } }
+      if (obj.type !== "message") continue;
+      const msg = obj.message;
+      if (!msg || !msg.role || !Array.isArray(msg.content)) continue;
+
+      // Skip tool round-trip messages
+      if (msg.role === "toolResult") continue;
+
+      // Extract text blocks, skip tool_use and tool_result content blocks
+      const textParts = msg.content
+        .filter((b: any) => b.type === "text" && b.text)
+        .map((b: any) => b.text);
+      if (textParts.length === 0) continue;
+
+      const text = textParts.join("\n");
+      messages.push(`${msg.role}: ${text}`);
     } catch {
       // Skip unparseable lines
     }
