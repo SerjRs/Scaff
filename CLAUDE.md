@@ -1,174 +1,191 @@
-# Claude Code Instructions — 017i
+# Claude Code Instructions — 018
 
 ## Branch
-`feat/017i-library-migration-script`
+`feat/018-reusable-llm-client`
 
 ## Context
-There are 21 existing Library items in `library.sqlite` that were ingested before the knowledge graph existed. This script migrates them into the graph by extracting facts+edges from each item and inserting them into `hippocampus_facts` + `hippocampus_edges` in `bus.sqlite`.
+Standalone scripts can't make authenticated LLM calls because the auth infrastructure is buried in bundled gateway code. This task creates a clean, importable module that handles auth profile resolution and API calls, usable by both gateway internals and standalone scripts via `tsx`.
+
+**Critical discovery:** OAuth tokens (`sk-ant-oat01-*`) require `Authorization: Bearer` header + special beta headers, NOT `x-api-key`. The Anthropic SDK (`new Anthropic({ authToken })`) handles this. Direct `fetch()` must replicate this behavior.
 
 ## What to Build
 
-### 1. New script: `scripts/library-to-graph.mjs`
+### 1. New file: `src/llm/resolve-auth.ts`
 
-A standalone Node.js script (ESM) that:
+Reads the OpenClaw auth-profiles.json and returns a valid API key/token.
 
-1. Opens `library.sqlite` (read-only) and `bus.sqlite` (read-write)
-2. Ensures graph tables exist by calling `initHotMemoryTable(db)` on bus.sqlite
-3. For each active item in library.sqlite:
+```typescript
+export interface ResolvedAuth {
+  token: string;
+  isOAuth: boolean;  // true if token starts with "sk-ant-oat01-"
+  provider: string;
+  profileId: string;
+}
 
-   a. **Idempotency check:** Query `hippocampus_facts` for existing fact with `source_ref = 'library://item/${itemId}'` and `fact_type = 'source'`. If found, skip this item and log "Already migrated: {title}".
+/**
+ * Resolve auth credentials from OpenClaw auth profiles.
+ * Reads auth-profiles.json from the agent directory.
+ * 
+ * @param provider - Provider to resolve (default: "anthropic")
+ * @param agentDir - Agent directory (default: ~/.openclaw/agents/main/agent)
+ */
+export function resolveAuth(opts?: {
+  provider?: string;
+  agentDir?: string;
+}): ResolvedAuth
+```
 
-   b. **Build extraction input** from the Library item:
-   ```
-   Title: ${title}
-   Summary: ${summary}
-   Key Concepts: ${key_concepts.join(', ')}
-   Tags: ${tags.join(', ')}
-   ```
-   If `full_text` is available, append it (capped at 10KB to keep prompt reasonable).
+**Implementation:**
+1. Resolve agent dir: `opts.agentDir ?? path.join(homedir(), '.openclaw', 'agents', 'main', 'agent')`
+2. Read `auth-profiles.json` from that directory
+3. Find profiles matching the provider (default "anthropic"):
+   - Check `lastGood[provider]` first
+   - Fall back to first profile matching `${provider}:*`
+4. For `type: "token"` or `type: "api_key"`: extract the token/key
+5. For `type: "oauth"`: extract `access` field (the access token)
+6. Detect OAuth: `token.startsWith("sk-ant-oat01-")`
+7. If no valid credential found, throw descriptive error
 
-   c. **Call LLM** with the extraction prompt (same format as 017e's Librarian prompt facts/edges section):
-   ```
-   From this article, extract facts and relationships between them.
+**Dependencies:** Only `node:fs`, `node:path`, `node:os`. Zero external imports.
 
-   CATEGORIES:
-   - fact: specific claims, data points, findings
-   - decision: recommendations, conclusions
-   - outcome: results, findings
-   - correction: debunking, errata
+### 2. New file: `src/llm/simple-complete.ts`
 
-   RELATIONSHIPS (only when clearly stated):
-   - because, informed_by, resulted_in, contradicts, updated_by, related_to
+```typescript
+export interface CompleteOptions {
+  model?: string;           // default: "claude-haiku-4-5"
+  provider?: string;        // default: "anthropic"
+  maxTokens?: number;       // default: 2048
+  temperature?: number;     // default: 0
+  systemPrompt?: string;
+  timeoutMs?: number;       // default: 60_000
+  agentDir?: string;        // override agent dir for auth resolution
+}
 
-   RULES:
-   - ONLY extract what is directly stated. Do NOT infer.
-   - Each fact must be a standalone statement.
-   - Assign confidence: high (explicitly stated), medium (clearly implied), low (loosely implied).
-   - If no facts found, return {"facts": [], "edges": []}
+export async function complete(
+  prompt: string,
+  opts?: CompleteOptions,
+): Promise<string>
+```
 
-   Return ONLY valid JSON:
-   {"facts": [{"id": "f1", "text": "...", "type": "fact", "confidence": "high"}], "edges": [{"from": "f1", "to": "f2", "type": "because"}]}
+**Implementation:**
+1. Call `resolveAuth({ provider: opts.provider, agentDir: opts.agentDir })`
+2. Build the request based on whether token is OAuth or API key:
 
-   Article:
-   ${articleText}
-   ```
+**For OAuth tokens (`isOAuth: true`):**
+```typescript
+const headers = {
+  "content-type": "application/json",
+  "authorization": `Bearer ${auth.token}`,
+  "anthropic-version": "2023-06-01",
+  "anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
+  "anthropic-dangerous-direct-browser-access": "true",
+};
+```
 
-   d. **Parse response** — try JSON.parse, fallback to regex extraction of `{...}`, fallback to empty result.
+**For API keys (`isOAuth: false`):**
+```typescript
+const headers = {
+  "content-type": "application/json",
+  "x-api-key": auth.token,
+  "anthropic-version": "2023-06-01",
+};
+```
 
-   e. **Insert into graph:**
-   - Create article source node: `insertFact(busDb, { factText: 'Article: ${title}', factType: 'source', confidence: 'high', sourceType: 'article', sourceRef: 'library://item/${itemId}' })`
-   - For each extracted fact: `insertFact(busDb, { factText, factType, confidence, sourceType: 'article', sourceRef: 'library://item/${itemId}' })`
-   - For each fact: `insertEdge(busDb, { fromFactId: factId, toFactId: sourceFactId, edgeType: 'sourced_from' })`
-   - For each extracted edge: `insertEdge(busDb, { fromFactId: idMap.get(from), toFactId: idMap.get(to), edgeType: type })`
+3. POST to `https://api.anthropic.com/v1/messages`:
+```typescript
+const body = {
+  model: opts.model ?? "claude-haiku-4-5",
+  max_tokens: opts.maxTokens ?? 2048,
+  temperature: opts.temperature ?? 0,
+  messages: [{ role: "user", content: prompt }],
+  ...(opts.systemPrompt ? { system: opts.systemPrompt } : {}),
+};
+```
 
-4. After all items processed, log summary.
+4. Parse response: `data.content[0].text`
+5. Handle errors with descriptive messages including model, profile ID, status code
 
-### 2. LLM call implementation
+**Dependencies:** Only `node:fs`, `node:path`, `node:os`, and `./resolve-auth.js`. Zero external imports. Uses native `fetch()`.
 
-Use the OpenClaw Router or direct Ollama call. Since this is a one-time script, use Ollama directly for simplicity:
+### 3. New file: `src/llm/index.ts`
 
-```javascript
-async function callLLM(prompt) {
-  const response = await fetch('http://127.0.0.1:11434/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama3.2:3b',
-      prompt: prompt,
-      stream: false,
-      options: { temperature: 0.1 }
-    })
-  });
-  const data = await response.json();
-  return data.response;
+```typescript
+export { complete, type CompleteOptions } from "./simple-complete.js";
+export { resolveAuth, type ResolvedAuth } from "./resolve-auth.js";
+```
+
+### 4. Refactor `createGardenerLLMFunction` in `src/cortex/llm-caller.ts`
+
+Replace the current implementation (lines ~817-875) that uses `resolveModel`, `getApiKeyForModel`, and `completeSimple` from `pi-ai` with a call to `complete()`:
+
+```typescript
+export function createGardenerLLMFunction(params: LLMCallerParams): (prompt: string) => Promise<string> {
+  return async (prompt: string): Promise<string> => {
+    const { complete } = await import("../llm/simple-complete.js");
+    return complete(prompt, {
+      model: params.modelId,
+      provider: params.provider,
+      maxTokens: params.maxResponseTokens ?? 2048,
+      agentDir: params.agentDir,
+      systemPrompt: "You are a concise assistant. Follow instructions exactly.",
+    });
+  };
 }
 ```
 
-### 3. Database paths
+This replaces ~50 lines of code with ~8 lines. The existing `getProfileCandidates` function (lines 783-806) can be removed since `resolveAuth` handles profile resolution.
 
-Use the standard OpenClaw paths:
-```javascript
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+**Important:** Keep the `LLMCallerParams` interface and the function signature unchanged — only the implementation body changes. Existing callers (gateway-bridge.ts) must not need changes.
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = resolve(__dirname, '..');
+### 5. Update migration script: `scripts/library-to-graph.mjs`
 
-// bus.sqlite location: check _state dir first, then project root
-const stateDir = resolve(projectRoot, '_state');
-const busDbPath = existsSync(resolve(stateDir, 'cortex', 'bus.sqlite'))
-  ? resolve(stateDir, 'cortex', 'bus.sqlite')
-  : resolve(projectRoot, 'bus.sqlite');
+Change the `callLLM` function to use the new module. Since it's an .mjs file, either:
+- Rename to `scripts/library-to-graph.ts` and use `tsx`
+- Or keep .mjs and use dynamic import: `const { complete } = await import('../src/llm/simple-complete.js')`
 
-// Library DB
-const libraryDbPath = resolve(projectRoot, 'library', 'library.sqlite');
-```
+The simplest approach: rename to `.ts` and import directly:
+```typescript
+import { complete } from "../src/llm/simple-complete.js";
 
-Actually, look at how other scripts in `scripts/` find these paths. Check `scripts/nightly-code-index.mjs` or similar for the pattern. Use the same approach.
-
-### 4. Library DB queries
-
-```sql
--- Get all active items
-SELECT id, url, title, summary, key_concepts, tags, content_type, full_text
-FROM items
-WHERE status != 'failed'
-ORDER BY created_at ASC
-```
-
-Note: `key_concepts` and `tags` are stored as JSON arrays in SQLite TEXT columns.
-
-### 5. Import graph functions
-
-The script needs to import from the built output. Use:
-```javascript
-import { initHotMemoryTable, insertFact, insertEdge } from '../src/cortex/hippocampus.js';
-```
-
-If that doesn't work because of TypeScript, use the compiled output path — check `tsconfig.json` for `outDir`. Common patterns:
-- `../dist/cortex/hippocampus.js`
-- `../build/cortex/hippocampus.js`
-
-Or use `node:sqlite` directly with raw SQL (simpler, no import issues):
-```javascript
-import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
-
-function insertFact(db, opts) {
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO hippocampus_facts (id, fact_text, fact_type, confidence, status, source_type, source_ref, created_at, last_accessed_at, hit_count)
-    VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, 0)
-  `).run(id, opts.factText, opts.factType ?? 'fact', opts.confidence ?? 'medium', opts.sourceType ?? null, opts.sourceRef ?? null, now, now);
-  return id;
-}
-
-function insertEdge(db, opts) {
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO hippocampus_edges (id, from_fact_id, to_fact_id, edge_type, confidence, created_at)
-    VALUES (?, ?, ?, ?, 'medium', ?)
-  `).run(id, opts.fromFactId, opts.toFactId, opts.edgeType, now);
-  return id;
+async function callLLM(prompt: string): Promise<string> {
+  return complete(prompt, { model: "claude-haiku-4-5" });
 }
 ```
 
-**Use the raw SQL approach** — it's a standalone script, keep it self-contained.
+Update the script's shebang to `#!/usr/bin/env npx tsx`.
+
+## Files to Create/Modify
+| File | Change |
+|------|--------|
+| `src/llm/resolve-auth.ts` | **New** — auth profile reader |
+| `src/llm/simple-complete.ts` | **New** — self-contained LLM completion |
+| `src/llm/index.ts` | **New** — exports |
+| `src/cortex/llm-caller.ts` | Refactor `createGardenerLLMFunction` to use `complete()` |
+| `scripts/library-to-graph.mjs` | Update to use `complete()` from llm module (rename to .ts) |
 
 ## Tests
 
-Since this is a one-time migration script, don't write unit tests. Instead, add a `--dry-run` flag:
-- When `--dry-run` is passed, log what WOULD be inserted but don't actually write to the DB
-- Log: item title, number of facts extracted, number of edges extracted
-- This lets us verify the extraction quality before committing
+Write tests in `src/llm/__tests__/simple-complete.test.ts`:
 
-Also add `--limit N` flag to process only the first N items (useful for testing).
+1. **`resolveAuth` reads auth-profiles.json correctly** — create a temp dir with a mock auth-profiles.json containing a token profile, verify it returns the token
+2. **`resolveAuth` detects OAuth tokens** — token starting with `sk-ant-oat01-` → `isOAuth: true`
+3. **`resolveAuth` detects API keys** — token starting with `sk-ant-api03-` → `isOAuth: false`
+4. **`resolveAuth` throws on missing profile** — empty profiles → descriptive error
+5. **`resolveAuth` uses lastGood profile** — multiple profiles, lastGood set → returns that one
+6. **OAuth tokens use Bearer header** — mock fetch, call `complete()` with an OAuth token, verify `Authorization: Bearer` header is used (not `x-api-key`)
+7. **API keys use x-api-key header** — mock fetch, call `complete()` with an API key, verify `x-api-key` header is used
+
+For fetch mocking, use `vi.stubGlobal('fetch', mockFetch)` in vitest. The mock should return a valid Anthropic Messages API response:
+```json
+{ "content": [{ "type": "text", "text": "mocked response" }] }
+```
+
+For `resolveAuth` tests, create temp directories with mock `auth-profiles.json` files.
 
 ## Constraints
-- Process items sequentially (one at a time, don't overload Ollama)
-- 30-second timeout per LLM call
-- If LLM call fails for an item, log the error and continue to next item
-- Idempotent: safe to run multiple times
-- When done, commit, push branch, create PR, then run: `openclaw system event --text "Done 017i migration script"`
+- **Zero bundler dependencies** in `src/llm/` — only Node built-ins
+- **Zero external package imports** — no `@mariozechner/pi-ai`, no `Anthropic` SDK
+- `resolveAuth` must be synchronous (reads file sync) — `complete` is async (makes HTTP call)
+- Do NOT modify `createGatewayLLMCaller` (the main Cortex conversation LLM) — only `createGardenerLLMFunction`
+- Keep `LLMCallerParams` interface unchanged
+- When done, commit, push branch, create PR, then run: `openclaw system event --text "Done 018 reusable LLM client"`

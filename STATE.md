@@ -1,9 +1,10 @@
-# STATE — 017i
+# STATE — 018
 ## Status: Done
 ## Milestones
-- [x] Script created at `scripts/library-to-graph.mjs`
-- [x] Idempotency check (skip already-migrated items)
-- [x] LLM extraction via Ollama
-- [x] Graph insertion (source node + facts + edges)
-- [x] --dry-run and --limit flags
-- [x] Branch pushed, PR created — https://github.com/SerjRs/Scaff/pull/15
+- [x] `src/llm/resolve-auth.ts` — auth profile reader
+- [x] `src/llm/simple-complete.ts` — self-contained LLM completion
+- [x] `src/llm/index.ts` — exports
+- [x] `createGardenerLLMFunction` refactored to use `complete()`
+- [x] Migration script updated to use new module
+- [x] Tests written and passing (7/7)
+- [x] Branch pushed, PR created

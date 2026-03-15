@@ -777,100 +777,24 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
 }
 
 // ---------------------------------------------------------------------------
-// Profile resolution
-// ---------------------------------------------------------------------------
-
-async function getProfileCandidates(params: LLMCallerParams): Promise<(string | undefined)[]> {
-  try {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const profilesPath = path.join(params.agentDir, "auth-profiles.json");
-    const data = JSON.parse(fs.readFileSync(profilesPath, "utf-8"));
-
-    const lastGood = data.lastGood?.[params.provider];
-    const allProfiles = Object.keys(data.profiles ?? {}).filter((id) =>
-      id.startsWith(`${params.provider}:`),
-    );
-
-    // lastGood first, then others
-    const candidates: string[] = [];
-    if (lastGood) candidates.push(lastGood);
-    for (const p of allProfiles) {
-      if (p !== lastGood) candidates.push(p);
-    }
-
-    return candidates.length > 0 ? candidates : [undefined];
-  } catch {
-    return [undefined]; // Fallback: let getApiKeyForModel pick
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Gardener LLM Caller (simple prompt → text)
 // ---------------------------------------------------------------------------
 
 /**
  * Create a simple prompt→text LLM function for the Gardener subsystem.
- * Reuses the same auth/model resolution as the main Cortex LLM caller.
+ * Uses the reusable LLM client (src/llm/) for auth resolution and API calls.
  * Used for fact extraction and channel summarization (background tasks).
  */
 export function createGardenerLLMFunction(params: LLMCallerParams): (prompt: string) => Promise<string> {
   return async (prompt: string): Promise<string> => {
-    const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
-    const { getApiKeyForModel } = await import("../agents/model-auth.js");
-
-    const { model } = resolveModel(
-      params.provider,
-      params.modelId,
-      params.agentDir,
-      params.config,
-    );
-
-    if (!model) throw new Error(`[gardener-llm] Model not found: ${params.provider}/${params.modelId}`);
-
-    const profiles = await getProfileCandidates(params);
-
-    for (const profileId of profiles) {
-      try {
-        const auth = await getApiKeyForModel({
-          model,
-          cfg: params.config,
-          agentDir: params.agentDir,
-          profileId,
-        });
-
-        if (!auth.apiKey) continue;
-
-        const { completeSimple } = await import("@mariozechner/pi-ai");
-
-        const result = await completeSimple(
-          model,
-          {
-            systemPrompt: "You are a concise assistant. Follow instructions exactly.",
-            messages: [{ role: "user" as const, content: prompt, timestamp: Date.now() }] as any,
-          },
-          {
-            apiKey: auth.apiKey,
-            maxTokens: 2048,
-          } as any,
-        );
-
-        const text = result.content
-          ?.filter((block: any) => block.type === "text")
-          ?.map((block: any) => (block as any).text)
-          ?.join("\n") ?? "";
-
-        return text;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("401") || msg.includes("authentication") || msg.includes("invalid")) {
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    throw new Error("[gardener-llm] All auth profiles exhausted");
+    const { complete } = await import("../llm/simple-complete.js");
+    return complete(prompt, {
+      model: params.modelId,
+      provider: params.provider,
+      maxTokens: params.maxResponseTokens ?? 2048,
+      agentDir: params.agentDir,
+      systemPrompt: "You are a concise assistant. Follow instructions exactly.",
+    });
   };
 }
 
