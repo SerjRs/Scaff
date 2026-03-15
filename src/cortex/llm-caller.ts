@@ -14,7 +14,7 @@
  */
 
 import type { AssembledContext } from "./context.js";
-import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS, READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL, GRAPH_TRAVERSE_TOOL } from "./tools.js";
+import { HIPPOCAMPUS_TOOLS, CORTEX_TOOLS, LIBRARY_TOOLS, READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL } from "./tools.js";
 import { recordRunResultUsage } from "../token-monitor/stream-hook.js";
 
 // ---------------------------------------------------------------------------
@@ -578,6 +578,35 @@ function validateToolPairing(messages: AnthropicMessage[]): void {
  * Uses dynamic imports to avoid hard dependency on gateway internals
  * at module load time (Cortex should be testable standalone).
  */
+// ---------------------------------------------------------------------------
+// Profile resolution
+// ---------------------------------------------------------------------------
+
+async function getProfileCandidates(params: LLMCallerParams): Promise<(string | undefined)[]> {
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const profilesPath = path.join(params.agentDir, "auth-profiles.json");
+    const data = JSON.parse(fs.readFileSync(profilesPath, "utf-8"));
+
+    const lastGood = data.lastGood?.[params.provider];
+    const allProfiles = Object.keys(data.profiles ?? {}).filter((id) =>
+      id.startsWith(`${params.provider}:`),
+    );
+
+    // lastGood first, then others
+    const candidates: string[] = [];
+    if (lastGood) candidates.push(lastGood);
+    for (const p of allProfiles) {
+      if (p !== lastGood) candidates.push(p);
+    }
+
+    return candidates.length > 0 ? candidates : [undefined];
+  } catch {
+    return [undefined]; // Fallback: let getApiKeyForModel pick
+  }
+}
+
 export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller {
   return async (context: AssembledContext): Promise<CortexLLMResult> => {
     try {
@@ -681,7 +710,7 @@ export function createGatewayLLMCaller(params: LLMCallerParams): CortexLLMCaller
           }
 
           // Select tools: sessions_spawn + get_task_status + library + file I/O always; hippocampus when enabled
-          const FILE_IO_TOOLS = [READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL, GRAPH_TRAVERSE_TOOL];
+          const FILE_IO_TOOLS = [READ_FILE_TOOL, WRITE_FILE_TOOL, MOVE_FILE_TOOL, DELETE_FILE_TOOL, PIPELINE_STATUS_TOOL, PIPELINE_TRANSITION_TOOL, CORTEX_CONFIG_TOOL];
           const tools = context.hippocampusEnabled
             ? [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...HIPPOCAMPUS_TOOLS, ...LIBRARY_TOOLS, ...FILE_IO_TOOLS]
             : [SESSIONS_SPAWN_TOOL, ...CORTEX_TOOLS, ...LIBRARY_TOOLS, ...FILE_IO_TOOLS];

@@ -13,16 +13,7 @@
 A2UI bundle up to date; skipping.
 ℹ tsdown v0.20.3 powered by rolldown v1.0.0-rc.3
 ℹ config file: C:\Users\Temp User\.openclaw\tsdown.config.ts 
-ℹ entry: src\cli\daemon-cli.ts
-ℹ target: node22.12.0
-ℹ tsconfig: tsconfig.json
-ℹ entry: src\index.ts
-ℹ target: node22.12.0
-ℹ tsconfig: tsconfig.json
 ℹ entry: src\infra\warning-filter.ts
-ℹ target: node22.12.0
-ℹ tsconfig: tsconfig.json
-ℹ entry: src\entry.ts
 ℹ target: node22.12.0
 ℹ tsconfig: tsconfig.json
 ℹ entry: src\plugin-sdk\account-id.ts
@@ -31,23 +22,32 @@ A2UI bundle up to date; skipping.
 ℹ entry: src\plugin-sdk\index.ts
 ℹ target: node22.12.0
 ℹ tsconfig: tsconfig.json
+ℹ entry: src\index.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
 ℹ entry: src\extensionAPI.ts
 ℹ target: node22.12.0
 ℹ tsconfig: tsconfig.json
-ℹ entry: src\hooks\llm-slug-generator.ts, src\hooks\bundled\boot-md\handler.ts, src\hooks\bundled\bootstrap-extra-files\handler.ts, src\hooks\bundled\command-logger\handler.ts, src\hooks\bundled\session-memory\handler.ts
+ℹ entry: src\entry.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\cli\daemon-cli.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\hooks\llm-slug-generator.ts, src\hooks\bundled\command-logger\handler.ts, src\hooks\bundled\boot-md\handler.ts, src\hooks\bundled\bootstrap-extra-files\handler.ts, src\hooks\bundled\session-memory\handler.ts
 ℹ target: node22.12.0
 ℹ tsconfig: tsconfig.json
 ℹ Build start
-ℹ Cleaning 2638 files
+ℹ Cleaning 2595 files
 ℹ dist\warning-filter.js  1.74 kB │ gzip: 0.65 kB
 ℹ 1 files, total: 1.74 kB
-✔ Build complete in 587ms
+✔ Build complete in 460ms
 ℹ dist\plugin-sdk\account-id.js  1.10 kB │ gzip: 0.50 kB
 ℹ 1 files, total: 1.10 kB
-✔ Build complete in 703ms
+✔ Build complete in 771ms
 ℹ dist\daemon-cli.js  578.43 kB │ gzip: 125.55 kB
 ℹ 1 files, total: 578.43 kB
-✔ Build complete in 1575ms
+✔ Build complete in 1334ms
 ℹ dist\plugin-sdk\index.js                               146.06 kB │ gzip: 36.31 kB
 ℹ dist\plugin-sdk\reply-DWA2ReOl.js                     2767.94 kB
 ℹ dist\plugin-sdk\config-_T6n6rgT.js                     296.56 kB │ gzip: 61.44 kB
@@ -149,7 +149,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\plugin-sdk\chat-type-BYHUZIi_.js                    0.33 kB │ gzip:  0.20 kB
 ℹ dist\plugin-sdk\secure-random-CD_6endt.js                0.32 kB │ gzip:  0.20 kB
 ℹ 100 files, total: 5191.60 kB
-✔ Build complete in 2014ms
+✔ Build complete in 1792ms
 ℹ dist\extensionAPI.js                          3.03 kB │ gzip:  1.23 kB
 ℹ dist\pi-embedded-g5dSmmWf.js               2760.21 kB
 ℹ dist\config-BDBW2vU8.js                     295.96 kB │ gzip: 61.20 kB
@@ -249,8 +249,9 @@ A2UI bundle up to date; skipping.
 ℹ dist\chat-type-C4pAlbsI.js                    0.33 kB │ gzip:  0.20 kB
 ℹ dist\secure-random-faWesvBQ.js                0.32 kB │ gzip:  0.20 kB
 ℹ 98 files, total: 5017.29 kB
-✔ Build complete in 2067ms
+✔ Build complete in 1946ms
 ℹ Granting execute permission to dist\index.js
+ℹ Granting execute permission to dist\entry.js
 ℹ dist\bundled\session-memory\handler.js           10.76 kB │ gzip:  3.74 kB
 ℹ dist\bundled\boot-md\handler.js                   8.35 kB │ gzip:  2.99 kB
 ℹ dist\llm-slug-generator.js                        4.96 kB │ gzip:  2.15 kB
@@ -359,11 +360,326 @@ A2UI bundle up to date; skipping.
 ℹ dist\secure-random-Ds0euxCu.js                    0.32 kB │ gzip:  0.20 kB
 ℹ dist\legacy-names-BkVepOec.js                     0.26 kB │ gzip:  0.17 kB
 ℹ 107 files, total: 5046.53 kB
-ℹ Granting execute permission to dist\entry.js
-✔ Build complete in 2093ms
+✔ Build complete in 1989ms
+ℹ dist\entry.js                                       91.68 kB │ gzip:  25.15 kB
+ℹ dist\subagent-registry-C72ZiZFk.js                2670.70 kB
+ℹ dist\gateway-cli-CxQmCEEV.js                       867.94 kB │ gzip: 210.76 kB
+ℹ dist\config-BJ7AWdQp.js                            301.31 kB │ gzip:  62.27 kB
+ℹ dist\redact-snapshot-Cj9KOhe3.js                   203.43 kB │ gzip:  56.28 kB
+ℹ dist\auth-profiles-Jtmi21S8.js                     152.90 kB │ gzip:  35.41 kB
+ℹ dist\audit-CX6kXmj1.js                             140.06 kB │ gzip:  33.54 kB
+ℹ dist\manager-BDibgkiB.js                           133.31 kB │ gzip:  30.06 kB
+ℹ dist\tui-BUdh_QS7.js                               108.05 kB │ gzip:  26.59 kB
+ℹ dist\send-CFNV1HuX.js                              107.34 kB │ gzip:  25.59 kB
+ℹ dist\sessions-yENc75Gr.js                           94.52 kB │ gzip:  22.89 kB
+ℹ dist\client-CzCoyKdy.js                             93.64 kB │ gzip:  17.32 kB
+ℹ dist\server-context-4xAupOb_.js                     91.08 kB │ gzip:  19.13 kB
+ℹ dist\sandbox-DYQ95WCh.js                            88.16 kB │ gzip:  21.44 kB
+ℹ dist\onboard-channels-DUi_agVo.js                   87.22 kB │ gzip:  20.10 kB
+ℹ dist\prompt-select-styled-7mtWG0PZ.js               85.67 kB │ gzip:  22.89 kB
+ℹ dist\models-D0DXbsgX.js                             83.15 kB │ gzip:  20.02 kB
+ℹ dist\channel-web-Do8xtdTl.js                        82.77 kB │ gzip:  20.94 kB
+ℹ dist\status-C_VxnISn.js                             77.16 kB │ gzip:  19.92 kB
+ℹ dist\doctor-config-flow-gcHRhB2C.js                 74.20 kB │ gzip:  15.54 kB
+ℹ dist\send-B5Mw46OS.js                               71.33 kB │ gzip:  18.95 kB
+ℹ dist\runner-D89OZWQX.js                             69.69 kB │ gzip:  16.58 kB
+ℹ dist\browser-cli-Cwpti1Lp.js                        67.59 kB │ gzip:  12.53 kB
+ℹ dist\auth-choice--rP6gMeI.js                        65.74 kB │ gzip:  14.16 kB
+ℹ dist\pw-ai-B4mEBS9T.js                              63.71 kB │ gzip:  15.35 kB
+ℹ dist\channels-cli-BoP_VpkR.js                       57.34 kB │ gzip:  15.27 kB
+ℹ dist\chrome-IfxatXj7.js                             56.42 kB │ gzip:  14.31 kB
+ℹ dist\health-C8TlWssp.js                             55.25 kB │ gzip:  13.12 kB
+ℹ dist\nodes-cli-DEpwFurN.js                          53.42 kB │ gzip:  11.99 kB
+ℹ dist\update-cli-BRvoivlz.js                         53.17 kB │ gzip:  15.42 kB
+ℹ dist\qmd-manager-B8DGOhOr.js                        51.40 kB │ gzip:  13.02 kB
+ℹ dist\node-cli-BNqfFYnY.js                           51.20 kB │ gzip:  13.68 kB
+ℹ dist\acp-cli-G6UIfTMv.js                            45.81 kB │ gzip:  12.34 kB
+ℹ dist\pi-embedded-helpers-Hq58cd7n.js                45.18 kB │ gzip:  11.96 kB
+ℹ dist\tools-Dl_FN_Re.js                              43.97 kB │ gzip:  12.25 kB
+ℹ dist\deliver-DEecV-F1.js                            43.34 kB │ gzip:  10.70 kB
+ℹ dist\auth-token-BfD42WVy.js                         42.28 kB │ gzip:   7.59 kB
+ℹ dist\skills-gKIShUzy.js                             39.80 kB │ gzip:  10.62 kB
+ℹ dist\tool-display-C7qaPYQd.js                       36.33 kB │ gzip:   8.85 kB
+ℹ dist\hooks-cli-DzVgqLkD.js                          35.97 kB │ gzip:   9.44 kB
+ℹ dist\memory-cli-BJkYc6bn.js                         34.98 kB │ gzip:   8.89 kB
+ℹ dist\register.message-Dur5SEMB.js                   34.21 kB │ gzip:   8.54 kB
+ℹ dist\dock-9oYaD0Sy.js                               33.62 kB │ gzip:   6.75 kB
+ℹ dist\daemon-cli-BOJqoMaU.js                         32.99 kB │ gzip:   8.85 kB
+ℹ dist\commands-registry-C22q74VV.js                  31.99 kB │ gzip:   7.25 kB
+ℹ dist\configure-FT6_Faaw.js                          31.88 kB │ gzip:   8.65 kB
+ℹ dist\plugins-cli-Ca_7ZuUo.js                        29.82 kB │ gzip:   8.54 kB
+ℹ dist\manifest-registry-CUPz0EPc.js                  28.75 kB │ gzip:   6.84 kB
+ℹ dist\agents-Ddgzf8qM.js                             28.47 kB │ gzip:   7.06 kB
+ℹ dist\ir-oL2X8-Pp.js                                 28.00 kB │ gzip:   7.10 kB
+ℹ dist\session-utils-B5xT744J.js                      27.58 kB │ gzip:   7.28 kB
+ℹ dist\dispatcher-D-WW6fC8.js                         27.42 kB │ gzip:   8.60 kB
+ℹ dist\cron-cli-ezjZbj58.js                           26.02 kB │ gzip:   6.52 kB
+ℹ dist\push-apns-B8ayJkbH.js                          25.53 kB │ gzip:   7.12 kB
+ℹ dist\session-dirs-CTeuEjsX.js                       25.41 kB │ gzip:   5.69 kB
+ℹ dist\session-cost-usage-BRQPHURk.js                 25.37 kB │ gzip:   6.06 kB
+ℹ dist\shards-D6dYwv0s.js                             24.44 kB │ gzip:   7.00 kB
+ℹ dist\service-B8Q8hkMg.js                            23.77 kB │ gzip:   6.17 kB
+ℹ dist\auth-choice-C1vLhywC.js                        23.09 kB │ gzip:   4.46 kB
+ℹ dist\hippocampus-CBBfD-u3.js                        22.94 kB │ gzip:   5.27 kB
+ℹ dist\skill-commands-CA0vSDlt.js                     22.72 kB │ gzip:   6.16 kB
+ℹ dist\sandbox-cli-DcEDzGWk.js                        22.43 kB │ gzip:   5.88 kB
+ℹ dist\register.maintenance-PrjlotRq.js               21.92 kB │ gzip:   6.52 kB
+ℹ dist\agent-scope-14w_8KLM.js                        20.64 kB │ gzip:   5.17 kB
+ℹ dist\query-expansion-Cse0Gl33.js                    20.07 kB │ gzip:   6.98 kB
+ℹ dist\onboarding.finalize-D9o8XNJw.js                19.93 kB │ gzip:   6.44 kB
+ℹ dist\image-D7VtU_fh.js                              19.91 kB │ gzip:   5.91 kB
+ℹ dist\register.status-health-sessions-itahy5Vo.js    19.39 kB │ gzip:   5.97 kB
+ℹ dist\skills-install-7LDz6dRO.js                     18.57 kB │ gzip:   5.12 kB
+ℹ dist\daemon-install-helpers-tMRwzDX0.js             18.16 kB │ gzip:   4.76 kB
+ℹ dist\send-CFsiJ5Qu.js                               17.74 kB │ gzip:   5.26 kB
+ℹ dist\systemd-ByEYh6um.js                            17.57 kB │ gzip:   5.03 kB
+ℹ dist\completion-cli-DPA4ANFK.js                     17.49 kB │ gzip:   4.84 kB
+ℹ dist\send-BgL3IojB.js                               17.07 kB │ gzip:   4.59 kB
+ℹ dist\server-node-events-B_UpViQC.js                 17.03 kB │ gzip:   5.28 kB
+ℹ dist\onboard-custom-DH9m8Kqm.js                     16.89 kB │ gzip:   4.86 kB
+ℹ dist\call-CL6w2n5x.js                               16.72 kB │ gzip:   5.04 kB
+ℹ dist\model-picker-B10y2v9-.js                       16.67 kB │ gzip:   4.42 kB
+ℹ dist\models-cli-Cn0nRbVg.js                         16.62 kB │ gzip:   4.36 kB
+ℹ dist\security-cli-S7MJIfZP.js                       16.52 kB │ gzip:   4.77 kB
+ℹ dist\plugins-C8HcuReF.js                            16.31 kB │ gzip:   3.97 kB
+ℹ dist\register.agent-DQ0uSOwR.js                     15.69 kB │ gzip:   5.62 kB
+ℹ dist\pairing-store-CImb11Hv.js                      15.61 kB │ gzip:   3.91 kB
+ℹ dist\install-safe-path-BXZOv7Wr.js                  15.23 kB │ gzip:   4.41 kB
+ℹ dist\auth-Bds5sR75.js                               15.19 kB │ gzip:   4.12 kB
+ℹ dist\gmail-setup-utils-D1upJ3CQ.js                  15.15 kB │ gzip:   4.50 kB
+ℹ dist\webhooks-cli-XCHl6oSz.js                       14.91 kB │ gzip:   4.19 kB
+ℹ dist\send-BSRbR7sh.js                               14.68 kB │ gzip:   4.36 kB
+ℹ dist\run-main-D1CSOj5J.js                           14.53 kB │ gzip:   4.42 kB
+ℹ dist\onboard-helpers-L0piyLVW.js                    14.50 kB │ gzip:   4.48 kB
+ℹ dist\tool-loop-detection-jpLeM74b.js                14.19 kB │ gzip:   3.57 kB
+ℹ dist\channel-account-context-Co5eNzPM.js            14.02 kB │ gzip:   3.78 kB
+ℹ dist\image-ops-CeJZlfR5.js                          14.01 kB │ gzip:   4.16 kB
+ℹ dist\evaluator-Y06jRLzV.js                          13.98 kB │ gzip:   4.56 kB
+ℹ dist\lifecycle-core-BBuqVqOn.js                     13.70 kB │ gzip:   3.57 kB
+ℹ dist\onboarding-DRkBcOCu.js                         13.59 kB │ gzip:   4.15 kB
+ℹ dist\exec-approvals-cli-CMgkfW9Q.js                 13.43 kB │ gzip:   3.91 kB
+ℹ dist\onboard-BYyZmJtV.js                            13.40 kB │ gzip:   3.79 kB
+ℹ dist\qr-cli-DaKDmVHv.js                             13.21 kB │ gzip:   4.04 kB
+ℹ dist\npm-registry-spec-1qrxoGbg.js                  12.88 kB │ gzip:   3.69 kB
+ℹ dist\bonjour-discovery-B7j4RqSK.js                  12.86 kB │ gzip:   3.73 kB
+ℹ dist\chunk-BaLaQwUC.js                              12.75 kB │ gzip:   3.53 kB
+ℹ dist\session-SRqsXKd8.js                            12.37 kB │ gzip:   3.36 kB
+ℹ dist\installs-BScYmqKM.js                           12.30 kB │ gzip:   3.26 kB
+ℹ dist\devices-cli-Cm1PbUpF.js                        12.16 kB │ gzip:   3.39 kB
+ℹ dist\program-CKLKDiTz.js                            12.08 kB │ gzip:   4.64 kB
+ℹ dist\exec-approvals-DReHAUKX.js                     11.73 kB │ gzip:   3.21 kB
+ℹ dist\systemd-hints-BS7rNwaS.js                      11.68 kB │ gzip:   3.31 kB
+ℹ dist\exec-approvals-allowlist-Cv_XPsJN.js           11.67 kB │ gzip:   2.80 kB
+ℹ dist\model-DHt71nRQ.js                              11.56 kB │ gzip:   3.15 kB
+ℹ dist\banner-BaVZxes1.js                             11.50 kB │ gzip:   4.72 kB
+ℹ dist\plugin-auto-enable-CDrekRW4.js                 11.22 kB │ gzip:   3.03 kB
+ℹ dist\skills-cli-DffR7tFP.js                         10.90 kB │ gzip:   2.98 kB
+ℹ dist\sessions-C8bFb4aR.js                           10.81 kB │ gzip:   3.35 kB
+ℹ dist\login-qr-vlEVi7FZ.js                           10.47 kB │ gzip:   3.64 kB
+ℹ dist\ports-D6Ob7tAc.js                              10.44 kB │ gzip:   3.07 kB
+ℹ dist\diagnostic-B50OA4FL.js                         10.07 kB │ gzip:   2.54 kB
+ℹ dist\accounts-D0W8wtsj.js                           10.01 kB │ gzip:   2.95 kB
+ℹ dist\update-DuPgi1Z9.js                              9.96 kB │ gzip:   2.48 kB
+ℹ dist\workspace-B2r5voJG.js                           9.81 kB │ gzip:   2.95 kB
+ℹ dist\register.subclis-B46k5DGL.js                    9.77 kB │ gzip:   2.48 kB
+ℹ dist\tool-images-D4M_hwXl.js                         9.74 kB │ gzip:   3.03 kB
+ℹ dist\session-key-zOVo7INH.js                         9.61 kB │ gzip:   2.40 kB
+ℹ dist\config-cli-psjZMPoJ.js                          9.43 kB │ gzip:   2.74 kB
+ℹ dist\frontmatter-21SIqG0V.js                         9.42 kB │ gzip:   2.78 kB
+ℹ dist\resolve-route-BYYEuY24.js                       9.18 kB │ gzip:   2.58 kB
+ℹ dist\tailscale-Bl69L8vq.js                           8.94 kB │ gzip:   2.80 kB
+ℹ dist\pi-tools.policy-B0FPMvbj.js                     8.73 kB │ gzip:   2.60 kB
+ℹ dist\logs-cli-DguZOv47.js                            8.73 kB │ gzip:   2.96 kB
+ℹ dist\inspect-2X40lCVQ.js                             8.60 kB │ gzip:   2.51 kB
+ℹ dist\table-DmxI0GdC.js                               8.46 kB │ gzip:   2.75 kB
+ℹ dist\cli-Bf-oS9Sa.js                                 8.32 kB │ gzip:   3.04 kB
+ℹ dist\nodes-screen-5R4JE2kd.js                        8.25 kB │ gzip:   2.43 kB
+ℹ dist\exec-I6FbhUNk.js                                8.15 kB │ gzip:   2.61 kB
+ℹ dist\register.onboard-Dd2-v9Kq.js                    8.15 kB │ gzip:   2.81 kB
+ℹ dist\provider-auth-helpers-hdW73Hl7.js               8.11 kB │ gzip:   2.90 kB
+ℹ dist\delivery-queue-C6vD0p_2.js                      8.06 kB │ gzip:   2.60 kB
+ℹ dist\outbound-CdGGfwcq.js                            7.97 kB │ gzip:   2.46 kB
+ℹ dist\ssrf-BjDQh-0k.js                                7.97 kB │ gzip:   2.35 kB
+ℹ dist\paths-Ofmd2dUV.js                               7.88 kB │ gzip:   1.99 kB
+ℹ dist\dns-cli-DaJZjqie.js                             7.79 kB │ gzip:   2.90 kB
+ℹ dist\auth-choice-options-D1a4XgNq.js                 7.75 kB │ gzip:   2.18 kB
+ℹ dist\net-BEAjYacy.js                                 7.63 kB │ gzip:   2.60 kB
+ℹ dist\ip-m9Sjsn1o.js                                  7.60 kB │ gzip:   1.96 kB
+ℹ dist\directory-cli-BIXNQKuI.js                       7.58 kB │ gzip:   2.33 kB
+ℹ dist\skill-scanner-f6fCnXx3.js                       7.38 kB │ gzip:   2.46 kB
+ℹ dist\queue-C9qeGsoj.js                               7.24 kB │ gzip:   2.25 kB
+ℹ dist\catalog-B9p_XyMI.js                             7.08 kB │ gzip:   2.15 kB
+ℹ dist\command-registry-CLaY5a5o.js                    6.89 kB │ gzip:   1.89 kB
+ℹ dist\tool-catalog-lxxkKHTT.js                        6.84 kB │ gzip:   1.59 kB
+ℹ dist\openai-model-default-DSqBQ1AY.js                6.77 kB │ gzip:   2.24 kB
+ℹ dist\chat-envelope-BG_U_muK.js                       6.75 kB │ gzip:   2.36 kB
+ℹ dist\target-errors-kCJVBFRw.js                       6.67 kB │ gzip:   2.02 kB
+ℹ dist\control-ui-assets-D_m5pOL1.js                   6.61 kB │ gzip:   1.98 kB
+ℹ dist\session-4_lMYQQA.js                             6.58 kB │ gzip:   2.36 kB
+ℹ dist\db-BcmAoIxo.js                                  6.49 kB │ gzip:   2.11 kB
+ℹ dist\skills-status-DjiGVRXy.js                       6.48 kB │ gzip:   2.14 kB
+ℹ dist\reply-prefix-CHVKGnAh.js                        6.45 kB │ gzip:   1.92 kB
+ℹ dist\local-roots-CGz1fVAF.js                         6.41 kB │ gzip:   2.28 kB
+ℹ dist\redact-39eL_qEp.js                              6.40 kB │ gzip:   2.19 kB
+ℹ dist\register.configure-Cq8Toho4.js                  6.38 kB │ gzip:   2.68 kB
+ℹ dist\model-catalog-BaSobi6U.js                       6.37 kB │ gzip:   2.02 kB
+ℹ dist\onboarding.gateway-config-DyA6ZowM.js           6.06 kB │ gzip:   2.05 kB
+ℹ dist\pairing-cli-CrOvsFt-.js                         5.96 kB │ gzip:   2.08 kB
+ℹ dist\consolidator-LrQ70GnW.js                        5.89 kB │ gzip:   2.31 kB
+ℹ dist\gemini-auth-DNDwJGkT.js                         5.80 kB │ gzip:   1.94 kB
+ℹ dist\with-timeout-C8JDx0hc.js                        5.79 kB │ gzip:   2.23 kB
+ℹ dist\onboard-skills-CM0EQhDe.js                      5.78 kB │ gzip:   2.18 kB
+ℹ dist\docs-cli-C5_ohQFZ.js                            5.63 kB │ gzip:   2.05 kB
+ℹ dist\cli-DBJeA590.js                                 5.50 kB │ gzip:   2.27 kB
+ℹ dist\entry-status-CAvi_W-J.js                        5.37 kB │ gzip:   1.15 kB
+ℹ dist\widearea-dns-D7fkV5z7.js                        5.06 kB │ gzip:   1.93 kB
+ℹ dist\onboard-provider-auth-flags-KceoKA40.js         4.96 kB │ gzip:   1.02 kB
+ℹ dist\register.setup-BXaAXN9V.js                      4.95 kB │ gzip:   1.98 kB
+ℹ dist\replies-_QyABvH4.js                             4.91 kB │ gzip:   1.57 kB
+ℹ dist\agents.config-CyPJOfW2.js                       4.81 kB │ gzip:   1.43 kB
+ℹ dist\thinking-BF74hBT8.js                            4.78 kB │ gzip:   1.23 kB
+ℹ dist\shared-DEaTWarS.js                              4.76 kB │ gzip:   1.80 kB
+ℹ dist\whatsapp-actions-oWPn8YrF.js                    4.62 kB │ gzip:   1.66 kB
+ℹ dist\onboard-remote-CdD19YBR.js                      4.60 kB │ gzip:   1.81 kB
+ℹ dist\web-4tpBBaod.js                                 4.49 kB │ gzip:   1.85 kB
+ℹ dist\fetch-guard-CALGvqMj.js                         4.39 kB │ gzip:   1.66 kB
+ℹ dist\system-run-command-DXNcsWtx.js                  4.37 kB │ gzip:   1.46 kB
+ℹ dist\message-channel-BRJPJaeo.js                     4.32 kB │ gzip:   1.27 kB
+ℹ dist\models-config-DJcOWoxp.js                       4.20 kB │ gzip:   1.44 kB
+ℹ dist\progress-MraHNvTk.js                            4.17 kB │ gzip:   1.38 kB
+ℹ dist\doctor-completion-CSASlr53.js                   4.14 kB │ gzip:   1.37 kB
+ℹ dist\github-copilot-token-CjzbP8t8.js                4.13 kB │ gzip:   1.57 kB
+ℹ dist\trash-B5-ZIx--.js                               4.00 kB │ gzip:   1.37 kB
+ℹ dist\credentials-BNhz15WC.js                         3.96 kB │ gzip:   0.92 kB
+ℹ dist\inbound-context-CavMqljF.js                     3.93 kB │ gzip:   1.13 kB
+ℹ dist\audio-preflight-NOQBA0bc.js                     3.93 kB │ gzip:   1.66 kB
+ℹ dist\pi-auth-json-ZSJRvxfS.js                        3.85 kB │ gzip:   1.41 kB
+ℹ dist\simple-complete-G2iBjQUN.js                     3.83 kB │ gzip:   1.58 kB
+ℹ dist\system-cli-BZ6OtJ43.js                          3.78 kB │ gzip:   1.30 kB
+ℹ dist\host-env-security-DxX3FpXl.js                   3.77 kB │ gzip:   1.14 kB
+ℹ dist\status.update-DGO8VrYZ.js                       3.77 kB │ gzip:   1.23 kB
+ℹ dist\channel-activity-DkddY6OT.js                    3.73 kB │ gzip:   1.24 kB
+ℹ dist\openclaw-root-CpnCVZWO.js                       3.72 kB │ gzip:   1.12 kB
+ℹ dist\server-middleware-ti_BzwRQ.js                   3.61 kB │ gzip:   1.24 kB
+ℹ dist\tui-cli-DgqDon4P.js                             3.57 kB │ gzip:   1.61 kB
+ℹ dist\server-VbUEc9qa.js                              3.52 kB │ gzip:   1.44 kB
+ℹ dist\clack-prompter-HNfn6etn.js                      3.50 kB │ gzip:   1.12 kB
+ℹ dist\fs-safe-Cwp1VOPx.js                             3.39 kB │ gzip:   1.18 kB
+ℹ dist\env-vars-CIS_wioP.js                            3.34 kB │ gzip:   1.07 kB
+ℹ dist\render-B5HNUbes.js                              3.29 kB │ gzip:   1.14 kB
+ℹ dist\constants-2Xm6tg0M.js                           3.27 kB │ gzip:   0.90 kB
+ℹ dist\exec-safe-bin-runtime-policy-BT4BzQZP.js        3.25 kB │ gzip:   1.14 kB
+ℹ dist\systemd-linger-DIg1-Yj_.js                      3.17 kB │ gzip:   1.00 kB
+ℹ dist\ports-CDT3CwDc.js                               3.16 kB │ gzip:   1.12 kB
+ℹ dist\note-C2yL7jiY.js                                3.16 kB │ gzip:   1.13 kB
+ℹ dist\config-guard-Dzyk_1BN.js                        3.15 kB │ gzip:   1.16 kB
+ℹ dist\path-env-CptNmtfF.js                            3.14 kB │ gzip:   1.22 kB
+ℹ dist\rpc-DDjrdune.js                                 3.11 kB │ gzip:   1.43 kB
+ℹ dist\retry-DYVaMjcU.js                               2.99 kB │ gzip:   1.07 kB
+ℹ dist\pairing-token-DUazHbou.js                       2.98 kB │ gzip:   1.15 kB
+ℹ dist\bindings-CzS6J6Iw.js                            2.86 kB │ gzip:   0.86 kB
+ℹ dist\hooks-status-D0-Pr9ex.js                        2.83 kB │ gzip:   1.13 kB
+ℹ dist\shared-BZm01LmZ.js                              2.83 kB │ gzip:   1.05 kB
+ℹ dist\npm-resolution-BUq5beGa.js                      2.77 kB │ gzip:   0.93 kB
+ℹ dist\heartbeat-visibility-RTLICR2v.js                2.73 kB │ gzip:   0.96 kB
+ℹ dist\librarian-prompt-Dl3qc3vT.js                    2.64 kB │ gzip:   1.36 kB
+ℹ dist\mutable-allowlist-detectors-Bwjv2Ecl.js         2.61 kB │ gzip:   0.79 kB
+ℹ dist\diagnostic-session-state-k40-W7ty.js            2.54 kB │ gzip:   0.89 kB
+ℹ dist\login-Ciia2yfV.js                               2.48 kB │ gzip:   1.07 kB
+ℹ dist\fetch-Cr6zgbY3.js                               2.44 kB │ gzip:   0.85 kB
+ℹ dist\format-duration-DeLiQNNv.js                     2.42 kB │ gzip:   0.91 kB
+ℹ dist\store-DGXqwgly.js                               2.30 kB │ gzip:   1.07 kB
+ℹ dist\command-poll-backoff-DpugZQEv.js                2.25 kB │ gzip:   0.93 kB
+ℹ dist\format-relative-DU9tLpjp.js                     2.13 kB │ gzip:   0.86 kB
+ℹ dist\node-service-BOqrvtBO.js                        2.09 kB │ gzip:   0.62 kB
+ℹ dist\daemon-install-CGUk_rzD.js                      2.07 kB │ gzip:   0.89 kB
+ℹ dist\node-match-BrOrRCaG.js                          2.07 kB │ gzip:   0.77 kB
+ℹ dist\channel-selection-CioKexey.js                   2.06 kB │ gzip:   0.73 kB
+ℹ dist\onboard-hooks-lO9Y0kdT.js                       2.05 kB │ gzip:   0.96 kB
+ℹ dist\stagger-CXP_gWYQ.js                             2.00 kB │ gzip:   0.78 kB
+ℹ dist\runtime-guard-vOQ5XNt9.js                       1.97 kB │ gzip:   0.81 kB
+ℹ dist\polls-CGpoOVqd.js                               1.96 kB │ gzip:   0.63 kB
+ℹ dist\accounts-SUaMwXAH.js                            1.96 kB │ gzip:   0.69 kB
+ℹ dist\accounts-mRXcO34o.js                            1.94 kB │ gzip:   0.69 kB
+ℹ dist\active-listener-Dr9IDuv5.js                     1.90 kB │ gzip:   0.80 kB
+ℹ dist\dangerous-name-matching-Dyte1vR2.js             1.84 kB │ gzip:   0.59 kB
+ℹ dist\commands-pqUIezUF.js                            1.70 kB │ gzip:   0.56 kB
+ℹ dist\brew-BoiWCcJe.js                                1.65 kB │ gzip:   0.58 kB
+ℹ dist\command-format-C5rmOHly.js                      1.58 kB │ gzip:   0.64 kB
+ℹ dist\enable-4wx0i2KZ.js                              1.57 kB │ gzip:   0.57 kB
+ℹ dist\auth-choice-prompt-W1OtntlW.js                  1.55 kB │ gzip:   0.65 kB
+ℹ dist\markdown-tables-CFBqp4mK.js                     1.54 kB │ gzip:   0.64 kB
+ℹ dist\input-provenance-C6EIah7A.js                    1.54 kB │ gzip:   0.54 kB
+ℹ dist\usage-format-DCo0YVlg.js                        1.50 kB │ gzip:   0.58 kB
+ℹ dist\templates-BDQB7yXV.js                           1.50 kB │ gzip:   0.75 kB
+ℹ dist\conversation-label-ChJhVDm_.js                  1.49 kB │ gzip:   0.62 kB
+ℹ dist\targets-DJmA1jvy.js                             1.48 kB │ gzip:   0.57 kB
+ℹ dist\health-format-Cg44TYZO.js                       1.44 kB │ gzip:   0.67 kB
+ℹ dist\errors-wPGNklrp.js                              1.43 kB │ gzip:   0.60 kB
+ℹ dist\scan-paths-DkMlwCU-.js                          1.41 kB │ gzip:   0.59 kB
+ℹ dist\wsl-DUShRx4w.js                                 1.36 kB │ gzip:   0.54 kB
+ℹ dist\fetch-timeout-CMSepVTV.js                       1.35 kB │ gzip:   0.68 kB
+ℹ dist\ipv4-CziEi60r.js                                1.34 kB │ gzip:   0.66 kB
+ℹ dist\diagnostics-BZH7pz8s.js                         1.28 kB │ gzip:   0.59 kB
+ℹ dist\plugin-registry-B0N5RxC6.js                     1.27 kB │ gzip:   0.55 kB
+ℹ dist\parse-log-line-Btq1hVHj.js                      1.23 kB │ gzip:   0.52 kB
+ℹ dist\server-lifecycle-AvbUjlHf.js                    1.20 kB │ gzip:   0.57 kB
+ℹ dist\types-DrfpySv3.js                               1.20 kB │ gzip:   0.63 kB
+ℹ dist\whatsapp-CJ3hxFVe.js                            1.18 kB │ gzip:   0.56 kB
+ℹ dist\path-guards-CGCPSXzR.js                         1.18 kB │ gzip:   0.50 kB
+ℹ dist\gateway-rpc-BTktmU--.js                         1.17 kB │ gzip:   0.62 kB
+ℹ dist\channel-options-DVW9BADg.js                     1.17 kB │ gzip:   0.55 kB
+ℹ dist\tables-DJXGvLeF.js                              1.15 kB │ gzip:   0.57 kB
+ℹ dist\tailnet-BOWO-AaH.js                             1.12 kB │ gzip:   0.48 kB
+ℹ dist\dm-policy-shared-MmNcmSyp.js                    1.10 kB │ gzip:   0.49 kB
+ℹ dist\pi-model-discovery-BB8rw84i.js                  1.04 kB │ gzip:   0.42 kB
+ℹ dist\command-options-h461KRIZ.js                     0.94 kB │ gzip:   0.38 kB
+ℹ dist\tokens-IasWb6Kr.js                              0.90 kB │ gzip:   0.43 kB
+ℹ dist\dangerous-tools-Cbwl0kIo.js                     0.88 kB │ gzip:   0.49 kB
+ℹ dist\cli-utils-B1DtZ5Wp.js                           0.86 kB │ gzip:   0.42 kB
+ℹ dist\onboard-config-CyyKwP6E.js                      0.86 kB │ gzip:   0.39 kB
+ℹ dist\clawbot-cli-DId_HC8x.js                         0.85 kB │ gzip:   0.49 kB
+ℹ dist\webchat-BFY98e7c.js                             0.83 kB │ gzip:   0.41 kB
+ℹ dist\status-BA0KgRIG.js                              0.82 kB │ gzip:   0.35 kB
+ℹ dist\helpers-o-3KQwyr.js                             0.79 kB │ gzip:   0.39 kB
+ℹ dist\format-6j_AVrgI.js                              0.76 kB │ gzip:   0.40 kB
+ℹ dist\sqlite-vec-BgQMzG9U.js                          0.75 kB │ gzip:   0.39 kB
+ℹ dist\config-validation-Bt3sijb3.js                   0.73 kB │ gzip:   0.41 kB
+ℹ dist\logging-CXuFoatO.js                             0.69 kB │ gzip:   0.36 kB
+ℹ dist\help-format-keV7Bm8S.js                         0.69 kB │ gzip:   0.30 kB
+ℹ dist\sqlite-DBhdVu5e.js                              0.69 kB │ gzip:   0.39 kB
+ℹ dist\clipboard-DzSBH7f3.js                           0.63 kB │ gzip:   0.37 kB
+ℹ dist\api-DJrwVizF.js                                 0.59 kB │ gzip:   0.35 kB
+ℹ dist\program-context-DOSrjKqh.js                     0.59 kB │ gzip:   0.30 kB
+ℹ dist\transcript-events-CZ8CG4ht.js                   0.59 kB │ gzip:   0.29 kB
+ℹ dist\workspace-dirs-CaU2JHiD.js                      0.58 kB │ gzip:   0.33 kB
+ℹ dist\outbound-attachment-CsAY88KJ.js                 0.57 kB │ gzip:   0.33 kB
+ℹ dist\channels-status-issues-BilThKWu.js              0.55 kB │ gzip:   0.30 kB
+ℹ dist\runtime-status-CfHkrGL2.js                      0.55 kB │ gzip:   0.30 kB
+ℹ dist\links-mCjZOXU5.js                               0.52 kB │ gzip:   0.31 kB
+ℹ dist\model-param-b-BHVJSJB8.js                       0.49 kB │ gzip:   0.32 kB
+ℹ dist\daemon-runtime-Bi5_bgAY.js                      0.47 kB │ gzip:   0.30 kB
+ℹ dist\prompt-style-Bf1F91bu.js                        0.47 kB │ gzip:   0.24 kB
+ℹ dist\proxy-CS1Gyw7z.js                               0.46 kB │ gzip:   0.28 kB
+ℹ dist\parse-timeout-rlcChuHD.js                       0.46 kB │ gzip:   0.26 kB
+ℹ dist\account-lookup-9wuXWwa_.js                      0.45 kB │ gzip:   0.27 kB
+ℹ dist\path-safety-PTRsVoSx.js                         0.44 kB │ gzip:   0.26 kB
+ℹ dist\parse-port-BPn1H8a0.js                          0.43 kB │ gzip:   0.25 kB
+ℹ dist\helpers-DB9NQOTx.js                             0.41 kB │ gzip:   0.26 kB
+ℹ dist\secret-equal-DRMKpDYs.js                        0.39 kB │ gzip:   0.26 kB
+ℹ dist\file-identity-Dol1fVGV.js                       0.38 kB │ gzip:   0.23 kB
+ℹ dist\plugins-allowlist-A-VAYyK-.js                   0.34 kB │ gzip:   0.22 kB
+ℹ dist\chat-type-B5__aQIT.js                           0.33 kB │ gzip:   0.20 kB
+ℹ dist\secure-random-CRVHgtmO.js                       0.32 kB │ gzip:   0.20 kB
+ℹ dist\text-format-B_ASyuG1.js                         0.27 kB │ gzip:   0.22 kB
+ℹ dist\pairing-labels-BZA6WfaK.js                      0.26 kB │ gzip:   0.18 kB
+ℹ dist\prompts-BaRCfIEn.js                             0.24 kB │ gzip:   0.17 kB
+ℹ dist\logging-C_Fck8Jl.js                             0.12 kB │ gzip:   0.11 kB
+ℹ 314 files, total: 8815.45 kB
+✔ Build complete in 2365ms
 ℹ dist\index.js                                       25.31 kB │ gzip:   9.77 kB
 ℹ dist\reply-DIwMUTkF.js                            2697.31 kB
-ℹ dist\gateway-cli-DhGmh9jD.js                       867.47 kB │ gzip: 210.66 kB
+ℹ dist\gateway-cli-DxOgRKYm.js                       868.06 kB │ gzip: 210.81 kB
 ℹ dist\config-BAp-c5kQ.js                            301.42 kB │ gzip:  62.31 kB
 ℹ dist\redact-snapshot-Cc9ep_sy.js                   203.44 kB │ gzip:  56.29 kB
 ℹ dist\model-selection-DxQzliz4.js                   153.05 kB │ gzip:  35.34 kB
@@ -377,7 +693,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\server-context-DjZbD0zA.js                     91.13 kB │ gzip:  19.15 kB
 ℹ dist\sandbox-CXFqrd-P.js                            88.25 kB │ gzip:  21.47 kB
 ℹ dist\onboard-channels-B6V00Yqk.js                   87.30 kB │ gzip:  20.13 kB
-ℹ dist\prompt-select-styled-CRAhD9Tq.js               85.78 kB │ gzip:  22.94 kB
+ℹ dist\prompt-select-styled-D3m3nlZI.js               85.78 kB │ gzip:  22.94 kB
 ℹ dist\channel-web-Cs-AoyUy.js                        82.83 kB │ gzip:  20.96 kB
 ℹ dist\status-ByS02MA6.js                             76.97 kB │ gzip:  19.86 kB
 ℹ dist\doctor-config-flow-DANMMO-_.js                 74.24 kB │ gzip:  15.55 kB
@@ -390,12 +706,12 @@ A2UI bundle up to date; skipping.
 ℹ dist\chrome-Dtw36xHF.js                             56.47 kB │ gzip:  14.32 kB
 ℹ dist\health-CgTDzPPu.js                             55.36 kB │ gzip:  13.15 kB
 ℹ dist\nodes-cli-DjA5agMy.js                          53.56 kB │ gzip:  12.05 kB
-ℹ dist\update-cli-DglnrLpS.js                         53.19 kB │ gzip:  15.43 kB
+ℹ dist\update-cli-DdqTMleq.js                         53.19 kB │ gzip:  15.44 kB
 ℹ dist\qmd-manager-BnwplcA4.js                        51.48 kB │ gzip:  13.06 kB
 ℹ dist\node-cli-L38Ibb8C.js                           51.34 kB │ gzip:  13.74 kB
 ℹ dist\acp-cli-B660pzmx.js                            45.99 kB │ gzip:  12.43 kB
 ℹ dist\pi-embedded-helpers-BqMK6qAT.js                45.23 kB │ gzip:  11.98 kB
-ℹ dist\tools-BodgbLuf.js                              44.04 kB │ gzip:  12.28 kB
+ℹ dist\tools-C1iCMYeP.js                              44.01 kB │ gzip:  12.27 kB
 ℹ dist\deliver-DVhsv6zx.js                            43.38 kB │ gzip:  10.72 kB
 ℹ dist\register.agent-DEuFXgnU.js                     42.48 kB │ gzip:  11.81 kB
 ℹ dist\auth-token-PjObzLiG.js                         42.32 kB │ gzip:   7.61 kB
@@ -425,16 +741,16 @@ A2UI bundle up to date; skipping.
 ℹ dist\skill-commands-C8qbhgM5.js                     22.80 kB │ gzip:   6.19 kB
 ℹ dist\utils-Ck9_gyo0.js                              22.74 kB │ gzip:   7.14 kB
 ℹ dist\sandbox-cli-A6E3imlE.js                        22.57 kB │ gzip:   5.93 kB
-ℹ dist\register.maintenance-CNbcVyRx.js               21.93 kB │ gzip:   6.54 kB
+ℹ dist\register.maintenance-Dnb8HzHe.js               21.93 kB │ gzip:   6.54 kB
 ℹ dist\agent-scope-zDCg8OwR.js                        20.73 kB │ gzip:   5.20 kB
 ℹ dist\query-expansion-gev0xfox.js                    20.09 kB │ gzip:   6.98 kB
 ℹ dist\image-B-qO_3DP.js                              19.96 kB │ gzip:   5.94 kB
-ℹ dist\onboarding.finalize-DufDdI22.js                19.94 kB │ gzip:   6.45 kB
+ℹ dist\onboarding.finalize-BmzFpINY.js                19.94 kB │ gzip:   6.45 kB
 ℹ dist\skills-install-DHuD6cH_.js                     18.57 kB │ gzip:   5.13 kB
 ℹ dist\daemon-install-helpers-ev-gtfVF.js             18.16 kB │ gzip:   4.76 kB
 ℹ dist\send-DV1ymR0n.js                               17.75 kB │ gzip:   5.28 kB
 ℹ dist\systemd-w6YTTjGN.js                            17.58 kB │ gzip:   5.04 kB
-ℹ dist\completion-cli-D9ilnElW.js                     17.52 kB │ gzip:   4.85 kB
+ℹ dist\completion-cli-7c-uAPY2.js                     17.52 kB │ gzip:   4.85 kB
 ℹ dist\send-mCxx4Hha.js                               17.12 kB │ gzip:   4.63 kB
 ℹ dist\server-node-events-DP-mzsSt.js                 17.11 kB │ gzip:   5.32 kB
 ℹ dist\onboard-custom-DZ_6i50j.js                     16.89 kB │ gzip:   4.86 kB
@@ -442,7 +758,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\model-picker-B2zEQEUv.js                       16.68 kB │ gzip:   4.43 kB
 ℹ dist\security-cli-3BbLPvmb.js                       16.66 kB │ gzip:   4.84 kB
 ℹ dist\plugins-BEcH73sk.js                            16.43 kB │ gzip:   4.01 kB
-ℹ dist\program-context-BalROSY5.js                    15.97 kB │ gzip:   3.75 kB
+ℹ dist\program-context-BC96mrBJ.js                    15.97 kB │ gzip:   3.74 kB
 ℹ dist\pairing-store-Dk-QA6u4.js                      15.65 kB │ gzip:   3.93 kB
 ℹ dist\install-safe-path-ozph5-wc.js                  15.23 kB │ gzip:   4.41 kB
 ℹ dist\gmail-setup-utils-DSrmd5m7.js                  15.19 kB │ gzip:   4.52 kB
@@ -455,9 +771,9 @@ A2UI bundle up to date; skipping.
 ℹ dist\image-ops-B96suma2.js                          14.01 kB │ gzip:   4.16 kB
 ℹ dist\evaluator-CqNFhWgQ.js                          13.99 kB │ gzip:   4.57 kB
 ℹ dist\lifecycle-core-6Dj5_QPt.js                     13.78 kB │ gzip:   3.61 kB
-ℹ dist\onboarding-BlqLJTTa.js                         13.68 kB │ gzip:   4.19 kB
+ℹ dist\onboarding-DeTFjC7Y.js                         13.68 kB │ gzip:   4.19 kB
 ℹ dist\exec-approvals-cli-YqKmMy-r.js                 13.57 kB │ gzip:   3.98 kB
-ℹ dist\onboard-CGX08OSU.js                            13.48 kB │ gzip:   3.83 kB
+ℹ dist\onboard-ByMfWbqh.js                            13.48 kB │ gzip:   3.83 kB
 ℹ dist\qr-cli-CXNkY_ez.js                             13.29 kB │ gzip:   4.08 kB
 ℹ dist\npm-registry-spec-CsSOQ0Yr.js                  12.89 kB │ gzip:   3.69 kB
 ℹ dist\bonjour-discovery-B-42o7Jl.js                  12.86 kB │ gzip:   3.73 kB
@@ -489,7 +805,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\inspect-cxs7T_jD.js                             8.60 kB │ gzip:   2.50 kB
 ℹ dist\table-B0na392j.js                               8.51 kB │ gzip:   2.78 kB
 ℹ dist\cli-C3mRevg3.js                                 8.46 kB │ gzip:   3.10 kB
-ℹ dist\register.onboard-DR1q4ZH2.js                    8.29 kB │ gzip:   2.87 kB
+ℹ dist\register.onboard-B7-99uy_.js                    8.29 kB │ gzip:   2.87 kB
 ℹ dist\nodes-screen-CZggOyB1.js                        8.26 kB │ gzip:   2.44 kB
 ℹ dist\exec-BFcaXbvC.js                                8.19 kB │ gzip:   2.63 kB
 ℹ dist\provider-auth-helpers-BouuaDVH.js               8.12 kB │ gzip:   2.91 kB
@@ -527,7 +843,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\docs-cli-3Cld634Z.js                            5.74 kB │ gzip:   2.10 kB
 ℹ dist\cli-CeYkGNfX.js                                 5.59 kB │ gzip:   2.30 kB
 ℹ dist\entry-status-m3UTUf5L.js                        5.37 kB │ gzip:   1.15 kB
-ℹ dist\register.setup-B9XZwz_A.js                      5.08 kB │ gzip:   2.04 kB
+ℹ dist\register.setup-Dx0sG1wl.js                      5.08 kB │ gzip:   2.03 kB
 ℹ dist\widearea-dns-BSnsiH3m.js                        5.07 kB │ gzip:   1.94 kB
 ℹ dist\onboard-provider-auth-flags-D1uCwd1O.js         4.96 kB │ gzip:   1.02 kB
 ℹ dist\replies-6_6wSd8V.js                             4.92 kB │ gzip:   1.57 kB
@@ -543,7 +859,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\progress-BVEAgj-s.js                            4.22 kB │ gzip:   1.41 kB
 ℹ dist\models-config-BUl9MAlg.js                       4.21 kB │ gzip:   1.44 kB
 ℹ dist\github-copilot-token-DX5UTKwI.js                4.17 kB │ gzip:   1.59 kB
-ℹ dist\doctor-completion-C08GoePq.js                   4.14 kB │ gzip:   1.37 kB
+ℹ dist\doctor-completion-YhbHLZiG.js                   4.14 kB │ gzip:   1.37 kB
 ℹ dist\audio-preflight-DoFimrWv.js                     4.06 kB │ gzip:   1.73 kB
 ℹ dist\config-guard-DmWSGYCT.js                        4.04 kB │ gzip:   1.57 kB
 ℹ dist\trash-QRV_QPca.js                               4.00 kB │ gzip:   1.38 kB
@@ -673,11 +989,704 @@ A2UI bundle up to date; skipping.
 ℹ dist\pairing-labels-CnnXr9Xp.js                      0.26 kB │ gzip:   0.19 kB
 ℹ dist\prompts-BRaE4_Km.js                             0.24 kB │ gzip:   0.17 kB
 ℹ dist\logging-DwonklqN.js                             0.12 kB │ gzip:   0.12 kB
-ℹ 312 files, total: 8800.69 kB
-✔ Build complete in 2434ms
+ℹ 312 files, total: 8801.26 kB
+✔ Build complete in 2399ms
+
+> openclaw@2026.2.25 build:plugin-sdk:dts C:\Users\Temp User\.openclaw
+> tsc -p tsconfig.plugin-sdk.dts.json
+
+[copy-hook-metadata] Copied boot-md/HOOK.md
+[copy-hook-metadata] Copied bootstrap-extra-files/HOOK.md
+[copy-hook-metadata] Copied command-logger/HOOK.md
+[copy-hook-metadata] Copied session-memory/HOOK.md
+[copy-hook-metadata] Done
+[copy-export-html-templates] Copied template.html
+[copy-export-html-templates] Copied template.css
+[copy-export-html-templates] Copied template.js
+[copy-export-html-templates] Copied vendor/highlight.min.js
+[copy-export-html-templates] Copied vendor/marked.min.js
+[copy-export-html-templates] Done
+  Build OK
+[2/4] Finding gateway...
+  Gateway PID: 21704
+[3/4] Killing and restarting...
+  Gateway restarting...
+[4/4] Scheduling wake-up cron...
+  Waiting... (2s)
+  Waiting... (4s)
+  Waiting... (6s)
+  Waiting... (8s)
+  Gateway is up! (10s)
+
+> openclaw@2026.2.25 openclaw C:\Users\Temp User\.openclaw
+> node scripts/run-node.mjs "cron" "add" "--at" "2026-03-15T22:19:45Z" "--session" "main" "--system-event" "REBUILD_WAKEUP: Gateway rebuilt and restarted. Send a WhatsApp message to Serj confirming you are back online." "--delete-after-run" "--name" "rebuild-wake"
+
+ℹ tsdown v0.20.3 powered by rolldown v1.0.0-rc.3
+ℹ config file: C:\Users\Temp User\.openclaw\tsdown.config.ts 
+ℹ entry: src\index.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\infra\warning-filter.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\cli\daemon-cli.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\plugin-sdk\account-id.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\plugin-sdk\index.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\entry.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\extensionAPI.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ entry: src\hooks\llm-slug-generator.ts, src\hooks\bundled\boot-md\handler.ts, src\hooks\bundled\command-logger\handler.ts, src\hooks\bundled\session-memory\handler.ts, src\hooks\bundled\bootstrap-extra-files\handler.ts
+ℹ target: node22.12.0
+ℹ tsconfig: tsconfig.json
+ℹ Build start
+ℹ dist\warning-filter.js  1.74 kB │ gzip: 0.65 kB
+ℹ 1 files, total: 1.74 kB
+ℹ dist\plugin-sdk\account-id.js  1.10 kB │ gzip: 0.50 kB
+ℹ 1 files, total: 1.10 kB
+✔ Build complete in 441ms
+✔ Build complete in 460ms
+ℹ dist\daemon-cli.js  578.43 kB │ gzip: 125.55 kB
+ℹ 1 files, total: 578.43 kB
+✔ Build complete in 986ms
+ℹ dist\plugin-sdk\index.js                               146.06 kB │ gzip: 36.31 kB
+ℹ dist\plugin-sdk\reply-BaT-tppY.js                     2767.94 kB
+ℹ dist\plugin-sdk\config-CbjXuszx.js                     296.56 kB │ gzip: 61.45 kB
+ℹ dist\plugin-sdk\pi-embedded-helpers-DGbWgT2d.js        234.73 kB │ gzip: 54.20 kB
+ℹ dist\plugin-sdk\model-selection-DQ8838jt.js            143.52 kB │ gzip: 33.22 kB
+ℹ dist\plugin-sdk\manager-qZcRUvCV.js                    133.85 kB │ gzip: 30.18 kB
+ℹ dist\plugin-sdk\send-DBmfxINu.js                       107.55 kB │ gzip: 25.65 kB
+ℹ dist\plugin-sdk\evaluator-BTxhPCiF.js                  104.67 kB │ gzip: 21.63 kB
+ℹ dist\plugin-sdk\channel-web-diZjrGVS.js                 84.92 kB │ gzip: 21.52 kB
+ℹ dist\plugin-sdk\send-BDnspH1s.js                        84.44 kB │ gzip: 22.09 kB
+ℹ dist\plugin-sdk\sessions-CkoQdsow.js                    82.36 kB │ gzip: 20.35 kB
+ℹ dist\plugin-sdk\runner-DJbaklUB.js                      71.17 kB │ gzip: 16.98 kB
+ℹ dist\plugin-sdk\pw-ai-BrQ-0Jv3.js                       63.62 kB │ gzip: 15.28 kB
+ℹ dist\plugin-sdk\image-oHJoL-Z_.js                       60.07 kB │ gzip: 15.72 kB
+ℹ dist\plugin-sdk\chrome-BFhlj2v_.js                      57.60 kB │ gzip: 14.64 kB
+ℹ dist\plugin-sdk\qmd-manager-CFd_5izB.js                 51.39 kB │ gzip: 13.01 kB
+ℹ dist\plugin-sdk\skills-zt8pVxzw.js                      47.56 kB │ gzip: 12.40 kB
+ℹ dist\plugin-sdk\deliver-Bp-sOie8.js                     45.46 kB │ gzip: 11.34 kB
+ℹ dist\plugin-sdk\dock-DikIpYgy.js                        36.31 kB │ gzip:  7.32 kB
+ℹ dist\plugin-sdk\commands-registry-CKTvcPr5.js           33.60 kB │ gzip:  7.60 kB
+ℹ dist\plugin-sdk\subsystem-RR-bZkEJ.js                   33.46 kB │ gzip:  9.55 kB
+ℹ dist\plugin-sdk\agent-scope-DKSNKue2.js                 30.71 kB │ gzip:  7.86 kB
+ℹ dist\plugin-sdk\ir-BQbdls4E.js                          27.90 kB │ gzip:  7.07 kB
+ℹ dist\plugin-sdk\manifest-registry-CiodSTh5.js           27.63 kB │ gzip:  6.58 kB
+ℹ dist\plugin-sdk\plugins-n6kSg8rn.js                     25.97 kB │ gzip:  5.79 kB
+ℹ dist\plugin-sdk\utils-h8l-KhAu.js                       21.10 kB │ gzip:  6.71 kB
+ℹ dist\plugin-sdk\query-expansion-DfkS-CWA.js             20.09 kB │ gzip:  6.98 kB
+ℹ dist\plugin-sdk\send-C4aTpe_m.js                        17.95 kB │ gzip:  4.76 kB
+ℹ dist\plugin-sdk\send-C_ac9tj0.js                        17.76 kB │ gzip:  5.29 kB
+ℹ dist\plugin-sdk\image-ops-DvYINFTt.js                   17.63 kB │ gzip:  5.19 kB
+ℹ dist\plugin-sdk\tool-loop-detection--usg9oo3.js         14.24 kB │ gzip:  3.60 kB
+ℹ dist\plugin-sdk\send-h9fJ7V_U.js                        13.12 kB │ gzip:  3.96 kB
+ℹ dist\plugin-sdk\chunk-DVLd-sC7.js                       12.80 kB │ gzip:  3.56 kB
+ℹ dist\plugin-sdk\skill-commands-Ckl9x7wM.js              10.59 kB │ gzip:  3.23 kB
+ℹ dist\plugin-sdk\login-qr-CSWWudiv.js                    10.41 kB │ gzip:  3.62 kB
+ℹ dist\plugin-sdk\diagnostic-D-QvGkp7.js                  10.33 kB │ gzip:  2.62 kB
+ℹ dist\plugin-sdk\tool-images-CoPKr6je.js                  9.75 kB │ gzip:  3.04 kB
+ℹ dist\plugin-sdk\resolve-route-BWdAlaoL.js                9.16 kB │ gzip:  2.58 kB
+ℹ dist\plugin-sdk\accounts-0CPY_oux.js                     9.02 kB │ gzip:  2.73 kB
+ℹ dist\plugin-sdk\session-key-C7qWg3SH.js                  8.72 kB │ gzip:  2.26 kB
+ℹ dist\plugin-sdk\paths-DVWx7USN.js                        8.32 kB │ gzip:  2.25 kB
+ℹ dist\plugin-sdk\ssrf-CozzLoTu.js                         8.19 kB │ gzip:  2.37 kB
+ℹ dist\plugin-sdk\outbound-DcYUSN6O.js                     7.99 kB │ gzip:  2.46 kB
+ℹ dist\plugin-sdk\paths-DnTUq-DM.js                        7.82 kB │ gzip:  1.97 kB
+ℹ dist\plugin-sdk\dispatcher-CxRH87Lt.js                   6.76 kB │ gzip:  2.77 kB
+ℹ dist\plugin-sdk\target-errors-5kuW237i.js                6.65 kB │ gzip:  2.01 kB
+ℹ dist\plugin-sdk\session-D0tgTNzb.js                      6.51 kB │ gzip:  2.34 kB
+ℹ dist\plugin-sdk\reply-prefix-5JNp1lEV.js                 6.50 kB │ gzip:  1.94 kB
+ℹ dist\plugin-sdk\local-roots-JR64OJ0M.js                  6.37 kB │ gzip:  2.26 kB
+ℹ dist\plugin-sdk\redact-PPH8_Qo4.js                       6.25 kB │ gzip:  2.15 kB
+ℹ dist\plugin-sdk\ip-Boy_9DXw.js                           5.83 kB │ gzip:  1.63 kB
+ℹ dist\plugin-sdk\api-key-rotation-D3yKlD7M.js             5.80 kB │ gzip:  1.96 kB
+ℹ dist\plugin-sdk\replies-CSDanRxv.js                      4.93 kB │ gzip:  1.58 kB
+ℹ dist\plugin-sdk\thinking-C4cbyZQP.js                     4.75 kB │ gzip:  1.23 kB
+ℹ dist\plugin-sdk\fetch-guard-Bny_BznD.js                  4.40 kB │ gzip:  1.66 kB
+ℹ dist\plugin-sdk\queue-DxMfxJy_.js                        4.26 kB │ gzip:  1.42 kB
+ℹ dist\plugin-sdk\github-copilot-token-Cg0YPPSu.js         4.15 kB │ gzip:  1.59 kB
+ℹ dist\plugin-sdk\credentials-CMSCuo7k.js                  3.96 kB │ gzip:  0.92 kB
+ℹ dist\plugin-sdk\inbound-context-BKsrx9S_.js              3.95 kB │ gzip:  1.15 kB
+ℹ dist\plugin-sdk\pi-auth-json-BKTq9l-D.js                 3.85 kB │ gzip:  1.47 kB
+ℹ dist\plugin-sdk\channel-activity-CQgo0BNA.js             3.74 kB │ gzip:  1.25 kB
+ℹ dist\plugin-sdk\audio-preflight-SjYv6ozD.js              3.35 kB │ gzip:  1.42 kB
+ℹ dist\plugin-sdk\render-BkW8s6LR.js                       3.29 kB │ gzip:  1.14 kB
+ℹ dist\plugin-sdk\whatsapp-actions-DZC1wiVH.js             3.29 kB │ gzip:  1.31 kB
+ℹ dist\plugin-sdk\message-channel-CYxTmHDl.js              3.24 kB │ gzip:  1.08 kB
+ℹ dist\plugin-sdk\command-format-BZ6yetDb.js               3.04 kB │ gzip:  1.07 kB
+ℹ dist\plugin-sdk\retry-BTRzeFhe.js                        2.96 kB │ gzip:  1.07 kB
+ℹ dist\plugin-sdk\web-C-_W8sXr.js                          2.94 kB │ gzip:  1.24 kB
+ℹ dist\plugin-sdk\store-CDBVM2Dz.js                        2.87 kB │ gzip:  1.30 kB
+ℹ dist\plugin-sdk\diagnostic-session-state-Br7SziNV.js     2.56 kB │ gzip:  0.91 kB
+ℹ dist\plugin-sdk\login-BgC0J0gA.js                        2.54 kB │ gzip:  1.11 kB
+ℹ dist\plugin-sdk\fetch-DdmiNDLY.js                        2.44 kB │ gzip:  0.85 kB
+ℹ dist\plugin-sdk\pairing-token-DbPaqO8x.js                2.32 kB │ gzip:  0.96 kB
+ℹ dist\plugin-sdk\command-poll-backoff-0bQHIBGL.js         2.27 kB │ gzip:  0.94 kB
+ℹ dist\plugin-sdk\sqlite-CtW0Harf.js                       2.17 kB │ gzip:  0.84 kB
+ℹ dist\plugin-sdk\bindings-BxRraM24.js                     2.14 kB │ gzip:  0.70 kB
+ℹ dist\plugin-sdk\polls-D1LcLXEy.js                        1.96 kB │ gzip:  0.63 kB
+ℹ dist\plugin-sdk\accounts-WHRM5xBY.js                     1.96 kB │ gzip:  0.69 kB
+ℹ dist\plugin-sdk\accounts-CC34_2CF.js                     1.94 kB │ gzip:  0.70 kB
+ℹ dist\plugin-sdk\active-listener-BTIkG_Vq.js              1.88 kB │ gzip:  0.80 kB
+ℹ dist\plugin-sdk\net-CDl2gQKf.js                          1.86 kB │ gzip:  0.87 kB
+ℹ dist\plugin-sdk\markdown-tables-F1UCYjES.js              1.56 kB │ gzip:  0.66 kB
+ℹ dist\plugin-sdk\input-provenance-Ci5dm0WQ.js             1.54 kB │ gzip:  0.54 kB
+ℹ dist\plugin-sdk\templates-BYDrYYQZ.js                    1.52 kB │ gzip:  0.77 kB
+ℹ dist\plugin-sdk\conversation-label-DdlaG7x0.js           1.51 kB │ gzip:  0.63 kB
+ℹ dist\plugin-sdk\fetch-timeout-D14QGlq9.js                1.37 kB │ gzip:  0.70 kB
+ℹ dist\plugin-sdk\resolve-outbound-target-DmLazZ38.js      1.30 kB │ gzip:  0.51 kB
+ℹ dist\plugin-sdk\errors-WLx6eVZl.js                       1.27 kB │ gzip:  0.55 kB
+ℹ dist\plugin-sdk\path-guards-iwSutykk.js                  1.18 kB │ gzip:  0.50 kB
+ℹ dist\plugin-sdk\tables-BbaUs_fz.js                       1.15 kB │ gzip:  0.56 kB
+ℹ dist\plugin-sdk\pi-model-discovery-DzTeu6gL.js           1.06 kB │ gzip:  0.44 kB
+ℹ dist\plugin-sdk\tokens-BPjw9pEY.js                       0.88 kB │ gzip:  0.42 kB
+ℹ dist\plugin-sdk\transcript-events-CSVRDWbt.js            0.59 kB │ gzip:  0.29 kB
+ℹ dist\plugin-sdk\outbound-attachment-CsCRBAvH.js          0.57 kB │ gzip:  0.32 kB
+ℹ dist\plugin-sdk\proxy-C4ewPdlN.js                        0.48 kB │ gzip:  0.30 kB
+ℹ dist\plugin-sdk\account-lookup-B-58l5Qb.js               0.45 kB │ gzip:  0.27 kB
+ℹ dist\plugin-sdk\rolldown-runtime-Cbj13DAv.js             0.42 kB │ gzip:  0.28 kB
+ℹ dist\plugin-sdk\secret-equal-Gla36CGi.js                 0.39 kB │ gzip:  0.26 kB
+ℹ dist\plugin-sdk\chat-type-BYHUZIi_.js                    0.33 kB │ gzip:  0.20 kB
+ℹ dist\plugin-sdk\secure-random-CD_6endt.js                0.32 kB │ gzip:  0.20 kB
+ℹ 100 files, total: 5191.60 kB
+✔ Build complete in 1442ms
+ℹ Granting execute permission to dist\index.js
+ℹ dist\extensionAPI.js                          3.03 kB │ gzip:  1.23 kB
+ℹ dist\pi-embedded-g5dSmmWf.js               2760.21 kB
+ℹ dist\config-BDBW2vU8.js                     295.96 kB │ gzip: 61.20 kB
+ℹ dist\pi-embedded-helpers-B1hb84wX.js        234.97 kB │ gzip: 54.30 kB
+ℹ dist\model-selection-Dk0QAYFu.js            143.49 kB │ gzip: 33.40 kB
+ℹ dist\manager-1K6SUZG5.js                    133.83 kB │ gzip: 30.16 kB
+ℹ dist\send-BgLbOYIe.js                       107.31 kB │ gzip: 25.58 kB
+ℹ dist\evaluator-BHmCeVlU.js                  101.25 kB │ gzip: 20.90 kB
+ℹ dist\web-BKXA39EU.js                         84.23 kB │ gzip: 21.76 kB
+ℹ dist\send-DIr76O8D.js                        83.61 kB │ gzip: 21.98 kB
+ℹ dist\sessions-b1nnlU1R.js                    82.38 kB │ gzip: 20.32 kB
+ℹ dist\runner-BQewzRBp.js                      70.28 kB │ gzip: 16.66 kB
+ℹ dist\pw-ai-EbJunu6N.js                       63.61 kB │ gzip: 15.28 kB
+ℹ dist\image-CsyVcv8-.js                       60.07 kB │ gzip: 15.65 kB
+ℹ dist\chrome-Bt3Syd5o.js                      57.62 kB │ gzip: 14.64 kB
+ℹ dist\qmd-manager-CQERw0or.js                 51.39 kB │ gzip: 13.01 kB
+ℹ dist\skills-ClO19Jje.js                      47.55 kB │ gzip: 12.39 kB
+ℹ dist\deliver-Bwy4YApr.js                     45.42 kB │ gzip: 11.30 kB
+ℹ dist\commands-registry-DAVfQiSU.js           33.60 kB │ gzip:  7.59 kB
+ℹ dist\dock-C3i9vq_j.js                        33.56 kB │ gzip:  6.74 kB
+ℹ dist\subsystem-DcmUhxcm.js                   33.35 kB │ gzip:  9.52 kB
+ℹ dist\agent-scope-DQbR3eOb.js                 30.71 kB │ gzip:  7.85 kB
+ℹ dist\ir-szo_njPy.js                          27.90 kB │ gzip:  7.07 kB
+ℹ dist\manifest-registry-DT1Zbm6n.js           27.63 kB │ gzip:  6.58 kB
+ℹ dist\utils-ClOLlBZm.js                       20.83 kB │ gzip:  6.66 kB
+ℹ dist\query-expansion-UjO0pGZb.js             20.09 kB │ gzip:  6.99 kB
+ℹ dist\send-BwhKkZJm.js                        17.76 kB │ gzip:  5.26 kB
+ℹ dist\image-ops-Di39qsvC.js                   17.63 kB │ gzip:  5.18 kB
+ℹ dist\send-BkOibHil.js                        17.08 kB │ gzip:  4.59 kB
+ℹ dist\plugins-bnlpuhA5.js                     15.79 kB │ gzip:  3.85 kB
+ℹ dist\send-BnJ0lc_a.js                        14.70 kB │ gzip:  4.37 kB
+ℹ dist\tool-loop-detection-B4jfdXqe.js         14.24 kB │ gzip:  3.59 kB
+ℹ dist\chunk-BR6T5kll.js                       12.77 kB │ gzip:  3.55 kB
+ℹ dist\skill-commands-i3gj7DtQ.js              10.59 kB │ gzip:  3.23 kB
+ℹ dist\login-qr-D-rHP1mX.js                    10.40 kB │ gzip:  3.61 kB
+ℹ dist\diagnostic-Dsa0Ufby.js                  10.13 kB │ gzip:  2.57 kB
+ℹ dist\tool-images-CdJQ1Huk.js                  9.75 kB │ gzip:  3.04 kB
+ℹ dist\resolve-route-Dvcx1vxp.js                9.16 kB │ gzip:  2.58 kB
+ℹ dist\accounts-tlfai1zZ.js                     8.87 kB │ gzip:  2.69 kB
+ℹ dist\session-key-Bm7o20ZD.js                  8.72 kB │ gzip:  2.26 kB
+ℹ dist\paths-BY8fKpqm.js                        8.32 kB │ gzip:  2.25 kB
+ℹ dist\outbound-BeerpSon.js                     7.99 kB │ gzip:  2.46 kB
+ℹ dist\ssrf-CzMP8Y-X.js                         7.97 kB │ gzip:  2.35 kB
+ℹ dist\paths-CLDI1Z2x.js                        7.82 kB │ gzip:  1.97 kB
+ℹ dist\dispatcher-CYuXGZt8.js                   6.76 kB │ gzip:  2.77 kB
+ℹ dist\target-errors-DPoatEz8.js                6.65 kB │ gzip:  2.01 kB
+ℹ dist\session-D6zENIGn.js                      6.50 kB │ gzip:  2.34 kB
+ℹ dist\reply-prefix-Bk9m013R.js                 6.47 kB │ gzip:  1.94 kB
+ℹ dist\local-roots-C_IAoVS6.js                  6.37 kB │ gzip:  2.26 kB
+ℹ dist\redact-B1wgQHWF.js                       6.25 kB │ gzip:  2.16 kB
+ℹ dist\ip-CE53K6JC.js                           5.83 kB │ gzip:  1.63 kB
+ℹ dist\gemini-auth-BkqFrseU.js                  5.80 kB │ gzip:  1.94 kB
+ℹ dist\replies-lWdBUBjJ.js                      4.93 kB │ gzip:  1.58 kB
+ℹ dist\thinking-CjSkALRq.js                     4.75 kB │ gzip:  1.23 kB
+ℹ dist\fetch-guard-BMIPJwvw.js                  4.40 kB │ gzip:  1.66 kB
+ℹ dist\whatsapp-actions-CQci_Mp_.js             4.36 kB │ gzip:  1.57 kB
+ℹ dist\queue-D423BFT_.js                        4.26 kB │ gzip:  1.42 kB
+ℹ dist\github-copilot-token-z7XzPfMU.js         4.15 kB │ gzip:  1.59 kB
+ℹ dist\credentials-Bbyk59S3.js                  3.96 kB │ gzip:  0.92 kB
+ℹ dist\inbound-context-CTxny8xk.js              3.95 kB │ gzip:  1.15 kB
+ℹ dist\pi-auth-json-BtOa-Kij.js                 3.84 kB │ gzip:  1.46 kB
+ℹ dist\channel-activity-Q1JOqo-z.js             3.74 kB │ gzip:  1.24 kB
+ℹ dist\audio-preflight-Ceqddkkc.js              3.33 kB │ gzip:  1.41 kB
+ℹ dist\render-D7n7kmbn.js                       3.29 kB │ gzip:  1.14 kB
+ℹ dist\message-channel-D0MI0pV-.js              3.24 kB │ gzip:  1.08 kB
+ℹ dist\env-CAzjuYnw.js                          3.04 kB │ gzip:  1.07 kB
+ℹ dist\retry-fTfdB5rN.js                        2.96 kB │ gzip:  1.07 kB
+ℹ dist\diagnostic-session-state-C0Sxjfox.js     2.56 kB │ gzip:  0.91 kB
+ℹ dist\login-Dxq_6dOt.js                        2.53 kB │ gzip:  1.11 kB
+ℹ dist\fetch-CMarDVSW.js                        2.44 kB │ gzip:  0.85 kB
+ℹ dist\command-poll-backoff-Ez61-gFb.js         2.27 kB │ gzip:  0.94 kB
+ℹ dist\sqlite-BB10ABuT.js                       2.17 kB │ gzip:  0.84 kB
+ℹ dist\bindings-BnHf_LSU.js                     2.14 kB │ gzip:  0.71 kB
+ℹ dist\store-DXNUmhWf.js                        2.14 kB │ gzip:  1.02 kB
+ℹ dist\polls-DdY_LCOM.js                        1.96 kB │ gzip:  0.63 kB
+ℹ dist\active-listener-osVcvMTZ.js              1.87 kB │ gzip:  0.80 kB
+ℹ dist\ws-DzRwNxpM.js                           1.86 kB │ gzip:  0.88 kB
+ℹ dist\accounts-ozddjBxs.js                     1.81 kB │ gzip:  0.67 kB
+ℹ dist\accounts-CEeKigcD.js                     1.78 kB │ gzip:  0.65 kB
+ℹ dist\pairing-files-PKCTrNWt.js                1.66 kB │ gzip:  0.75 kB
+ℹ dist\markdown-tables-BHD44nWh.js              1.56 kB │ gzip:  0.65 kB
+ℹ dist\input-provenance-DM1qonUR.js             1.54 kB │ gzip:  0.54 kB
+ℹ dist\templates-DnVYuMsG.js                    1.52 kB │ gzip:  0.77 kB
+ℹ dist\conversation-label-C4nTIoqP.js           1.51 kB │ gzip:  0.63 kB
+ℹ dist\targets-u-4VTfNV.js                      1.48 kB │ gzip:  0.57 kB
+ℹ dist\fetch-timeout-KCB40cfA.js                1.37 kB │ gzip:  0.70 kB
+ℹ dist\errors-CwmVWudr.js                       1.27 kB │ gzip:  0.55 kB
+ℹ dist\path-guards-5uqoMz3B.js                  1.18 kB │ gzip:  0.50 kB
+ℹ dist\tables-CF259O6q.js                       1.15 kB │ gzip:  0.56 kB
+ℹ dist\pi-model-discovery-C-yOXpma.js           1.06 kB │ gzip:  0.44 kB
+ℹ dist\tokens-DfAgf42B.js                       0.88 kB │ gzip:  0.42 kB
+ℹ dist\transcript-events-BOK6eOU8.js            0.59 kB │ gzip:  0.29 kB
+ℹ dist\outbound-attachment-BWke5BNM.js          0.57 kB │ gzip:  0.32 kB
+ℹ dist\proxy-Cvnh8c8N.js                        0.48 kB │ gzip:  0.30 kB
+ℹ dist\account-lookup-lrwBXb1l.js               0.45 kB │ gzip:  0.27 kB
+ℹ dist\rolldown-runtime-Cbj13DAv.js             0.42 kB │ gzip:  0.28 kB
+ℹ dist\chat-type-C4pAlbsI.js                    0.33 kB │ gzip:  0.20 kB
+ℹ dist\secure-random-faWesvBQ.js                0.32 kB │ gzip:  0.20 kB
+ℹ 98 files, total: 5017.29 kB
+✔ Build complete in 1481ms
+ℹ Granting execute permission to dist\entry.js
+ℹ dist\bundled\session-memory\handler.js           10.76 kB │ gzip:  3.73 kB
+ℹ dist\bundled\boot-md\handler.js                   8.35 kB │ gzip:  2.99 kB
+ℹ dist\llm-slug-generator.js                        4.96 kB │ gzip:  2.15 kB
+ℹ dist\bundled\bootstrap-extra-files\handler.js     1.78 kB │ gzip:  0.74 kB
+ℹ dist\bundled\command-logger\handler.js            1.69 kB │ gzip:  0.81 kB
+ℹ dist\pi-embedded-hk61b3zi.js                   2760.32 kB
+ℹ dist\config-DQ9z9bBn.js                         295.96 kB │ gzip: 61.20 kB
+ℹ dist\pi-embedded-helpers-BrE3O7Nh.js            235.03 kB │ gzip: 54.31 kB
+ℹ dist\model-selection-zloOasAK.js                143.48 kB │ gzip: 33.41 kB
+ℹ dist\manager-CLTTakpU.js                        133.82 kB │ gzip: 30.15 kB
+ℹ dist\send-yN4UTBOB.js                           107.31 kB │ gzip: 25.58 kB
+ℹ dist\evaluator-Bey1-AiB.js                      101.28 kB │ gzip: 20.90 kB
+ℹ dist\web-CxGVvUHo.js                             84.33 kB │ gzip: 21.81 kB
+ℹ dist\send-DJdjzFYX.js                            83.63 kB │ gzip: 21.99 kB
+ℹ dist\sessions-9vaMRvj8.js                        82.41 kB │ gzip: 20.33 kB
+ℹ dist\runner-CRU7a571.js                          70.30 kB │ gzip: 16.67 kB
+ℹ dist\pw-ai-DMh_cGGN.js                           63.67 kB │ gzip: 15.31 kB
+ℹ dist\image-CpeSkhi9.js                           60.07 kB │ gzip: 15.65 kB
+ℹ dist\chrome-CKDoZRtG.js                          57.62 kB │ gzip: 14.63 kB
+ℹ dist\qmd-manager-Bdv0BJm3.js                     51.42 kB │ gzip: 13.03 kB
+ℹ dist\deliver-C5GJSpHK.js                         45.42 kB │ gzip: 11.30 kB
+ℹ dist\skills-UNihww9u.js                          39.10 kB │ gzip: 10.44 kB
+ℹ dist\subsystem-DT9gNpSt.js                       33.93 kB │ gzip:  9.65 kB
+ℹ dist\commands-registry-MOu7KfPC.js               33.60 kB │ gzip:  7.59 kB
+ℹ dist\dock-CObFDz1g.js                            33.56 kB │ gzip:  6.74 kB
+ℹ dist\ir-__kmrpuz.js                              27.90 kB │ gzip:  7.07 kB
+ℹ dist\manifest-registry-Bdk70B2F.js               27.45 kB │ gzip:  6.54 kB
+ℹ dist\workspace-BDbt9JEP.js                       24.96 kB │ gzip:  6.66 kB
+ℹ dist\utils-CGNnWbwp.js                           20.83 kB │ gzip:  6.66 kB
+ℹ dist\query-expansion-CKWohN1b.js                 20.07 kB │ gzip:  6.99 kB
+ℹ dist\send-DK9JjxnH.js                            17.76 kB │ gzip:  5.27 kB
+ℹ dist\image-ops-XUJkTttS.js                       17.60 kB │ gzip:  5.18 kB
+ℹ dist\send-2MQ-vuRU.js                            17.08 kB │ gzip:  4.59 kB
+ℹ dist\plugins-BlykkL1c.js                         15.79 kB │ gzip:  3.85 kB
+ℹ dist\send-D_2DDYXq.js                            14.70 kB │ gzip:  4.37 kB
+ℹ dist\tool-loop-detection-pAfidddy.js             14.24 kB │ gzip:  3.59 kB
+ℹ dist\chunk-CMDTIxZr.js                           12.77 kB │ gzip:  3.55 kB
+ℹ dist\skill-commands-DUAipwz9.js                  10.59 kB │ gzip:  3.23 kB
+ℹ dist\login-qr-BX6OqZI1.js                        10.47 kB │ gzip:  3.64 kB
+ℹ dist\diagnostic-Cpq8Utsv.js                      10.13 kB │ gzip:  2.58 kB
+ℹ dist\tool-images-C2ClCx3e.js                      9.75 kB │ gzip:  3.04 kB
+ℹ dist\frontmatter-WleXi5PE.js                      9.43 kB │ gzip:  2.79 kB
+ℹ dist\resolve-route-Cjv4hUOv.js                    9.20 kB │ gzip:  2.60 kB
+ℹ dist\accounts-DndGqrok.js                         8.88 kB │ gzip:  2.70 kB
+ℹ dist\session-key-Bm7o20ZD.js                      8.72 kB │ gzip:  2.26 kB
+ℹ dist\paths-C9do7WCN.js                            8.32 kB │ gzip:  2.25 kB
+ℹ dist\outbound-BG9B1S5H.js                         7.99 kB │ gzip:  2.46 kB
+ℹ dist\ssrf-BEHp8kbm.js                             7.97 kB │ gzip:  2.35 kB
+ℹ dist\paths-BGhu7vww.js                            7.82 kB │ gzip:  1.97 kB
+ℹ dist\agent-scope-2BqINkzW.js                      7.74 kB │ gzip:  2.04 kB
+ℹ dist\dispatcher-x9GVg8WA.js                       6.76 kB │ gzip:  2.77 kB
+ℹ dist\target-errors-BgFzGrTv.js                    6.65 kB │ gzip:  2.01 kB
+ℹ dist\session-Dw7op_yn.js                          6.50 kB │ gzip:  2.34 kB
+ℹ dist\reply-prefix-DC0EqbZL.js                     6.47 kB │ gzip:  1.94 kB
+ℹ dist\local-roots-Bx689for.js                      6.37 kB │ gzip:  2.26 kB
+ℹ dist\redact-BTOEMXo6.js                           6.25 kB │ gzip:  2.16 kB
+ℹ dist\ip-CPpAs6aZ.js                               5.83 kB │ gzip:  1.63 kB
+ℹ dist\gemini-auth-Bo5WifeN.js                      5.80 kB │ gzip:  1.94 kB
+ℹ dist\replies-DI0PDOFg.js                          4.93 kB │ gzip:  1.58 kB
+ℹ dist\thinking-BFsWfunr.js                         4.75 kB │ gzip:  1.23 kB
+ℹ dist\whatsapp-actions-CmhU01Jc.js                 4.43 kB │ gzip:  1.60 kB
+ℹ dist\fetch-guard-CIXJq3II.js                      4.39 kB │ gzip:  1.66 kB
+ℹ dist\queue-DlU8UPsv.js                            4.26 kB │ gzip:  1.42 kB
+ℹ dist\github-copilot-token-O72jkhDl.js             4.15 kB │ gzip:  1.59 kB
+ℹ dist\credentials-BQYpTDX1.js                      3.96 kB │ gzip:  0.92 kB
+ℹ dist\inbound-context-CxlYF1Ce.js                  3.95 kB │ gzip:  1.15 kB
+ℹ dist\pi-auth-json-BooWcFS1.js                     3.90 kB │ gzip:  1.50 kB
+ℹ dist\channel-activity-_8M-_HCp.js                 3.74 kB │ gzip:  1.25 kB
+ℹ dist\audio-preflight-CTRsSY7W.js                  3.43 kB │ gzip:  1.45 kB
+ℹ dist\render-lL152pED.js                           3.29 kB │ gzip:  1.14 kB
+ℹ dist\message-channel-zOuSPkxM.js                  3.24 kB │ gzip:  1.08 kB
+ℹ dist\retry-B4by8e2R.js                            2.96 kB │ gzip:  1.07 kB
+ℹ dist\diagnostic-session-state-iIgQ4O9h.js         2.56 kB │ gzip:  0.91 kB
+ℹ dist\login-_65LMpOS.js                            2.53 kB │ gzip:  1.10 kB
+ℹ dist\fetch-CYLWU3MY.js                            2.44 kB │ gzip:  0.85 kB
+ℹ dist\command-poll-backoff-BpmVFV-B.js             2.27 kB │ gzip:  0.94 kB
+ℹ dist\env-CbHdy7lE.js                              2.25 kB │ gzip:  0.87 kB
+ℹ dist\sqlite-CBuCpnyH.js                           2.17 kB │ gzip:  0.84 kB
+ℹ dist\bindings-CgdroFpz.js                         2.14 kB │ gzip:  0.71 kB
+ℹ dist\store-DzlQPwFE.js                            2.13 kB │ gzip:  1.02 kB
+ℹ dist\polls-DhMjjIGW.js                            1.96 kB │ gzip:  0.63 kB
+ℹ dist\active-listener-DOkhD3kj.js                  1.87 kB │ gzip:  0.79 kB
+ℹ dist\ws-Bo1R0yUw.js                               1.86 kB │ gzip:  0.87 kB
+ℹ dist\accounts-D0j62UOk.js                         1.81 kB │ gzip:  0.67 kB
+ℹ dist\accounts-Bkr9G1Ap.js                         1.78 kB │ gzip:  0.65 kB
+ℹ dist\pairing-files-B4ztuTFf.js                    1.66 kB │ gzip:  0.76 kB
+ℹ dist\markdown-tables-p023DcQ2.js                  1.56 kB │ gzip:  0.65 kB
+ℹ dist\input-provenance-D83O-h_Y.js                 1.54 kB │ gzip:  0.54 kB
+ℹ dist\templates-DvN73vG0.js                        1.52 kB │ gzip:  0.77 kB
+ℹ dist\conversation-label-DQMshVs0.js               1.51 kB │ gzip:  0.63 kB
+ℹ dist\targets-CTl67lLT.js                          1.48 kB │ gzip:  0.57 kB
+ℹ dist\fetch-timeout-Cj6kcyGt.js                    1.37 kB │ gzip:  0.70 kB
+ℹ dist\errors-CBV4otc6.js                           1.27 kB │ gzip:  0.55 kB
+ℹ dist\path-guards-CKmIrODy.js                      1.18 kB │ gzip:  0.50 kB
+ℹ dist\tables-BZJhSBSz.js                           1.15 kB │ gzip:  0.56 kB
+ℹ dist\pi-model-discovery-4uUnLc3n.js               1.06 kB │ gzip:  0.44 kB
+ℹ dist\tokens-DUuGtdkI.js                           0.88 kB │ gzip:  0.42 kB
+ℹ dist\boolean-B8-BqKGQ.js                          0.86 kB │ gzip:  0.38 kB
+ℹ dist\transcript-events-BaUINxJH.js                0.59 kB │ gzip:  0.29 kB
+ℹ dist\outbound-attachment-DE1TWmUP.js              0.57 kB │ gzip:  0.32 kB
+ℹ dist\proxy-DnTe6q1R.js                            0.48 kB │ gzip:  0.30 kB
+ℹ dist\account-lookup-DGscKBsr.js                   0.45 kB │ gzip:  0.27 kB
+ℹ dist\rolldown-runtime-Cbj13DAv.js                 0.42 kB │ gzip:  0.28 kB
+ℹ dist\chat-type-CTrit63N.js                        0.33 kB │ gzip:  0.20 kB
+ℹ dist\config-PqIDhzaZ.js                           0.32 kB │ gzip:  0.20 kB
+ℹ dist\secure-random-Ds0euxCu.js                    0.32 kB │ gzip:  0.20 kB
+ℹ dist\legacy-names-BkVepOec.js                     0.26 kB │ gzip:  0.17 kB
+ℹ 107 files, total: 5046.53 kB
+✔ Build complete in 1516ms
+ℹ dist\index.js                                       25.31 kB │ gzip:   9.76 kB
+ℹ dist\reply-C5v-y_eK.js                            2697.63 kB
+ℹ dist\gateway-cli-Bl1n4l59.js                       868.31 kB │ gzip: 210.81 kB
+ℹ dist\config-o7V2qVur.js                            301.42 kB │ gzip:  62.31 kB
+ℹ dist\redact-snapshot-BeqRbYhH.js                   203.44 kB │ gzip:  56.29 kB
+ℹ dist\model-selection-B7Y68-DZ.js                   153.10 kB │ gzip:  35.34 kB
+ℹ dist\audit-CHaQf4W4.js                             140.12 kB │ gzip:  33.55 kB
+ℹ dist\manager-DULbHj6X.js                           133.53 kB │ gzip:  30.12 kB
+ℹ dist\tui-C1bnI-Au.js                               108.06 kB │ gzip:  26.58 kB
+ℹ dist\send-BLUF1c1l.js                              107.44 kB │ gzip:  25.65 kB
+ℹ dist\models-cli-t82Tzp5L.js                         97.39 kB │ gzip:  23.65 kB
+ℹ dist\sessions-BP9hmlPc.js                           94.74 kB │ gzip:  22.95 kB
+ℹ dist\client-TlXNQsWm.js                             93.64 kB │ gzip:  17.32 kB
+ℹ dist\server-context-hejgJti6.js                     91.14 kB │ gzip:  19.15 kB
+ℹ dist\sandbox-Bozme8U1.js                            88.33 kB │ gzip:  21.48 kB
+ℹ dist\onboard-channels-Dz5MEykq.js                   87.34 kB │ gzip:  20.14 kB
+ℹ dist\prompt-select-styled-DTdpPsbD.js               85.82 kB │ gzip:  22.94 kB
+ℹ dist\channel-web-Bfnuo4PT.js                        82.83 kB │ gzip:  20.97 kB
+ℹ dist\status-FuIgdFpC.js                             76.99 kB │ gzip:  19.86 kB
+ℹ dist\doctor-config-flow-B6LIqrVn.js                 74.28 kB │ gzip:  15.56 kB
+ℹ dist\send-C61sXic_.js                               71.49 kB │ gzip:  19.04 kB
+ℹ dist\runner-B0LcarGt.js                             69.78 kB │ gzip:  16.60 kB
+ℹ dist\browser-cli-C7zpj-9g.js                        67.74 kB │ gzip:  12.60 kB
+ℹ dist\auth-choice-CnqsTXrF.js                        65.75 kB │ gzip:  14.16 kB
+ℹ dist\pw-ai-BqH1aOGh.js                              63.86 kB │ gzip:  15.42 kB
+ℹ dist\channels-cli-rUhFwKqc.js                       57.45 kB │ gzip:  15.32 kB
+ℹ dist\chrome-CFQGRrBS.js                             56.47 kB │ gzip:  14.32 kB
+ℹ dist\health-DTld1U80.js                             55.40 kB │ gzip:  13.15 kB
+ℹ dist\nodes-cli-BW6qPgTV.js                          53.57 kB │ gzip:  12.06 kB
+ℹ dist\update-cli-CN91GR3t.js                         53.22 kB │ gzip:  15.43 kB
+ℹ dist\qmd-manager-DqJpxnLe.js                        51.61 kB │ gzip:  13.07 kB
+ℹ dist\node-cli-Uzdkk0C0.js                           51.39 kB │ gzip:  13.74 kB
+ℹ dist\acp-cli-Bls6-Clk.js                            45.99 kB │ gzip:  12.42 kB
+ℹ dist\pi-embedded-helpers-MLHNzmLM.js                45.26 kB │ gzip:  11.98 kB
+ℹ dist\tools-C1iCMYeP.js                              44.01 kB │ gzip:  12.27 kB
+ℹ dist\deliver-CkjdGjka.js                            43.38 kB │ gzip:  10.72 kB
+ℹ dist\register.agent-DUFLNXEn.js                     42.52 kB │ gzip:  11.81 kB
+ℹ dist\auth-token-CE_oFguk.js                         42.32 kB │ gzip:   7.61 kB
+ℹ dist\subsystem-B99sozF1.js                          40.70 kB │ gzip:  11.42 kB
+ℹ dist\skills-C3Rr3o-a.js                             39.87 kB │ gzip:  10.63 kB
+ℹ dist\tool-display-Cb824Vsy.js                       36.34 kB │ gzip:   8.85 kB
+ℹ dist\hooks-cli-CtIT5ivV.js                          36.12 kB │ gzip:   9.48 kB
+ℹ dist\memory-cli-BVJh2FHP.js                         35.13 kB │ gzip:   8.94 kB
+ℹ dist\register.message-DToUQFJF.js                   34.30 kB │ gzip:   8.57 kB
+ℹ dist\dock-Dvgkyx9j.js                               33.67 kB │ gzip:   6.78 kB
+ℹ dist\daemon-cli-B2SsMEnD.js                         33.10 kB │ gzip:   8.89 kB
+ℹ dist\commands-registry-BIVR7c1L.js                  32.08 kB │ gzip:   7.28 kB
+ℹ dist\configure-BbHmjy2d.js                          32.01 kB │ gzip:   8.70 kB
+ℹ dist\plugins-cli-BmWv0Jud.js                        29.93 kB │ gzip:   8.57 kB
+ℹ dist\register.status-health-sessions-DFeaR-gB.js    29.09 kB │ gzip:   8.33 kB
+ℹ dist\manifest-registry-tZzvM6-F.js                  28.80 kB │ gzip:   6.87 kB
+ℹ dist\ir-5fcybyy5.js                                 28.03 kB │ gzip:   7.12 kB
+ℹ dist\dispatcher-BwoSb4g7.js                         27.43 kB │ gzip:   8.61 kB
+ℹ dist\cron-cli-nmjleVei.js                           26.16 kB │ gzip:   6.58 kB
+ℹ dist\push-apns-HwpQhSu5.js                          25.62 kB │ gzip:   7.14 kB
+ℹ dist\session-dirs-C4wt35fZ.js                       25.51 kB │ gzip:   5.70 kB
+ℹ dist\session-cost-usage-Dec-w0gK.js                 25.37 kB │ gzip:   6.07 kB
+ℹ dist\shards-p2hZ3nqo.js                             24.45 kB │ gzip:   7.01 kB
+ℹ dist\service-DxwFacdZ.js                            23.88 kB │ gzip:   6.17 kB
+ℹ dist\auth-choice-jQ02Iqg1.js                        23.23 kB │ gzip:   4.52 kB
+ℹ dist\hippocampus-UNTR-z1U.js                        22.95 kB │ gzip:   5.28 kB
+ℹ dist\skill-commands-D0c3-t3G.js                     22.80 kB │ gzip:   6.19 kB
+ℹ dist\utils-Ck9_gyo0.js                              22.74 kB │ gzip:   7.14 kB
+ℹ dist\sandbox-cli-C-O97LGA.js                        22.57 kB │ gzip:   5.93 kB
+ℹ dist\register.maintenance-ePR3-B8p.js               21.96 kB │ gzip:   6.54 kB
+ℹ dist\agent-scope-BZiAiSHJ.js                        20.87 kB │ gzip:   5.20 kB
+ℹ dist\query-expansion-B89wqZGS.js                    20.16 kB │ gzip:   6.98 kB
+ℹ dist\image-W8UMm_rP.js                              19.96 kB │ gzip:   5.94 kB
+ℹ dist\onboarding.finalize-BGGHuPhz.js                19.95 kB │ gzip:   6.45 kB
+ℹ dist\skills-install--mU2LZp2.js                     18.57 kB │ gzip:   5.13 kB
+ℹ dist\daemon-install-helpers-qZJjkWj5.js             18.24 kB │ gzip:   4.77 kB
+ℹ dist\send-CycOariq.js                               17.75 kB │ gzip:   5.28 kB
+ℹ dist\systemd-BjlSlmoL.js                            17.65 kB │ gzip:   5.05 kB
+ℹ dist\completion-cli-CPZdgW9p.js                     17.60 kB │ gzip:   4.86 kB
+ℹ dist\send-DD-WWl_M.js                               17.12 kB │ gzip:   4.63 kB
+ℹ dist\server-node-events-p0NFahr_.js                 17.11 kB │ gzip:   5.32 kB
+ℹ dist\onboard-custom-CL8VGQvV.js                     16.89 kB │ gzip:   4.86 kB
+ℹ dist\call-CGTgTUlA.js                               16.82 kB │ gzip:   5.06 kB
+ℹ dist\security-cli-DyxM34YV.js                       16.71 kB │ gzip:   4.84 kB
+ℹ dist\model-picker-CPzIujgE.js                       16.68 kB │ gzip:   4.43 kB
+ℹ dist\plugins-D05hw0d_.js                            16.43 kB │ gzip:   4.01 kB
+ℹ dist\program-context-DyyhDx7E.js                    15.97 kB │ gzip:   3.74 kB
+ℹ dist\pairing-store-CAycKEjZ.js                      15.65 kB │ gzip:   3.93 kB
+ℹ dist\install-safe-path-BKsXyNx2.js                  15.33 kB │ gzip:   4.41 kB
+ℹ dist\gmail-setup-utils-DSrmd5m7.js                  15.19 kB │ gzip:   4.52 kB
+ℹ dist\auth-D9TLD8TU.js                               15.19 kB │ gzip:   4.12 kB
+ℹ dist\webhooks-cli-D4xg29af.js                       15.05 kB │ gzip:   4.25 kB
+ℹ dist\send-BgYwIbVp.js                               14.72 kB │ gzip:   4.37 kB
+ℹ dist\onboard-helpers-DBDCx0Gw.js                    14.61 kB │ gzip:   4.51 kB
+ℹ dist\tool-loop-detection-McKM4s3e.js                14.27 kB │ gzip:   3.60 kB
+ℹ dist\image-ops-B3mroNgq.js                          14.09 kB │ gzip:   4.16 kB
+ℹ dist\channel-account-context-D2EHDEVz.js            14.06 kB │ gzip:   3.79 kB
+ℹ dist\evaluator-ipmeA5J-.js                          13.99 kB │ gzip:   4.57 kB
+ℹ dist\lifecycle-core-L_cKD9Eb.js                     13.78 kB │ gzip:   3.60 kB
+ℹ dist\onboarding-DkCQ0Ndw.js                         13.68 kB │ gzip:   4.19 kB
+ℹ dist\exec-approvals-cli-BAOOjWQK.js                 13.58 kB │ gzip:   3.98 kB
+ℹ dist\onboard-CVJX6Ir9.js                            13.48 kB │ gzip:   3.83 kB
+ℹ dist\qr-cli-CPm3DG0h.js                             13.29 kB │ gzip:   4.08 kB
+ℹ dist\npm-registry-spec-c4ZhIeuK.js                  12.99 kB │ gzip:   3.71 kB
+ℹ dist\bonjour-discovery-B-42o7Jl.js                  12.86 kB │ gzip:   3.73 kB
+ℹ dist\chunk-BSQOLTSS.js                              12.76 kB │ gzip:   3.54 kB
+ℹ dist\logs-cli-vKQbdj-8.js                           12.48 kB │ gzip:   4.16 kB
+ℹ dist\session-DKa4eekt.js                            12.38 kB │ gzip:   3.37 kB
+ℹ dist\installs-CI6TGVrl.js                           12.35 kB │ gzip:   3.27 kB
+ℹ dist\devices-cli-B97xB1Nw.js                        12.30 kB │ gzip:   3.46 kB
+ℹ dist\ports-D-slg5y9.js                              11.96 kB │ gzip:   3.56 kB
+ℹ dist\exec-approvals-CKbyXd2Z.js                     11.73 kB │ gzip:   3.22 kB
+ℹ dist\systemd-hints-DxHvPyGI.js                      11.70 kB │ gzip:   3.31 kB
+ℹ dist\exec-approvals-allowlist-BwWP5-Cd.js           11.67 kB │ gzip:   2.80 kB
+ℹ dist\model-7FyZHp6L.js                              11.57 kB │ gzip:   3.16 kB
+ℹ dist\plugin-auto-enable-rgX9qMj6.js                 11.28 kB │ gzip:   3.06 kB
+ℹ dist\skills-cli-DAo_kCRE.js                         11.04 kB │ gzip:   3.04 kB
+ℹ dist\login-qr-BecXimhK.js                           10.61 kB │ gzip:   3.71 kB
+ℹ dist\paths-ClP9InF7.js                              10.48 kB │ gzip:   2.77 kB
+ℹ dist\accounts-BG8NyaBx.js                           10.13 kB │ gzip:   2.99 kB
+ℹ dist\diagnostic-QcvmjHF5.js                         10.12 kB │ gzip:   2.57 kB
+ℹ dist\update-BNT-vvPd.js                              9.99 kB │ gzip:   2.50 kB
+ℹ dist\workspace-BoHG9Egs.js                           9.86 kB │ gzip:   2.97 kB
+ℹ dist\tool-images-B6j7KT3j.js                         9.75 kB │ gzip:   3.04 kB
+ℹ dist\session-key-C2FENQ1Z.js                         9.61 kB │ gzip:   2.40 kB
+ℹ dist\config-cli-BZGXFfXB.js                          9.54 kB │ gzip:   2.79 kB
+ℹ dist\frontmatter-Bmp6Unly.js                         9.43 kB │ gzip:   2.79 kB
+ℹ dist\tailscale-yleBodqv.js                           9.29 kB │ gzip:   2.94 kB
+ℹ dist\resolve-route-BCy_gYMO.js                       9.22 kB │ gzip:   2.60 kB
+ℹ dist\pi-tools.policy--RkXFCG-.js                     8.73 kB │ gzip:   2.60 kB
+ℹ dist\inspect-DYikzR_5.js                             8.63 kB │ gzip:   2.51 kB
+ℹ dist\table-B0na392j.js                               8.51 kB │ gzip:   2.78 kB
+ℹ dist\cli-MkruEK2M.js                                 8.46 kB │ gzip:   3.10 kB
+ℹ dist\register.onboard-DyEq5qvC.js                    8.29 kB │ gzip:   2.87 kB
+ℹ dist\nodes-screen-B-YrCqQH.js                        8.26 kB │ gzip:   2.44 kB
+ℹ dist\exec-BFcaXbvC.js                                8.19 kB │ gzip:   2.63 kB
+ℹ dist\provider-auth-helpers-CrRac0Rg.js               8.12 kB │ gzip:   2.91 kB
+ℹ dist\delivery-queue-DIsROtv9.js                      8.10 kB │ gzip:   2.62 kB
+ℹ dist\outbound-DpxuFSUz.js                            8.06 kB │ gzip:   2.49 kB
+ℹ dist\ssrf-Ckolyx2h.js                                7.97 kB │ gzip:   2.35 kB
+ℹ dist\dns-cli-CF4eyfxu.js                             7.93 kB │ gzip:   2.96 kB
+ℹ dist\paths-BDpiuT1F.js                               7.89 kB │ gzip:   2.00 kB
+ℹ dist\auth-choice-options-m8X14Su6.js                 7.75 kB │ gzip:   2.18 kB
+ℹ dist\directory-cli-BqCD9ztF.js                       7.72 kB │ gzip:   2.39 kB
+ℹ dist\ws-BOxzJpIZ.js                                  7.63 kB │ gzip:   2.60 kB
+ℹ dist\ip-BUhsZdJu.js                                  7.60 kB │ gzip:   1.96 kB
+ℹ dist\skill-scanner-_TFi9_NW.js                       7.43 kB │ gzip:   2.47 kB
+ℹ dist\queue-CjFSEM6g.js                               7.28 kB │ gzip:   2.27 kB
+ℹ dist\catalog-BMb_jxB5.js                             7.08 kB │ gzip:   2.16 kB
+ℹ dist\tool-catalog-6jPXVT8W.js                        6.84 kB │ gzip:   1.59 kB
+ℹ dist\openai-model-default-COKXFLMy.js                6.78 kB │ gzip:   2.25 kB
+ℹ dist\chat-envelope-BndZPORx.js                       6.75 kB │ gzip:   2.36 kB
+ℹ dist\target-errors-Bq1Q972r.js                       6.68 kB │ gzip:   2.02 kB
+ℹ dist\control-ui-assets-DCJCzz8W.js                   6.62 kB │ gzip:   1.99 kB
+ℹ dist\session-CV-zc5Hj.js                             6.58 kB │ gzip:   2.37 kB
+ℹ dist\skills-status-B2JMhCCU.js                       6.57 kB │ gzip:   2.17 kB
+ℹ dist\db-BlA8A91s.js                                  6.53 kB │ gzip:   2.13 kB
+ℹ dist\register.configure-DfqxON_G.js                  6.47 kB │ gzip:   2.71 kB
+ℹ dist\reply-prefix-BAWzYEZP.js                        6.46 kB │ gzip:   1.93 kB
+ℹ dist\local-roots-CaL1uC-F.js                         6.45 kB │ gzip:   2.29 kB
+ℹ dist\redact-Cnc_ZmuO.js                              6.41 kB │ gzip:   2.20 kB
+ℹ dist\model-catalog-DBbtk9mp.js                       6.37 kB │ gzip:   2.02 kB
+ℹ dist\onboarding.gateway-config-owKJUsAO.js           6.21 kB │ gzip:   2.11 kB
+ℹ dist\pairing-cli-CkHVr157.js                         6.11 kB │ gzip:   2.14 kB
+ℹ dist\consolidator-Cze3-tFq.js                        5.90 kB │ gzip:   2.32 kB
+ℹ dist\with-timeout-DjqMvehI.js                        5.84 kB │ gzip:   2.25 kB
+ℹ dist\api-key-rotation-BMy2NOV7.js                    5.80 kB │ gzip:   1.96 kB
+ℹ dist\onboard-skills-DvU1jsf_.js                      5.79 kB │ gzip:   2.19 kB
+ℹ dist\docs-cli-AaevNjk7.js                            5.74 kB │ gzip:   2.10 kB
+ℹ dist\cli-mljEbQB5.js                                 5.59 kB │ gzip:   2.29 kB
+ℹ dist\entry-status-m3UTUf5L.js                        5.37 kB │ gzip:   1.15 kB
+ℹ dist\register.setup-CEog7OXC.js                      5.11 kB │ gzip:   2.04 kB
+ℹ dist\widearea-dns-BSnsiH3m.js                        5.07 kB │ gzip:   1.94 kB
+ℹ dist\onboard-provider-auth-flags-D1uCwd1O.js         4.96 kB │ gzip:   1.02 kB
+ℹ dist\replies-C52AF7GD.js                             4.92 kB │ gzip:   1.57 kB
+ℹ dist\agents.config-C34ht4nf.js                       4.80 kB │ gzip:   1.43 kB
+ℹ dist\thinking-EAliFiVK.js                            4.78 kB │ gzip:   1.23 kB
+ℹ dist\whatsapp-actions-BlcwetHR.js                    4.78 kB │ gzip:   1.73 kB
+ℹ dist\shared-BAdWdF1O.js                              4.76 kB │ gzip:   1.80 kB
+ℹ dist\onboard-remote-BBdLNbeI.js                      4.61 kB │ gzip:   1.82 kB
+ℹ dist\web-BB9yjJX_.js                                 4.60 kB │ gzip:   1.89 kB
+ℹ dist\fetch-guard-CzmlOnUs.js                         4.39 kB │ gzip:   1.65 kB
+ℹ dist\system-run-command-BgOx-eRR.js                  4.37 kB │ gzip:   1.46 kB
+ℹ dist\message-channel-DPKXJfUZ.js                     4.33 kB │ gzip:   1.29 kB
+ℹ dist\models-config-C4Iuworc.js                       4.25 kB │ gzip:   1.45 kB
+ℹ dist\progress-BVEAgj-s.js                            4.22 kB │ gzip:   1.41 kB
+ℹ dist\github-copilot-token-DX5UTKwI.js                4.17 kB │ gzip:   1.59 kB
+ℹ dist\doctor-completion-DhEy70EZ.js                   4.14 kB │ gzip:   1.37 kB
+ℹ dist\audio-preflight-DKb-yBje.js                     4.06 kB │ gzip:   1.73 kB
+ℹ dist\config-guard-BbdvJgbM.js                        4.04 kB │ gzip:   1.57 kB
+ℹ dist\trash-ggWjztRP.js                               4.02 kB │ gzip:   1.38 kB
+ℹ dist\credentials-q9bFKyYH.js                         3.96 kB │ gzip:   0.92 kB
+ℹ dist\inbound-context-CuFtL7uG.js                     3.94 kB │ gzip:   1.14 kB
+ℹ dist\system-cli-_ABguI_G.js                          3.92 kB │ gzip:   1.37 kB
+ℹ dist\simple-complete-BYZ5bLDN.js                     3.83 kB │ gzip:   1.58 kB
+ℹ dist\host-env-security-ljCLeQmh.js                   3.77 kB │ gzip:   1.14 kB
+ℹ dist\status.update-iVFzhq9y.js                       3.77 kB │ gzip:   1.23 kB
+ℹ dist\argv-DLoG8MY5.js                                3.76 kB │ gzip:   1.22 kB
+ℹ dist\channel-activity-BeMH7ggP.js                    3.74 kB │ gzip:   1.25 kB
+ℹ dist\openclaw-root-BDNFtsPd.js                       3.74 kB │ gzip:   1.12 kB
+ℹ dist\fs-safe-DcL26bJo.js                             3.73 kB │ gzip:   1.27 kB
+ℹ dist\tui-cli-BjiGcwoD.js                             3.71 kB │ gzip:   1.67 kB
+ℹ dist\server-Coe8Z9cm.js                              3.65 kB │ gzip:   1.50 kB
+ℹ dist\server-middleware-DfGUP3pz.js                   3.61 kB │ gzip:   1.25 kB
+ℹ dist\clack-prompter-DDpUQroL.js                      3.54 kB │ gzip:   1.15 kB
+ℹ dist\env-vars-CfnZ9a1A.js                            3.34 kB │ gzip:   1.07 kB
+ℹ dist\render-CAaBsF7l.js                              3.29 kB │ gzip:   1.14 kB
+ℹ dist\constants-BS0uFveR.js                           3.27 kB │ gzip:   0.90 kB
+ℹ dist\exec-safe-bin-runtime-policy-D2ntNa8U.js        3.25 kB │ gzip:   1.14 kB
+ℹ dist\systemd-linger-BFB-c6FV.js                      3.17 kB │ gzip:   1.00 kB
+ℹ dist\note-DFbjZnnf.js                                3.17 kB │ gzip:   1.14 kB
+ℹ dist\ports-BFBuxyNY.js                               3.15 kB │ gzip:   1.12 kB
+ℹ dist\path-env-D7pGGjJK.js                            3.15 kB │ gzip:   1.23 kB
+ℹ dist\rpc-DsmKnrHC.js                                 3.11 kB │ gzip:   1.44 kB
+ℹ dist\pairing-token-DiMibSyH.js                       3.04 kB │ gzip:   1.16 kB
+ℹ dist\retry-C1AM9czN.js                               3.00 kB │ gzip:   1.08 kB
+ℹ dist\bindings-BjJ_ploi.js                            2.87 kB │ gzip:   0.87 kB
+ℹ dist\shared-D3rL5kbc.js                              2.84 kB │ gzip:   1.05 kB
+ℹ dist\hooks-status-t2MPrneU.js                        2.84 kB │ gzip:   1.14 kB
+ℹ dist\npm-resolution-CE7BKkw7.js                      2.78 kB │ gzip:   0.93 kB
+ℹ dist\heartbeat-visibility-B3dQTxuf.js                2.73 kB │ gzip:   0.96 kB
+ℹ dist\librarian-prompt-DLPLpGIZ.js                    2.64 kB │ gzip:   1.36 kB
+ℹ dist\mutable-allowlist-detectors-DV8oP7hM.js         2.61 kB │ gzip:   0.79 kB
+ℹ dist\login-Bo2kHCEg.js                               2.56 kB │ gzip:   1.12 kB
+ℹ dist\diagnostic-session-state-DeUhOiYA.js            2.55 kB │ gzip:   0.90 kB
+ℹ dist\fetch-DUYdKdvf.js                               2.44 kB │ gzip:   0.85 kB
+ℹ dist\format-duration-Dv4WUEn_.js                     2.42 kB │ gzip:   0.91 kB
+ℹ dist\sqlite-BW_JFQNw.js                              2.38 kB │ gzip:   0.92 kB
+ℹ dist\store-BKJ0hc1n.js                               2.33 kB │ gzip:   1.08 kB
+ℹ dist\command-poll-backoff-T4os0NOt.js                2.26 kB │ gzip:   0.93 kB
+ℹ dist\onboard-hooks-BRFstl83.js                       2.18 kB │ gzip:   1.01 kB
+ℹ dist\daemon-install-De_XIK8u.js                      2.16 kB │ gzip:   0.93 kB
+ℹ dist\format-relative-C2iFsX8J.js                     2.13 kB │ gzip:   0.86 kB
+ℹ dist\node-service-Bx8oogM2.js                        2.09 kB │ gzip:   0.62 kB
+ℹ dist\node-match-CCb_u42N.js                          2.07 kB │ gzip:   0.77 kB
+ℹ dist\channel-selection-BWu1dlrF.js                   2.06 kB │ gzip:   0.73 kB
+ℹ dist\stagger-B51k2Ynd.js                             2.00 kB │ gzip:   0.78 kB
+ℹ dist\runtime-guard-6RQlwP52.js                       1.98 kB │ gzip:   0.82 kB
+ℹ dist\polls-BXmX7aAB.js                               1.96 kB │ gzip:   0.63 kB
+ℹ dist\accounts-ChkvHF7J.js                            1.96 kB │ gzip:   0.69 kB
+ℹ dist\command-format-ChfKqObn.js                      1.95 kB │ gzip:   0.74 kB
+ℹ dist\accounts-BRARxD7E.js                            1.94 kB │ gzip:   0.70 kB
+ℹ dist\active-listener-D1f9tbev.js                     1.90 kB │ gzip:   0.80 kB
+ℹ dist\dangerous-name-matching-DaVRgwer.js             1.84 kB │ gzip:   0.59 kB
+ℹ dist\commands-DTmwchg9.js                            1.71 kB │ gzip:   0.57 kB
+ℹ dist\brew-Clwx6ZfY.js                                1.65 kB │ gzip:   0.58 kB
+ℹ dist\enable-ChHLk7b7.js                              1.59 kB │ gzip:   0.59 kB
+ℹ dist\auth-choice-prompt-cN07FKdO.js                  1.56 kB │ gzip:   0.66 kB
+ℹ dist\markdown-tables-CEDNASCc.js                     1.55 kB │ gzip:   0.65 kB
+ℹ dist\input-provenance-Bj7EXxBY.js                    1.54 kB │ gzip:   0.54 kB
+ℹ dist\templates-BSc9X1bM.js                           1.51 kB │ gzip:   0.76 kB
+ℹ dist\usage-format-QZxK9pLV.js                        1.50 kB │ gzip:   0.58 kB
+ℹ dist\conversation-label-DL99DqoP.js                  1.50 kB │ gzip:   0.63 kB
+ℹ dist\targets-C_cVT-c_.js                             1.48 kB │ gzip:   0.57 kB
+ℹ dist\health-format-CT_RNUmS.js                       1.45 kB │ gzip:   0.68 kB
+ℹ dist\errors-BR8M83jO.js                              1.43 kB │ gzip:   0.60 kB
+ℹ dist\legacy-names-BIsQcGF_.js                        1.41 kB │ gzip:   0.59 kB
+ℹ dist\chunk-D_Kn1npm.js                               1.38 kB │ gzip:   0.67 kB
+ℹ dist\wsl-Dd7vjPIH.js                                 1.38 kB │ gzip:   0.54 kB
+ℹ dist\fetch-timeout-BeHmFkxv.js                       1.36 kB │ gzip:   0.69 kB
+ℹ dist\is-main-14LKkZyi.js                             1.35 kB │ gzip:   0.49 kB
+ℹ dist\ipv4-DzN8Jbfm.js                                1.34 kB │ gzip:   0.66 kB
+ℹ dist\diagnostics-CGbOqkvL.js                         1.31 kB │ gzip:   0.59 kB
+ℹ dist\plugin-registry-CwDtJA2w.js                     1.31 kB │ gzip:   0.56 kB
+ℹ dist\parse-log-line-Bi83fkvT.js                      1.23 kB │ gzip:   0.52 kB
+ℹ dist\channel-options-BnaDL258.js                     1.22 kB │ gzip:   0.58 kB
+ℹ dist\env-BSa-tWHl.js                                 1.21 kB │ gzip:   0.58 kB
+ℹ dist\types-CGbKztwo.js                               1.21 kB │ gzip:   0.63 kB
+ℹ dist\server-lifecycle-C7Pm_RAT.js                    1.20 kB │ gzip:   0.56 kB
+ℹ dist\whatsapp-D44W2v5W.js                            1.18 kB │ gzip:   0.56 kB
+ℹ dist\path-guards-DfhRkUcP.js                         1.18 kB │ gzip:   0.50 kB
+ℹ dist\gateway-rpc-BKWRqGCo.js                         1.17 kB │ gzip:   0.62 kB
+ℹ dist\tables-qx3cGnvQ.js                              1.15 kB │ gzip:   0.56 kB
+ℹ dist\tailnet-D0NV0tRJ.js                             1.12 kB │ gzip:   0.48 kB
+ℹ dist\dm-policy-shared-C7PnrnBD.js                    1.10 kB │ gzip:   0.49 kB
+ℹ dist\pi-model-discovery-Ba4DmXPh.js                  1.05 kB │ gzip:   0.43 kB
+ℹ dist\clawbot-cli-CnmQIy0Z.js                         0.98 kB │ gzip:   0.54 kB
+ℹ dist\command-options-CrrkUCl6.js                     0.94 kB │ gzip:   0.38 kB
+ℹ dist\tokens-Hnyy8nIs.js                              0.91 kB │ gzip:   0.43 kB
+ℹ dist\dangerous-tools-WeL4UWBa.js                     0.88 kB │ gzip:   0.49 kB
+ℹ dist\onboard-config-C6mk_-3t.js                      0.86 kB │ gzip:   0.40 kB
+ℹ dist\boolean-BgXe2hyu.js                             0.86 kB │ gzip:   0.38 kB
+ℹ dist\cli-utils-B7nApBgk.js                           0.86 kB │ gzip:   0.42 kB
+ℹ dist\webchat-zkD4o3ns.js                             0.83 kB │ gzip:   0.41 kB
+ℹ dist\status-DOXl6SfW.js                              0.82 kB │ gzip:   0.35 kB
+ℹ dist\helpers-Dano2vlT.js                             0.79 kB │ gzip:   0.39 kB
+ℹ dist\logging-BxbE-dDF.js                             0.78 kB │ gzip:   0.40 kB
+ℹ dist\sqlite-vec-33jweaN2.js                          0.76 kB │ gzip:   0.40 kB
+ℹ dist\format-IX1R2SDV.js                              0.76 kB │ gzip:   0.40 kB
+ℹ dist\config-validation-cPisC_15.js                   0.73 kB │ gzip:   0.40 kB
+ℹ dist\help-format-DeXBoQnH.js                         0.70 kB │ gzip:   0.31 kB
+ℹ dist\clipboard-A4Kjb1fe.js                           0.63 kB │ gzip:   0.37 kB
+ℹ dist\api-DfiIQg9I.js                                 0.59 kB │ gzip:   0.35 kB
+ℹ dist\transcript-events-DBP0S0yj.js                   0.59 kB │ gzip:   0.29 kB
+ℹ dist\workspace-dirs-3RfTBLoC.js                      0.58 kB │ gzip:   0.33 kB
+ℹ dist\outbound-attachment-CS32JLaH.js                 0.57 kB │ gzip:   0.32 kB
+ℹ dist\channels-status-issues-CjD0kOUd.js              0.55 kB │ gzip:   0.30 kB
+ℹ dist\runtime-status-DK7IEK_m.js                      0.55 kB │ gzip:   0.30 kB
+ℹ dist\links-DYrKd4zj.js                               0.52 kB │ gzip:   0.32 kB
+ℹ dist\model-param-b-BY2Yhopt.js                       0.49 kB │ gzip:   0.32 kB
+ℹ dist\prompt-style-Pi0LS0fM.js                        0.48 kB │ gzip:   0.26 kB
+ℹ dist\daemon-runtime-3SayFEVT.js                      0.47 kB │ gzip:   0.30 kB
+ℹ dist\proxy-CYfOSaCS.js                               0.47 kB │ gzip:   0.29 kB
+ℹ dist\pi-auth-json-734S6xej.js                        0.47 kB │ gzip:   0.28 kB
+ℹ dist\parse-timeout-DBzhalbc.js                       0.46 kB │ gzip:   0.26 kB
+ℹ dist\account-lookup-9q3YUHJv.js                      0.45 kB │ gzip:   0.27 kB
+ℹ dist\path-safety-CpDM9Ahb.js                         0.44 kB │ gzip:   0.26 kB
+ℹ dist\parse-port-EinCPHGa.js                          0.43 kB │ gzip:   0.25 kB
+ℹ dist\helpers-CqO-Vd77.js                             0.41 kB │ gzip:   0.26 kB
+ℹ dist\secret-equal-CQn9WoXt.js                        0.39 kB │ gzip:   0.26 kB
+ℹ dist\plugins-allowlist-By3VpbvF.js                   0.34 kB │ gzip:   0.22 kB
+ℹ dist\chat-type-CDoXBFe7.js                           0.33 kB │ gzip:   0.20 kB
+ℹ dist\secure-random-_dzDDlFo.js                       0.32 kB │ gzip:   0.20 kB
+ℹ dist\text-format-oldaIqHa.js                         0.27 kB │ gzip:   0.22 kB
+ℹ dist\pairing-labels-DN5glRLW.js                      0.26 kB │ gzip:   0.18 kB
+ℹ dist\prompts-BRaE4_Km.js                             0.24 kB │ gzip:   0.17 kB
+ℹ dist\logging-DwonklqN.js                             0.12 kB │ gzip:   0.12 kB
+ℹ 312 files, total: 8804.67 kB
+✔ Build complete in 1786ms
 ℹ dist\entry.js                                       91.68 kB │ gzip:  25.15 kB
 ℹ dist\subagent-registry-C72ZiZFk.js                2670.70 kB
-ℹ dist\gateway-cli-DwvBrYLP.js                       867.35 kB │ gzip: 210.61 kB
+ℹ dist\gateway-cli-CxQmCEEV.js                       867.94 kB │ gzip: 210.76 kB
 ℹ dist\config-BJ7AWdQp.js                            301.31 kB │ gzip:  62.27 kB
 ℹ dist\redact-snapshot-Cj9KOhe3.js                   203.43 kB │ gzip:  56.28 kB
 ℹ dist\auth-profiles-Jtmi21S8.js                     152.90 kB │ gzip:  35.41 kB
@@ -690,7 +1699,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\server-context-4xAupOb_.js                     91.08 kB │ gzip:  19.13 kB
 ℹ dist\sandbox-DYQ95WCh.js                            88.16 kB │ gzip:  21.44 kB
 ℹ dist\onboard-channels-DUi_agVo.js                   87.22 kB │ gzip:  20.10 kB
-ℹ dist\prompt-select-styled-BIoZO4AW.js               85.67 kB │ gzip:  22.89 kB
+ℹ dist\prompt-select-styled-7mtWG0PZ.js               85.67 kB │ gzip:  22.89 kB
 ℹ dist\models-D0DXbsgX.js                             83.15 kB │ gzip:  20.02 kB
 ℹ dist\channel-web-Do8xtdTl.js                        82.77 kB │ gzip:  20.94 kB
 ℹ dist\status-C_VxnISn.js                             77.16 kB │ gzip:  19.92 kB
@@ -704,12 +1713,12 @@ A2UI bundle up to date; skipping.
 ℹ dist\chrome-IfxatXj7.js                             56.42 kB │ gzip:  14.31 kB
 ℹ dist\health-C8TlWssp.js                             55.25 kB │ gzip:  13.12 kB
 ℹ dist\nodes-cli-DEpwFurN.js                          53.42 kB │ gzip:  11.99 kB
-ℹ dist\update-cli-U-XuLCk9.js                         53.17 kB │ gzip:  15.42 kB
+ℹ dist\update-cli-BRvoivlz.js                         53.17 kB │ gzip:  15.42 kB
 ℹ dist\qmd-manager-B8DGOhOr.js                        51.40 kB │ gzip:  13.02 kB
 ℹ dist\node-cli-BNqfFYnY.js                           51.20 kB │ gzip:  13.68 kB
 ℹ dist\acp-cli-G6UIfTMv.js                            45.81 kB │ gzip:  12.34 kB
 ℹ dist\pi-embedded-helpers-Hq58cd7n.js                45.18 kB │ gzip:  11.96 kB
-ℹ dist\tools-bss98-2j.js                              44.00 kB │ gzip:  12.26 kB
+ℹ dist\tools-Dl_FN_Re.js                              43.97 kB │ gzip:  12.25 kB
 ℹ dist\deliver-DEecV-F1.js                            43.34 kB │ gzip:  10.70 kB
 ℹ dist\auth-token-BfD42WVy.js                         42.28 kB │ gzip:   7.59 kB
 ℹ dist\skills-gKIShUzy.js                             39.80 kB │ gzip:  10.62 kB
@@ -737,17 +1746,17 @@ A2UI bundle up to date; skipping.
 ℹ dist\hippocampus-CBBfD-u3.js                        22.94 kB │ gzip:   5.27 kB
 ℹ dist\skill-commands-CA0vSDlt.js                     22.72 kB │ gzip:   6.16 kB
 ℹ dist\sandbox-cli-DcEDzGWk.js                        22.43 kB │ gzip:   5.88 kB
-ℹ dist\register.maintenance-52DtHCyd.js               21.92 kB │ gzip:   6.52 kB
+ℹ dist\register.maintenance-PrjlotRq.js               21.92 kB │ gzip:   6.52 kB
 ℹ dist\agent-scope-14w_8KLM.js                        20.64 kB │ gzip:   5.17 kB
 ℹ dist\query-expansion-Cse0Gl33.js                    20.07 kB │ gzip:   6.98 kB
-ℹ dist\onboarding.finalize-PJVMv_4r.js                19.93 kB │ gzip:   6.44 kB
+ℹ dist\onboarding.finalize-D9o8XNJw.js                19.93 kB │ gzip:   6.44 kB
 ℹ dist\image-D7VtU_fh.js                              19.91 kB │ gzip:   5.91 kB
 ℹ dist\register.status-health-sessions-itahy5Vo.js    19.39 kB │ gzip:   5.97 kB
 ℹ dist\skills-install-7LDz6dRO.js                     18.57 kB │ gzip:   5.12 kB
 ℹ dist\daemon-install-helpers-tMRwzDX0.js             18.16 kB │ gzip:   4.76 kB
 ℹ dist\send-CFsiJ5Qu.js                               17.74 kB │ gzip:   5.26 kB
 ℹ dist\systemd-ByEYh6um.js                            17.57 kB │ gzip:   5.03 kB
-ℹ dist\completion-cli-CLxNHuI2.js                     17.49 kB │ gzip:   4.84 kB
+ℹ dist\completion-cli-DPA4ANFK.js                     17.49 kB │ gzip:   4.84 kB
 ℹ dist\send-BgL3IojB.js                               17.07 kB │ gzip:   4.59 kB
 ℹ dist\server-node-events-B_UpViQC.js                 17.03 kB │ gzip:   5.28 kB
 ℹ dist\onboard-custom-DH9m8Kqm.js                     16.89 kB │ gzip:   4.86 kB
@@ -763,16 +1772,16 @@ A2UI bundle up to date; skipping.
 ℹ dist\gmail-setup-utils-D1upJ3CQ.js                  15.15 kB │ gzip:   4.50 kB
 ℹ dist\webhooks-cli-XCHl6oSz.js                       14.91 kB │ gzip:   4.19 kB
 ℹ dist\send-BSRbR7sh.js                               14.68 kB │ gzip:   4.36 kB
-ℹ dist\run-main-DkAHjiqQ.js                           14.53 kB │ gzip:   4.42 kB
+ℹ dist\run-main-D1CSOj5J.js                           14.53 kB │ gzip:   4.42 kB
 ℹ dist\onboard-helpers-L0piyLVW.js                    14.50 kB │ gzip:   4.48 kB
 ℹ dist\tool-loop-detection-jpLeM74b.js                14.19 kB │ gzip:   3.57 kB
 ℹ dist\channel-account-context-Co5eNzPM.js            14.02 kB │ gzip:   3.78 kB
 ℹ dist\image-ops-CeJZlfR5.js                          14.01 kB │ gzip:   4.16 kB
 ℹ dist\evaluator-Y06jRLzV.js                          13.98 kB │ gzip:   4.56 kB
 ℹ dist\lifecycle-core-BBuqVqOn.js                     13.70 kB │ gzip:   3.57 kB
-ℹ dist\onboarding-Da1tvnPQ.js                         13.59 kB │ gzip:   4.15 kB
+ℹ dist\onboarding-DRkBcOCu.js                         13.59 kB │ gzip:   4.15 kB
 ℹ dist\exec-approvals-cli-CMgkfW9Q.js                 13.43 kB │ gzip:   3.91 kB
-ℹ dist\onboard-DF6VGPJI.js                            13.40 kB │ gzip:   3.79 kB
+ℹ dist\onboard-BYyZmJtV.js                            13.40 kB │ gzip:   3.79 kB
 ℹ dist\qr-cli-DaKDmVHv.js                             13.21 kB │ gzip:   4.04 kB
 ℹ dist\npm-registry-spec-1qrxoGbg.js                  12.88 kB │ gzip:   3.69 kB
 ℹ dist\bonjour-discovery-B7j4RqSK.js                  12.86 kB │ gzip:   3.73 kB
@@ -780,7 +1789,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\session-SRqsXKd8.js                            12.37 kB │ gzip:   3.36 kB
 ℹ dist\installs-BScYmqKM.js                           12.30 kB │ gzip:   3.26 kB
 ℹ dist\devices-cli-Cm1PbUpF.js                        12.16 kB │ gzip:   3.39 kB
-ℹ dist\program-DOIDVn6G.js                            12.08 kB │ gzip:   4.64 kB
+ℹ dist\program-CKLKDiTz.js                            12.08 kB │ gzip:   4.64 kB
 ℹ dist\exec-approvals-DReHAUKX.js                     11.73 kB │ gzip:   3.21 kB
 ℹ dist\systemd-hints-BS7rNwaS.js                      11.68 kB │ gzip:   3.31 kB
 ℹ dist\exec-approvals-allowlist-Cv_XPsJN.js           11.67 kB │ gzip:   2.80 kB
@@ -795,7 +1804,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\accounts-D0W8wtsj.js                           10.01 kB │ gzip:   2.95 kB
 ℹ dist\update-DuPgi1Z9.js                              9.96 kB │ gzip:   2.48 kB
 ℹ dist\workspace-B2r5voJG.js                           9.81 kB │ gzip:   2.95 kB
-ℹ dist\register.subclis-D3wpX8SE.js                    9.77 kB │ gzip:   2.48 kB
+ℹ dist\register.subclis-B46k5DGL.js                    9.77 kB │ gzip:   2.48 kB
 ℹ dist\tool-images-D4M_hwXl.js                         9.74 kB │ gzip:   3.03 kB
 ℹ dist\session-key-zOVo7INH.js                         9.61 kB │ gzip:   2.40 kB
 ℹ dist\config-cli-psjZMPoJ.js                          9.43 kB │ gzip:   2.74 kB
@@ -809,7 +1818,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\cli-Bf-oS9Sa.js                                 8.32 kB │ gzip:   3.04 kB
 ℹ dist\nodes-screen-5R4JE2kd.js                        8.25 kB │ gzip:   2.43 kB
 ℹ dist\exec-I6FbhUNk.js                                8.15 kB │ gzip:   2.61 kB
-ℹ dist\register.onboard-CJIbT1Ev.js                    8.15 kB │ gzip:   2.81 kB
+ℹ dist\register.onboard-Dd2-v9Kq.js                    8.15 kB │ gzip:   2.81 kB
 ℹ dist\provider-auth-helpers-hdW73Hl7.js               8.11 kB │ gzip:   2.90 kB
 ℹ dist\delivery-queue-C6vD0p_2.js                      8.06 kB │ gzip:   2.60 kB
 ℹ dist\outbound-CdGGfwcq.js                            7.97 kB │ gzip:   2.46 kB
@@ -823,7 +1832,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\skill-scanner-f6fCnXx3.js                       7.38 kB │ gzip:   2.46 kB
 ℹ dist\queue-C9qeGsoj.js                               7.24 kB │ gzip:   2.25 kB
 ℹ dist\catalog-B9p_XyMI.js                             7.08 kB │ gzip:   2.15 kB
-ℹ dist\command-registry-CXsZDxG3.js                    6.89 kB │ gzip:   1.89 kB
+ℹ dist\command-registry-CLaY5a5o.js                    6.89 kB │ gzip:   1.89 kB
 ℹ dist\tool-catalog-lxxkKHTT.js                        6.84 kB │ gzip:   1.59 kB
 ℹ dist\openai-model-default-DSqBQ1AY.js                6.77 kB │ gzip:   2.24 kB
 ℹ dist\chat-envelope-BG_U_muK.js                       6.75 kB │ gzip:   2.36 kB
@@ -848,7 +1857,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\entry-status-CAvi_W-J.js                        5.37 kB │ gzip:   1.15 kB
 ℹ dist\widearea-dns-D7fkV5z7.js                        5.06 kB │ gzip:   1.93 kB
 ℹ dist\onboard-provider-auth-flags-KceoKA40.js         4.96 kB │ gzip:   1.02 kB
-ℹ dist\register.setup-CqtdI_3g.js                      4.95 kB │ gzip:   1.98 kB
+ℹ dist\register.setup-BXaAXN9V.js                      4.95 kB │ gzip:   1.98 kB
 ℹ dist\replies-_QyABvH4.js                             4.91 kB │ gzip:   1.57 kB
 ℹ dist\agents.config-CyPJOfW2.js                       4.81 kB │ gzip:   1.43 kB
 ℹ dist\thinking-BF74hBT8.js                            4.78 kB │ gzip:   1.23 kB
@@ -861,7 +1870,7 @@ A2UI bundle up to date; skipping.
 ℹ dist\message-channel-BRJPJaeo.js                     4.32 kB │ gzip:   1.27 kB
 ℹ dist\models-config-DJcOWoxp.js                       4.20 kB │ gzip:   1.44 kB
 ℹ dist\progress-MraHNvTk.js                            4.17 kB │ gzip:   1.38 kB
-ℹ dist\doctor-completion-BxygoZDP.js                   4.14 kB │ gzip:   1.37 kB
+ℹ dist\doctor-completion-CSASlr53.js                   4.14 kB │ gzip:   1.37 kB
 ℹ dist\github-copilot-token-CjzbP8t8.js                4.13 kB │ gzip:   1.57 kB
 ℹ dist\trash-B5-ZIx--.js                               4.00 kB │ gzip:   1.37 kB
 ℹ dist\credentials-BNhz15WC.js                         3.96 kB │ gzip:   0.92 kB
@@ -989,49 +1998,18 @@ A2UI bundle up to date; skipping.
 ℹ dist\pairing-labels-BZA6WfaK.js                      0.26 kB │ gzip:   0.18 kB
 ℹ dist\prompts-BaRCfIEn.js                             0.24 kB │ gzip:   0.17 kB
 ℹ dist\logging-C_Fck8Jl.js                             0.12 kB │ gzip:   0.11 kB
-ℹ 314 files, total: 8814.88 kB
-✔ Build complete in 2484ms
-
-> openclaw@2026.2.25 build:plugin-sdk:dts C:\Users\Temp User\.openclaw
-> tsc -p tsconfig.plugin-sdk.dts.json
-
-[copy-hook-metadata] Copied boot-md/HOOK.md
-[copy-hook-metadata] Copied bootstrap-extra-files/HOOK.md
-[copy-hook-metadata] Copied command-logger/HOOK.md
-[copy-hook-metadata] Copied session-memory/HOOK.md
-[copy-hook-metadata] Done
-[copy-export-html-templates] Copied template.html
-[copy-export-html-templates] Copied template.css
-[copy-export-html-templates] Copied template.js
-[copy-export-html-templates] Copied vendor/highlight.min.js
-[copy-export-html-templates] Copied vendor/marked.min.js
-[copy-export-html-templates] Done
-  Build OK
-[2/4] Finding gateway...
-  Gateway PID: 22924
-[3/4] Killing and restarting...
-  Gateway restarting...
-[4/4] Scheduling wake-up cron...
-  Waiting... (2s)
-  Waiting... (4s)
-  Waiting... (6s)
-  Waiting... (8s)
-  Waiting... (10s)
-  Gateway is up! (12s)
-
-> openclaw@2026.2.25 openclaw C:\Users\Temp User\.openclaw
-> node scripts/run-node.mjs "cron" "add" "--at" "2026-03-15T11:23:39Z" "--session" "main" "--system-event" "REBUILD_WAKEUP: Gateway rebuilt and restarted. Send a WhatsApp message to Serj confirming you are back online." "--delete-after-run" "--name" "rebuild-wake"
-
+ℹ 314 files, total: 8815.45 kB
+✔ Build complete in 1814ms
 {
-  "id": "56566c4d-9842-4e16-afd3-f08ce98b0149",
+  "id": "d82ffb8b-0451-47a1-85f5-3470aacecde8",
   "name": "rebuild-wake",
   "enabled": true,
   "deleteAfterRun": true,
-  "createdAtMs": 1773573732455,
-  "updatedAtMs": 1773573732455,
+  "createdAtMs": 1773613100467,
+  "updatedAtMs": 1773613100467,
   "schedule": {
     "kind": "at",
-    "at": "2026-03-15T11:23:39.000Z"
+    "at": "2026-03-15T22:19:45.000Z"
   },
   "sessionTarget": "main",
   "wakeMode": "now",
@@ -1040,9 +2018,9 @@ A2UI bundle up to date; skipping.
     "text": "REBUILD_WAKEUP: Gateway rebuilt and restarted. Send a WhatsApp message to Serj confirming you are back online."
   },
   "state": {
-    "nextRunAtMs": 1773573819000
+    "nextRunAtMs": 1773613185000
   }
 }
-  Wake-up cron scheduled for 2026-03-15T11:23:39Z
+  Wake-up cron scheduled for 2026-03-15T22:19:45Z
 
 === Done ===

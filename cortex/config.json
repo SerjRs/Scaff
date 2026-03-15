@@ -1,26 +1,26 @@
 {
-    "enabled":  true,
-    "model":  "claude-opus-4-6",
-    "thinking":  "high",
-    "defaultMode":  "off",
-    "channels":  {
-                     "webchat":  "off",
-                     "whatsapp":  "off"
-                 },
-    "hippocampus":  {
-                        "enabled":  true,
-                        "gardenerCompactorIntervalMs":  3600000,
-                        "gardenerExtractorIntervalMs":  21600000,
-                        "gardenerEvictorIntervalMs":  604800000,
-                        "gardenerModel":  "claude-haiku-4-5",
-                        "foreground":  {
-                                           "tokenCap":  24000,
-                                           "tolerancePct":  20,
-                                           "maxShardTokens":  8000,
-                                           "timeGapMinutes":  25,
-                                           "semanticCheckInterval":  8,
-                                           "semanticModel":  "claude-haiku-4-5"
-                                       }
-                    },
-    "debugContext":  true
+    "enabled": true,
+    "model": "claude-opus-4-6",
+    "thinking": "high",
+    "defaultMode": "off",
+    "channels": {
+        "webchat": "live",
+        "whatsapp": "off"
+    },
+    "hippocampus": {
+        "enabled": true,
+        "gardenerCompactorIntervalMs": 3600000,
+        "gardenerExtractorIntervalMs": 21600000,
+        "gardenerEvictorIntervalMs": 604800000,
+        "gardenerModel": "claude-haiku-4-5",
+        "foreground": {
+            "tokenCap": 24000,
+            "tolerancePct": 20,
+            "maxShardTokens": 8000,
+            "timeGapMinutes": 25,
+            "semanticCheckInterval": 8,
+            "semanticModel": "claude-haiku-4-5"
+        }
+    },
+    "debugContext": true
 }
