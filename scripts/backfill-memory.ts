@@ -17,7 +17,7 @@ process.on('unhandledRejection', (err) => {
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { join, basename, relative } from "node:path";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { complete } from "../src/llm/simple-complete.js";
 
@@ -222,58 +222,58 @@ interface Chunk {
   sourceRef: string;
 }
 
-function readAndChunk(filePath: string, source: SourceType, base: string): Chunk[] {
+function* readAndChunk(filePath: string, source: SourceType, base: string): Generator<Chunk> {
   const relPath = relative(base, filePath);
   const sourceRef = `backfill://${source}/${relPath.replace(/\\/g, "/")}`;
 
   if (filePath.endsWith(".jsonl")) {
-    return readJsonlChunks(filePath, sourceRef, source);
+    yield* readJsonlChunks(filePath, sourceRef, source);
+    return;
   }
 
   if (filePath.endsWith(".json")) {
-    return readJsonChunks(filePath, sourceRef);
+    yield* readJsonChunks(filePath, sourceRef);
+    return;
   }
 
   // Markdown / text files
-  return readMarkdownChunks(filePath, sourceRef);
+  yield* readMarkdownChunks(filePath, sourceRef);
 }
 
-function readMarkdownChunks(filePath: string, sourceRef: string): Chunk[] {
+function* readMarkdownChunks(filePath: string, sourceRef: string): Generator<Chunk> {
   const content = readFileSync(filePath, "utf-8").trim();
-  if (!content) return [];
+  if (!content) return;
 
   if (content.length <= SINGLE_CHUNK_THRESHOLD) {
-    return [{ text: content, sourceRef }];
+    yield { text: content, sourceRef };
+    return;
   }
 
   // Split into ~4KB sections at paragraph boundaries
-  const chunks: Chunk[] = [];
   const lines = content.split("\n");
   let current = "";
   let chunkIdx = 0;
 
   for (const line of lines) {
     if (current.length + line.length + 1 > MAX_CHUNK_SIZE && current.length > 0) {
-      chunks.push({ text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` });
+      yield { text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` };
       chunkIdx++;
       current = "";
     }
     current += line + "\n";
   }
   if (current.trim()) {
-    chunks.push({ text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` });
+    yield { text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` };
   }
-
-  return chunks;
 }
 
-function readJsonlChunks(
+function* readJsonlChunks(
   filePath: string,
   sourceRef: string,
   source: SourceType,
-): Chunk[] {
+): Generator<Chunk> {
   const content = readFileSync(filePath, "utf-8").trim();
-  if (!content) return [];
+  if (!content) return;
 
   const lines = content.split("\n");
   const messages: string[] = [];
@@ -322,77 +322,71 @@ function readJsonlChunks(
     }
   }
 
-  if (messages.length === 0) return [];
+  if (messages.length === 0) return;
 
-  // Group messages into ~4KB chunks
-  const chunks: Chunk[] = [];
+  // Group messages into ~4KB chunks, yielding each as produced
   let current = "";
   let chunkIdx = 0;
 
   for (const msg of messages) {
     if (current.length + msg.length + 1 > MAX_CHUNK_SIZE && current.length > 0) {
-      chunks.push({ text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` });
+      yield { text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` };
       chunkIdx++;
       current = "";
     }
     current += msg + "\n";
   }
   if (current.trim()) {
-    chunks.push({ text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` });
+    yield { text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` };
   }
-
-  return chunks;
 }
 
-function readJsonChunks(filePath: string, sourceRef: string): Chunk[] {
+function* readJsonChunks(filePath: string, sourceRef: string): Generator<Chunk> {
   const content = readFileSync(filePath, "utf-8").trim();
-  if (!content) return [];
+  if (!content) return;
 
   try {
     const data = JSON.parse(content);
 
     // Cortex archive: array of session records
     if (Array.isArray(data)) {
-      const messages: string[] = [];
+      let current = "";
+      let chunkIdx = 0;
+      let hasMessages = false;
+
       for (const record of data) {
         const role = record.role ?? "unknown";
         const sender = record.sender_id ?? record.senderId ?? role;
         const text = record.content ?? "";
         if (!text || typeof text !== "string") continue;
-        messages.push(`${sender} (${role}): ${text}`);
-      }
 
-      if (messages.length === 0) return [];
+        const msg = `${sender} (${role}): ${text}`;
+        hasMessages = true;
 
-      // Group into ~4KB chunks
-      const chunks: Chunk[] = [];
-      let current = "";
-      let chunkIdx = 0;
-
-      for (const msg of messages) {
         if (current.length + msg.length + 1 > MAX_CHUNK_SIZE && current.length > 0) {
-          chunks.push({ text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` });
+          yield { text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` };
           chunkIdx++;
           current = "";
         }
         current += msg + "\n";
       }
       if (current.trim()) {
-        chunks.push({ text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` });
+        yield { text: current.trim(), sourceRef: `${sourceRef}#chunk${chunkIdx}` };
       }
-      return chunks;
+      return;
     }
 
     // Single object — stringify relevant fields
     const text = JSON.stringify(data, null, 2);
     if (text.length <= SINGLE_CHUNK_THRESHOLD) {
-      return [{ text, sourceRef }];
+      yield { text, sourceRef };
+      return;
     }
 
     // Split large JSON
-    return [{ text: text.slice(0, MAX_CHUNK_SIZE), sourceRef: `${sourceRef}#chunk0` }];
+    yield { text: text.slice(0, MAX_CHUNK_SIZE), sourceRef: `${sourceRef}#chunk0` };
   } catch {
-    return [];
+    return;
   }
 }
 
@@ -460,6 +454,7 @@ async function extractFacts(text: string): Promise<ExtractionResult> {
   const response = await complete(prompt, {
     model: "claude-haiku-4-5",
     maxTokens: 4096,
+    timeoutMs: 30_000,
   });
 
   let parsed: unknown;
@@ -612,6 +607,38 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T
 }
 
 // ---------------------------------------------------------------------------
+// Checkpoint support for large sources (>50 chunks)
+// ---------------------------------------------------------------------------
+
+const CHECKPOINT_THRESHOLD = 50;
+
+interface Checkpoint {
+  completedRefs: string[];
+}
+
+function checkpointPath(base: string, source: SourceType): string {
+  return join(base, "tmp", `backfill-checkpoint-${source}.json`);
+}
+
+function loadCheckpoint(base: string, source: SourceType): Set<string> {
+  const path = checkpointPath(base, source);
+  if (!existsSync(path)) return new Set();
+  try {
+    const data = JSON.parse(readFileSync(path, "utf-8")) as Checkpoint;
+    return new Set(data.completedRefs);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCheckpoint(base: string, source: SourceType, completed: Set<string>): void {
+  const path = checkpointPath(base, source);
+  const dir = join(base, "tmp");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(path, JSON.stringify({ completedRefs: [...completed] }, null, 2));
+}
+
+// ---------------------------------------------------------------------------
 // Main processing
 // ---------------------------------------------------------------------------
 
@@ -720,6 +747,24 @@ function newStats(): Stats {
 }
 
 // ---------------------------------------------------------------------------
+// Summary printer (shared between normal exit and signal handlers)
+// ---------------------------------------------------------------------------
+
+function printSummary(source: SourceType, stats: Stats): void {
+  console.log(`\n=== Backfill Summary (${source}) ===`);
+  console.log(`Files found:        ${stats.filesFound}`);
+  console.log(`Chunks processed:   ${stats.chunksProcessed}`);
+  console.log(`Facts extracted:    ${stats.factsExtracted}`);
+  console.log(`Facts inserted:     ${stats.factsInserted}`);
+  console.log(`Edges extracted:    ${stats.edgesExtracted}`);
+  console.log(`Edges inserted:     ${stats.edgesInserted}`);
+  console.log(`Duplicates skipped: ${stats.duplicates}`);
+  console.log(`Source-ref skipped: ${stats.skipped}`);
+  console.log(`Empty extractions:  ${stats.emptyExtractions}`);
+  console.log(`Errors:             ${stats.errors}`);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -762,24 +807,63 @@ async function main(): Promise<void> {
   const stats = newStats();
   stats.filesFound = files.length;
 
+  // Register signal handlers for partial summary on interrupt
+  const onSignal = (sig: string) => {
+    console.log(`\n[${sig}] Interrupted — printing partial summary...`);
+    printSummary(source, stats);
+    if (db) {
+      try { db.close(); } catch { /* ignore */ }
+    }
+    process.exit(1);
+  };
+  process.on("SIGINT", () => onSignal("SIGINT"));
+  process.on("SIGTERM", () => onSignal("SIGTERM"));
+
+  // Checkpoint: load existing checkpoint if one exists, enable after >50 total chunks
+  let useCheckpoint = false;
+  let completedRefs = loadCheckpoint(base, source);
+  let totalChunksProcessed = 0;
+
+  // If a checkpoint file already exists, we know this is a large source
+  if (completedRefs.size > 0) {
+    useCheckpoint = true;
+    console.log(`Checkpoint loaded: ${completedRefs.size} refs already completed`);
+  }
+
   for (const filePath of files) {
     const name = basename(filePath);
     console.log(`\nProcessing: ${name}`);
 
     try {
-      const chunks = readAndChunk(filePath, source, base);
-      console.log(`  Chunks: ${chunks.length}`);
+      let fileChunkIdx = 0;
 
-      const totalChunks = chunks.length;
-      for (let i = 0; i < totalChunks; i++) {
-        const chunk = chunks[i];
+      for (const chunk of readAndChunk(filePath, source, base)) {
+        // Activate checkpointing once we've seen enough total chunks
+        if (!useCheckpoint && totalChunksProcessed + fileChunkIdx >= CHECKPOINT_THRESHOLD) {
+          useCheckpoint = true;
+          console.log(`  Checkpointing enabled (>${CHECKPOINT_THRESHOLD} chunks)`);
+        }
+
+        // Skip chunks already completed in a previous run
+        if (useCheckpoint && completedRefs.has(chunk.sourceRef)) {
+          stats.skipped++;
+          fileChunkIdx++;
+          totalChunksProcessed++;
+          continue;
+        }
+
         try {
           await processChunk(db!, chunk, source, dryRun, stats);
           stats.chunksProcessed++;
 
+          if (useCheckpoint && !dryRun) {
+            completedRefs.add(chunk.sourceRef);
+            saveCheckpoint(base, source, completedRefs);
+          }
+
           // Progress logging every 10 chunks
-          if ((i + 1) % 10 === 0) {
-            console.log(`  Progress: ${i + 1}/${totalChunks} chunks, ${stats.factsExtracted} facts so far`);
+          if ((fileChunkIdx + 1) % 10 === 0) {
+            console.log(`  Progress: ${fileChunkIdx + 1} chunks done, ${stats.factsExtracted} facts so far`);
           }
 
           // Rate limit: 500ms between Haiku calls
@@ -789,7 +873,12 @@ async function main(): Promise<void> {
           console.error(`  ERROR (chunk ${chunk.sourceRef}): ${msg}`);
           stats.errors++;
         }
+
+        fileChunkIdx++;
+        totalChunksProcessed++;
       }
+
+      console.log(`  Chunks: ${fileChunkIdx}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  ERROR (file ${name}): ${msg}`);
@@ -799,18 +888,7 @@ async function main(): Promise<void> {
 
   if (db) db.close();
 
-  // Summary
-  console.log(`\n=== Backfill Summary (${source}) ===`);
-  console.log(`Files found:        ${stats.filesFound}`);
-  console.log(`Chunks processed:   ${stats.chunksProcessed}`);
-  console.log(`Facts extracted:    ${stats.factsExtracted}`);
-  console.log(`Facts inserted:     ${stats.factsInserted}`);
-  console.log(`Edges extracted:    ${stats.edgesExtracted}`);
-  console.log(`Edges inserted:     ${stats.edgesInserted}`);
-  console.log(`Duplicates skipped: ${stats.duplicates}`);
-  console.log(`Source-ref skipped: ${stats.skipped}`);
-  console.log(`Empty extractions:  ${stats.emptyExtractions}`);
-  console.log(`Errors:             ${stats.errors}`);
+  printSummary(source, stats);
 
   if (stats.errors > 0) process.exit(1);
 }
