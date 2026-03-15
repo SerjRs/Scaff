@@ -1,64 +1,61 @@
-# Claude Code Instructions — 020d
+# Claude Code Instructions — 020e
 
 ## Branch
-`feat/020d-cortex-e2e-hippo`
+`feat/020e-cortex-e2e-delegation`
 
 ## Task
-Create `src/cortex/__tests__/e2e-webchat-hippo.test.ts` — E2E tests for Hippocampus knowledge graph integration through the full Cortex webchat loop.
+Create `src/cortex/__tests__/e2e-webchat-delegation.test.ts` — E2E tests for async delegation (sessions_spawn) through the Cortex webchat loop.
 
 ## What to Build
 
-Read the SPEC: `workspace/pipeline/InProgress/020d-cortex-e2e/SPEC.md`
+Read the SPEC: `workspace/pipeline/InProgress/020e-cortex-e2e/SPEC.md`
 
-~6 tests in category E (Hippocampus Integration):
-- E1: Hot memory facts appear in system floor
-- E2: Graph facts with edges show breadcrumbs in system floor
-- E3: Fact extraction after conversation (Gardener)
-- E4: Memory query searches both hot and cold
-- E5: Eviction preserves edge stubs
-- E6: Revival on cold search hit
+~3 tests in category F (Async Delegation):
+- F1: sessions_spawn triggers onSpawn callback
+- F2: Task result delivery via ops_trigger envelope
+- F3: Task failure delivery
 
-## Key Setup
+## Key Architecture
 
-These tests need hippocampus enabled:
+`sessions_spawn` is an **async tool** — when the LLM calls it, Cortex invokes an `onSpawn` callback (provided in startCortex config) and returns a task ID. The actual sub-agent runs externally.
 
+Results come back as **ops_trigger envelopes** — special envelopes injected into the bus with task completion info.
+
+Read these files to understand the flow:
+- `src/cortex/tools.ts` — look for `sessions_spawn` tool registration
+- `src/cortex/loop.ts` — look for ops_trigger handling
+- `src/cortex/types.ts` — CortexEnvelope shape, ops_trigger fields
+
+### startCortex config for delegation:
 ```typescript
+const spawnCalls: any[] = [];
 const instance = await startCortex({
   // ... base config ...
-  hippocampusEnabled: true,
-  embedFn: mockEmbedFn,
-  gardenerExtractLLM: mockExtractLLM,
-  gardenerSummarizeLLM: mockSummarizeLLM,
+  onSpawn: async (task) => { spawnCalls.push(task); return "task-123"; },
 });
 ```
 
-For inserting test data, use the hippocampus functions directly on `instance.db`:
-```typescript
-import { insertFact, insertEdge, getTopFactsWithEdges } from "../hippocampus.js";
-insertFact(instance.db, { factText: "test fact", ... });
-```
+Check if `onSpawn` is actually a config option or if it's wired differently. READ THE CODE.
 
 ## Patterns
 
-Follow the pattern from existing test files:
-- `src/cortex/__tests__/e2e-webchat-flow.test.ts` — startCortex + adapter pattern
-- `src/cortex/__tests__/e2e-hippocampus-full.test.ts` — hippocampus functions + mockEmbedFn
-- `src/cortex/__tests__/helpers/hippo-test-utils.ts` — TestReporter, dump helpers, mockEmbedFn
+Follow `src/cortex/__tests__/e2e-webchat-flow.test.ts` for the startCortex + adapter pattern.
 
 ## Test Results
 
-Write to: `workspace/pipeline/InProgress/020d-cortex-e2e/TEST-RESULTS.md`
+Use `TestReporter` from `src/cortex/__tests__/helpers/hippo-test-utils.ts`.
+Write to: `workspace/pipeline/InProgress/020e-cortex-e2e/TEST-RESULTS.md`
 
 ## Steps
 
-1. Read SPEC.md, existing test files, hippocampus.ts, context.ts
+1. Read SPEC.md, tools.ts, loop.ts, types.ts to understand delegation flow
 2. Create the test file
-3. Run: `pnpm install && npx vitest run src/cortex/__tests__/e2e-webchat-hippo.test.ts --reporter=verbose`
+3. Run: `pnpm install && npx vitest run src/cortex/__tests__/e2e-webchat-delegation.test.ts --reporter=verbose`
 4. Fix failures
-5. Commit, push, create PR: `gh pr create --title "test(cortex): 020d — E2E webchat hippocampus integration" --base main`
-6. Signal: `openclaw system event --text "Done 020d"`
+5. Commit, push, create PR: `gh pr create --title "test(cortex): 020e — E2E webchat async delegation" --base main`
+6. Signal: `openclaw system event --text "Done 020e"`
 
 ## Constraints
 - Do NOT modify source files — test-only
-- All deterministic (mock LLMs, mock embeddings, no network)
-- Temp dirs + temp DBs, cleanup in afterEach
+- All deterministic, no network
+- If sessions_spawn isn't testable without the gateway, test what IS testable (e.g. ops_trigger processing, onSpawn callback if available)
