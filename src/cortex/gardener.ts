@@ -312,7 +312,7 @@ export async function runFactExtractor(params: {
 }
 
 /** Shared extraction logic — builds prompt, calls LLM, parses structured JSON result. */
-async function extractFactsFromTranscript(
+export async function extractFactsFromTranscript(
   extractLLM: FactExtractorLLM,
   transcript: string,
   topicContext = "",
@@ -467,7 +467,7 @@ async function dedupAndInsertFact(
  * Dedup-aware insert of an extracted fact into the graph tables (hippocampus_facts).
  * Returns the UUID of the fact (new or existing) and whether it was inserted.
  */
-async function dedupAndInsertGraphFact(
+export async function dedupAndInsertGraphFact(
   db: DatabaseSync,
   fact: ExtractedFact,
   sourceType: string,
