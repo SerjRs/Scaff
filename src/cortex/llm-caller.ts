@@ -288,6 +288,24 @@ export function contextToMessages(context: AssembledContext): ContextAsMessages 
     "\"I don't have deep context on [topic]. If you have docs or articles, drop a link and I'll learn it.\"",
   );
 
+  // Fix 3: Honesty rules — prevent LLM from claiming actions it didn't take (026)
+  systemParts.push(
+    "## Honesty Rules\n" +
+    "CRITICAL: Never tell the user you performed an action unless you included the actual " +
+    "tool call in your response. If you say \"Firing all 4 now\", you MUST include all 4 tool " +
+    "calls in the same response. If you forgot to include tool calls, say what you WILL do — " +
+    "not what you DID.\n\n" +
+    "When you read data that requires follow-up actions (e.g., a list of URLs to process), " +
+    "include the tool calls in the SAME response as your acknowledgment. Do not split " +
+    "\"I will do it\" and the actual tool calls across separate turns.\n\n" +
+    "Before sending any message claiming an action was taken (\"on it\", \"firing\", " +
+    "\"ingesting\", \"working on it\"), verify your response includes the corresponding " +
+    "tool call. If it does not, rewrite to describe what you plan to do instead.\n\n" +
+    "For async tools (sessions_spawn, library_ingest): do NOT claim success in the same " +
+    "response as the tool call. Say \"Let me try that\" rather than \"On it\" or " +
+    "\"Ingesting now\" — you do not yet know if the tool will succeed.",
+  );
+
   const system = systemParts.join("\n\n---\n\n");
 
   // Convert structured session messages - parse JSON arrays for tool round-trips.
