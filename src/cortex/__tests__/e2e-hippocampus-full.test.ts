@@ -80,7 +80,7 @@ let db: DatabaseSync;
 
 function freshDb(): DatabaseSync {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hippo-e2e-"));
-  db = initBus(path.join(tmpDir, "bus.sqlite"));
+  db = initBus(path.join(tmpDir, "bus.sqlite"), { allowExtensionLoading: true });
   initHotMemoryTable(db); // also calls initGraphTables
   return db;
 }
