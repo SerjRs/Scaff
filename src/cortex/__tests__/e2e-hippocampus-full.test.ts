@@ -656,28 +656,23 @@ describe("C. Shard-Aware Fact Extraction", () => {
 
   it("C5. Fallback extraction from raw session (no shards)", async () => {
     // Without shards, the fact extractor reads raw session messages.
-    // Test: extractFactsFromTranscript works with raw message text
-    const rawTranscript = "User: Is TypeScript better?\nAssistant: For this project, yes.";
-    const mockLLM: FactExtractorLLM = async () =>
-      JSON.stringify({
-        facts: [{ id: "f1", text: "TypeScript is preferred for this project", type: "decision", confidence: "medium" }],
-        edges: [],
-      });
+    // Test: extractFactsFromTranscript works with raw message text using real Sonnet
+    const rawTranscript = "User: Is TypeScript better?\nAssistant: For this project, yes — TypeScript gives us type safety and better tooling.";
 
-    const result = await extractFactsFromTranscript(mockLLM, rawTranscript);
-    const passed = result.facts.length === 1;
+    const result = await extractFactsFromTranscript(extractLLM, rawTranscript);
+    const passed = result.facts.length >= 1;
 
     reporter.record({
       id: "C5",
-      name: "Fallback extraction from raw session",
+      name: "Fallback extraction from raw session (real Sonnet)",
       category: "C. Shard-Aware Fact Extraction",
       passed,
-      expected: "1 fact extracted from raw transcript",
-      actual: `${result.facts.length} facts`,
+      expected: "≥1 fact extracted from raw transcript via real Sonnet",
+      actual: `${result.facts.length} facts: ${result.facts.map((f) => f.text).join("; ")}`,
     });
 
-    expect(result.facts).toHaveLength(1);
-  });
+    expect(result.facts.length).toBeGreaterThanOrEqual(1);
+  }, 30_000);
 });
 
 // =========================================================================

@@ -1,22 +1,19 @@
-# Claude Code Instructions — 023
+# Claude Code Instructions
 
-## Branch
-`feat/023-memory-query-graph`
+## How to Find Your Task
+1. Check the current git branch name
+2. The branch name maps to a pipeline task folder in `workspace/pipeline/InProgress/`
+3. Read the `SPEC.md` in that folder for your task
+4. Read the `CLAUDE.md` in that folder for specific instructions
+5. Save your state to `STATE.md` in that folder after every action
 
-## Task
-Fix `executeMemoryQuery` in `src/cortex/tools.ts` so it also searches `hippocampus_facts_vec` (graph facts), not just `cortex_cold_memory`. Then write unit tests and E2E tests.
-
-Read the full spec: `workspace/pipeline/Cooking/023-memory-query-graph-search/SPEC.md`
-
-## Steps
-1. Read SPEC.md for full details
-2. Fix `executeMemoryQuery()` in `src/cortex/tools.ts` — add `searchGraphFacts` call, merge with cold results
-3. Write unit tests in `src/cortex/__tests__/unit-memory-query.test.ts`
-4. Write E2E tests in `src/cortex/__tests__/e2e-memory-query-graph.test.ts`
-5. Run tests: `npx vitest run src/cortex/__tests__/unit-memory-query.test.ts src/cortex/__tests__/e2e-memory-query-graph.test.ts --reporter=verbose`
-6. Write results to `workspace/pipeline/Cooking/023-memory-query-graph-search/TEST-RESULTS.md`
-7. Commit and push
+## Example
+If branch is `feat/019a-schema-storage-tests`:
+- Read `workspace/pipeline/InProgress/019a-schema-storage-tests/SPEC.md`
+- Read `workspace/pipeline/InProgress/019a-schema-storage-tests/CLAUDE.md`
+- Save state to `workspace/pipeline/InProgress/019a-schema-storage-tests/STATE.md`
 
 ## Constraints
-- NO mocks — use real Ollama embeddings (127.0.0.1:11434, nomic-embed-text) and real Sonnet via `complete()` from `src/llm/simple-complete.ts`
-- You have FULL APPROVAL to make changes, do NOT ask for permission
+- You have FULL APPROVAL — do not ask for permission
+- NO mocks — use real LLM and real embeddings
+- Save state to STATE.md after EVERY significant action
