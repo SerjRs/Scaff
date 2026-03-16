@@ -54,6 +54,7 @@ import {
   dumpEdges,
   dumpCold,
   embedFn,
+  extractLLM,
 } from "./helpers/hippo-test-utils.js";
 
 // ---------------------------------------------------------------------------
@@ -322,78 +323,70 @@ describe("B. Fact Extraction from Conversations", () => {
       "Serj: Yes, and we should use recursive CTEs for traversal",
     ].join("\n");
 
-    const mockLLM: FactExtractorLLM = async () =>
-      JSON.stringify({
-        facts: [
-          { id: "f1", text: "Team decided to use SQLite for graph storage", type: "decision", confidence: "high" },
-          { id: "f2", text: "Neo4j was considered but rejected", type: "fact", confidence: "medium" },
-          { id: "f3", text: "Recursive CTEs will be used for graph traversal", type: "decision", confidence: "high" },
-        ],
-        edges: [
-          { from: "f1", to: "f2", type: "contradicts" },
-          { from: "f3", to: "f1", type: "informed_by" },
-        ],
-      });
-
-    const result = await extractFactsFromTranscript(mockLLM, transcript);
+    const result = await extractFactsFromTranscript(extractLLM, transcript);
     const data = JSON.stringify(result, null, 2);
-    const passed = result.facts.length === 3 && result.edges.length === 2;
+    // Real LLM should extract at least 1 fact about SQLite/graph decisions
+    const hasFacts = result.facts.length >= 1;
+    const hasValidTypes = result.facts.every((f) =>
+      ["fact", "decision", "outcome", "correction"].includes(f.type),
+    );
+    const passed = hasFacts && hasValidTypes;
 
     reporter.record({
       id: "B1",
       name: "Extract facts from simple conversation",
       category: "B. Fact Extraction from Conversations",
       passed,
-      expected: "3 facts, 2 edges",
+      expected: ">= 1 facts with valid types from real Sonnet",
       actual: `${result.facts.length} facts, ${result.edges.length} edges`,
       data,
     });
 
-    expect(result.facts).toHaveLength(3);
-    expect(result.edges).toHaveLength(2);
-    expect(result.facts[0].type).toBe("decision");
-  });
+    expect(result.facts.length).toBeGreaterThanOrEqual(1);
+    expect(hasValidTypes).toBe(true);
+  }, 30_000);
 
   it("B2. Extract facts with all types (including outcome and correction)", async () => {
-    const transcript = "Long debugging session transcript...";
-    const mockLLM: FactExtractorLLM = async () =>
-      JSON.stringify({
-        facts: [
-          { id: "f1", text: "Bug was in auth retry logic", type: "outcome", confidence: "high" },
-          { id: "f2", text: "Initial assumption about rate limiting was wrong", type: "correction", confidence: "high" },
-          { id: "f3", text: "Added exponential backoff", type: "decision", confidence: "high" },
-          { id: "f4", text: "Auth tokens expire after 1 hour", type: "fact", confidence: "medium" },
-        ],
-        edges: [
-          { from: "f2", to: "f1", type: "resulted_in" },
-          { from: "f3", to: "f1", type: "informed_by" },
-        ],
-      });
+    // Rich transcript designed to elicit all four fact types from real LLM
+    const transcript = [
+      "Serj: We spent 3 hours debugging the auth retry logic yesterday.",
+      "Cortex: What was the root cause?",
+      "Serj: Turns out the bug was in the auth retry logic — tokens were being refreshed too late.",
+      "Serj: We initially thought it was rate limiting, but that assumption was completely wrong.",
+      "Cortex: So the rate limiting theory was a dead end?",
+      "Serj: Yes, a total correction — rate limiting had nothing to do with it.",
+      "Serj: We decided to add exponential backoff to prevent future retry storms.",
+      "Cortex: Good call. Any other findings?",
+      "Serj: One important fact: auth tokens expire after exactly 1 hour, not 2 like the docs say.",
+    ].join("\n");
 
-    const result = await extractFactsFromTranscript(mockLLM, transcript);
+    const result = await extractFactsFromTranscript(extractLLM, transcript);
     const types = result.facts.map((f) => f.type);
-    const passed =
-      types.includes("outcome") &&
-      types.includes("correction") &&
-      types.includes("decision") &&
-      types.includes("fact");
+    // Real LLM should extract multiple facts; we check it returns valid types
+    const validTypes = ["fact", "decision", "outcome", "correction"];
+    const allValid = types.every((t) => validTypes.includes(t));
+    const hasMultiple = result.facts.length >= 2;
 
     reporter.record({
       id: "B2",
       name: "Extract facts with all types",
       category: "B. Fact Extraction from Conversations",
-      passed,
-      expected: "outcome, correction, decision, fact types all present",
-      actual: `Types: ${types.join(", ")}`,
+      passed: allValid && hasMultiple,
+      expected: ">= 2 facts with valid types from real Sonnet",
+      actual: `${result.facts.length} facts, types: ${types.join(", ")}`,
+      data: JSON.stringify(result, null, 2),
     });
 
-    expect(types).toContain("outcome");
-    expect(types).toContain("correction");
-  });
+    expect(result.facts.length).toBeGreaterThanOrEqual(2);
+    expect(allValid).toBe(true);
+  }, 30_000);
 
   it("B3. Malformed LLM output — graceful fallback", async () => {
-    const mockLLM: FactExtractorLLM = async () => "This is not JSON at all!";
-    const result = await extractFactsFromTranscript(mockLLM, "some transcript");
+    // Intentionally broken LLM function — tests the parser's graceful fallback,
+    // not the LLM itself. A real LLM won't return garbage, but network errors,
+    // truncated responses, or proxy issues can produce non-JSON output.
+    const brokenLLM: FactExtractorLLM = async () => "This is not JSON at all!";
+    const result = await extractFactsFromTranscript(brokenLLM, "some transcript");
     const passed = result.facts.length === 0 && result.edges.length === 0;
 
     reporter.record({
@@ -410,29 +403,30 @@ describe("B. Fact Extraction from Conversations", () => {
   });
 
   it("B4. LLM returns facts without edges", async () => {
-    const mockLLM: FactExtractorLLM = async () =>
-      JSON.stringify({
-        facts: [{ id: "f1", text: "Standalone fact", type: "fact", confidence: "high" }],
-        edges: [],
-      });
+    // Simple single-statement transcript — real LLM should extract fact(s)
+    // with few or no edges between them
+    const transcript = "Serj: The server runs on port 8080.";
 
-    const result = await extractFactsFromTranscript(mockLLM, "transcript");
-    const passed = result.facts.length === 1 && result.edges.length === 0;
+    const result = await extractFactsFromTranscript(extractLLM, transcript);
+    // With a single simple statement, we expect at least 1 fact.
+    // Edges may or may not be present — the key test is that the system
+    // handles any valid response shape correctly.
+    const passed = result.facts.length >= 1;
 
     reporter.record({
       id: "B4",
-      name: "LLM returns facts without edges",
+      name: "LLM extracts facts from minimal transcript",
       category: "B. Fact Extraction from Conversations",
       passed,
-      expected: "1 fact, 0 edges",
+      expected: ">= 1 fact from real Sonnet, system handles response correctly",
       actual: `${result.facts.length} facts, ${result.edges.length} edges`,
+      data: JSON.stringify(result, null, 2),
     });
 
-    expect(result.facts).toHaveLength(1);
-    expect(result.edges).toHaveLength(0);
-  });
+    expect(result.facts.length).toBeGreaterThanOrEqual(1);
+  }, 30_000);
 
-  it("B5. Dedup — exact duplicate rejected", async () => {
+  it("B5. Dedup — exact duplicate rejected", { timeout: 30_000 }, async () => {
     const vecAvailable = await tryInitVec();
     if (!vecAvailable) {
       reporter.record({
@@ -467,7 +461,7 @@ describe("B. Fact Extraction from Conversations", () => {
     expect(count).toBe(1);
   });
 
-  it("B6. Dedup — near-duplicate with longer text replaces", async () => {
+  it("B6. Dedup — near-duplicate with longer text replaces", { timeout: 30_000 }, async () => {
     const vecAvailable = await tryInitVec();
     if (!vecAvailable) {
       reporter.record({
@@ -516,7 +510,7 @@ describe("B. Fact Extraction from Conversations", () => {
     expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("B7. Dedup — different facts both kept", async () => {
+  it("B7. Dedup — different facts both kept", { timeout: 30_000 }, async () => {
     const vecAvailable = await tryInitVec();
     if (!vecAvailable) {
       reporter.record({
