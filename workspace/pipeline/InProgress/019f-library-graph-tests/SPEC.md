@@ -4,7 +4,7 @@ title: "Hippocampus Tests — F. Library → Graph Enrichment"
 created: "2026-03-16"
 author: "scaff"
 priority: "high"
-status: "cooking"
+status: "done"
 parent: "019"
 ---
 
@@ -27,3 +27,6 @@ None — pure DB operations (facts and edges inserted directly, not via LLM extr
 ## Task
 - Remove mock imports if referenced
 - Pure graph structure tests, should pass once mock imports are cleaned up
+
+## Result
+All 6/6 tests passing. No mocks found — tests were already clean.
