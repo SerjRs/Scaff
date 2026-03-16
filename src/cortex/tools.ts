@@ -555,6 +555,7 @@ export async function executeMemoryQuery(
     distance: number;
     source: "graph" | "cold";
     factId?: string;
+    sourceRef?: string;
     edges?: Array<{ type: string; target: string }>;
     archivedAt?: string;
   }
@@ -580,6 +581,7 @@ export async function executeMemoryQuery(
       distance: gf.distance,
       source: "graph",
       factId: gf.id,
+      sourceRef: gf.sourceRef ?? undefined,
       edges: edges.length > 0 ? edges : undefined,
     });
   }
