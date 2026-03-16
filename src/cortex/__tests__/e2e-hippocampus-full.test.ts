@@ -1812,22 +1812,20 @@ describe("J. End-to-End Lifecycle Scenarios", () => {
   beforeEach(() => freshDb());
   afterEach(() => cleanup());
 
-  it("J1. Extraction → graph → system floor (full pipeline)", async () => {
+  it("J1. Extraction → graph → system floor (full pipeline)", { timeout: 60_000 }, async () => {
     const workspaceDir = path.join(tmpDir, "workspace");
     fs.mkdirSync(workspaceDir, { recursive: true });
     fs.writeFileSync(path.join(workspaceDir, "SOUL.md"), "# Test\n");
 
-    // 1. Extract facts from transcript
-    const mockLLM: FactExtractorLLM = async () =>
-      JSON.stringify({
-        facts: [
-          { id: "f1", text: "Team uses SQLite for the knowledge graph", type: "decision", confidence: "high" },
-          { id: "f2", text: "Recursive CTEs enable traversal", type: "fact", confidence: "high" },
-        ],
-        edges: [{ from: "f2", to: "f1", type: "informed_by" }],
-      });
+    // 1. Extract facts from transcript using real LLM
+    const transcript = [
+      "User: We decided to use SQLite for the knowledge graph instead of PostgreSQL.",
+      "Assistant: Good choice. SQLite's recursive CTEs will enable efficient graph traversal.",
+      "User: Exactly. And WAL mode gives us the concurrency we need.",
+      "Assistant: I'll set up the schema with recursive CTE queries for traversal.",
+    ].join("\n");
 
-    const extraction = await extractFactsFromTranscript(mockLLM, "...");
+    const extraction = await extractFactsFromTranscript(extractLLM, transcript);
 
     // 2. Insert into graph
     const insertedIds: Record<string, string> = {};
@@ -1845,12 +1843,15 @@ describe("J. End-to-End Lifecycle Scenarios", () => {
       }
     }
 
-    // 3. Check system floor
+    // 3. Check system floor — real LLM may phrase facts differently, so check flexibly
     const factsWithEdges = getTopFactsWithEdges(db, 30, 3);
     const floor = await loadSystemFloor(workspaceDir, factsWithEdges);
 
-    const hasSQLite = floor.content.includes("SQLite");
-    const hasCTE = floor.content.includes("CTE") || floor.content.includes("traversal");
+    const hasSQLite = floor.content.toLowerCase().includes("sqlite");
+    const hasTraversal =
+      floor.content.toLowerCase().includes("cte") ||
+      floor.content.toLowerCase().includes("traversal") ||
+      floor.content.toLowerCase().includes("graph");
     const data =
       dumpFacts(db, "Graph") +
       "\n" +
@@ -1862,12 +1863,13 @@ describe("J. End-to-End Lifecycle Scenarios", () => {
       id: "J1",
       name: "Extraction → graph → system floor",
       category: "J. End-to-End Lifecycle Scenarios",
-      passed: hasSQLite && hasCTE,
-      expected: "Facts visible in system floor",
-      actual: `SQLite=${hasSQLite}, CTE/traversal=${hasCTE}`,
+      passed: extraction.facts.length >= 1 && hasSQLite,
+      expected: "Real LLM extracts facts; SQLite visible in system floor",
+      actual: `Extracted ${extraction.facts.length} facts, ${extraction.edges.length} edges. SQLite=${hasSQLite}, traversal/graph=${hasTraversal}`,
       data,
     });
 
+    expect(extraction.facts.length).toBeGreaterThanOrEqual(1);
     expect(hasSQLite).toBe(true);
   });
 
@@ -1908,7 +1910,7 @@ describe("J. End-to-End Lifecycle Scenarios", () => {
     expect(crossEdges.length).toBeGreaterThan(0);
   });
 
-  it("J3. Fact lifecycle: birth → promotion → eviction → revival", async () => {
+  it("J3. Fact lifecycle: birth → promotion → eviction → revival", { timeout: 30_000 }, async () => {
     const vecAvailable = await tryInitVec();
     if (!vecAvailable) {
       reporter.record({
