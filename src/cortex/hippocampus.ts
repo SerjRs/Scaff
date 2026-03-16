@@ -846,7 +846,7 @@ function rowToGraphFact(row: Record<string, unknown>): GraphFact {
 }
 
 /** Query edges for a fact (both directions), with target hint */
-function queryEdgesForFact(
+export function queryEdgesForFact(
   db: DatabaseSync,
   factId: string,
   limit?: number,
