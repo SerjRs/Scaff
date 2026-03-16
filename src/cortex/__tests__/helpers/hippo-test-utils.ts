@@ -166,33 +166,29 @@ export function dumpHotMemory(db: DatabaseSync, label: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Mock Helpers
+// Real Embedding (Ollama nomic-embed-text, 768 dimensions)
 // ---------------------------------------------------------------------------
 
-/** Deterministic 768-dim mock embedding seeded from a number */
-export function mockEmbedding(seed: number): Float32Array {
-  const emb = new Float32Array(768);
-  for (let i = 0; i < 768; i++) emb[i] = Math.sin(seed * (i + 1));
-  return emb;
+/** Embed text using local Ollama with nomic-embed-text model */
+export async function embedFn(text: string): Promise<Float32Array> {
+  const res = await fetch("http://127.0.0.1:11434/api/embeddings", {
+    method: "POST",
+    body: JSON.stringify({ model: "nomic-embed-text", prompt: text }),
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = (await res.json()) as { embedding: number[] };
+  return new Float32Array(data.embedding);
 }
 
-/** Deterministic mock embed function: hash text to seed, then generate sin-wave vector */
-export const mockEmbedFn = async (text: string): Promise<Float32Array> => {
-  let seed = 0;
-  for (let i = 0; i < text.length; i++) seed = (seed * 31 + text.charCodeAt(i)) | 0;
-  return mockEmbedding(seed);
-};
+// ---------------------------------------------------------------------------
+// Real LLM (Sonnet via simple-complete)
+// ---------------------------------------------------------------------------
 
-/**
- * Create a mock LLM that returns a specific extraction result JSON.
- * Useful for fact extractor tests.
- */
-export function mockExtractionLLM(result: {
-  facts: Array<{ id: string; text: string; type: string; confidence: string }>;
-  edges: Array<{ from: string; to: string; type: string }>;
-}): (prompt: string) => Promise<string> {
-  return async (_prompt: string) => JSON.stringify(result);
-}
+import { complete } from "../../../llm/simple-complete.js";
+
+/** LLM extraction function using real Sonnet */
+export const extractLLM = async (prompt: string): Promise<string> =>
+  complete(prompt, { model: "claude-sonnet-4-5", maxTokens: 2048 });
 
 /** Insert a message into cortex_session directly (avoids needing full CortexEnvelope) */
 export function insertTestMessage(
