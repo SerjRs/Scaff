@@ -502,6 +502,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             appendStructuredContent(db, msg.envelope.id, "assistant", msg.envelope.channel, originalRawContent, issuer, assignedShardId);
           }
         }
+        const asyncCallResults: Array<{ id: string; succeeded: boolean }> = [];
         for (const tc of asyncCalls) {
           if (tc.name === "library_ingest") {
             // Library ingestion — fetch URL, build Librarian prompt, spawn via Router
@@ -509,6 +510,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             if (!url) {
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
                 [{ type: "tool_result", tool_use_id: tc.id, content: "Error: URL is required." }], issuer, assignedShardId);
+              asyncCallResults.push({ id: tc.id, succeeded: false });
               continue;
             }
 
@@ -577,6 +579,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
                 [{ type: "tool_result", tool_use_id: tc.id,
                    content: `Library ingestion failed for ${url}: ${fetchError}. URL tracked for retry.` }], issuer, assignedShardId);
+              asyncCallResults.push({ id: tc.id, succeeded: false });
               continue;
             }
 
@@ -612,6 +615,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             if (!jobId) {
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
                 [{ type: "tool_result", tool_use_id: tc.id, content: "Library ingestion failed: Router not available." }], issuer, assignedShardId);
+              asyncCallResults.push({ id: tc.id, succeeded: false });
               continue;
             }
 
@@ -623,6 +627,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
             appendStructuredContent(db, msg.envelope.id, "user", "internal",
               [{ type: "tool_result", tool_use_id: tc.id,
                  content: `Library ingestion started for: ${url}. Task ID: ${taskId}. You will be notified automatically when complete — do NOT poll.` }], issuer, assignedShardId);
+            asyncCallResults.push({ id: tc.id, succeeded: true });
 
           } else if (tc.name === "sessions_spawn" && onSpawn) {
             const args = tc.arguments as { task?: string; priority?: string; executor?: string; resources?: Array<{ type: string; name?: string; path?: string; url?: string; content?: string }> };
@@ -746,19 +751,37 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               // Store structured tool result for the failure
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
                 [{ type: "tool_result", tool_use_id: tc.id, content: `Router spawn failed for task: ${task.slice(0, 120)}` }], issuer, assignedShardId);
+              asyncCallResults.push({ id: tc.id, succeeded: false });
             } else {
               // Store structured tool result for the dispatch acknowledgment
               appendStructuredContent(db, msg.envelope.id, "user", "internal",
                 [{ type: "tool_result", tool_use_id: tc.id, content: `Task dispatched. [TASK_ID]=${taskId}, Status=Pending, Priority=${resultPriority}. You will be notified automatically when this task completes — do NOT poll get_task_status. The system will wake you with the result. Just inform the user the task is running.` }], issuer, assignedShardId);
+              asyncCallResults.push({ id: tc.id, succeeded: true });
             }
           }
         }
 
-        // Fix 1: Async dispatch fallback — if async tools were dispatched but the LLM
-        // produced no text, synthesize a fallback so the user gets feedback.
+        // Fix 1 + Fix 2: Result-aware async feedback (026)
+        // Instead of blindly saying "On it", check actual dispatch results.
         let llmResponseFinal = llmResponse;
-        if (asyncCalls.length > 0 && isSilentResponse(llmResponseFinal)) {
-          llmResponseFinal = "On it — working in the background.";
+        if (asyncCalls.length > 0) {
+          const allFailed = asyncCallResults.length > 0 && asyncCallResults.every(r => !r.succeeded);
+          const someFailed = asyncCallResults.some(r => !r.succeeded) && !allFailed;
+
+          if (allFailed) {
+            // ALL async calls failed — suppress any text (LLM-generated or synthetic).
+            // The failure results are in the session for the next LLM turn to handle honestly.
+            llmResponseFinal = "NO_REPLY";
+          } else if (isSilentResponse(llmResponseFinal)) {
+            // LLM produced no text — synthesize based on results
+            if (someFailed) {
+              llmResponseFinal = "Some tasks are running, but others failed — check back shortly.";
+            } else {
+              // All succeeded — safe to confirm
+              llmResponseFinal = "On it — working in the background.";
+            }
+          }
+          // If LLM produced text and not all failed: keep llmResponseFinal as-is (existing behavior)
         }
 
         // 6. Parse response
