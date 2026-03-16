@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getSessionHistory } from "./session.js";
 import { getShardMessages } from "./shards.js";
-import { searchColdFacts, insertHotFact, touchHotFact, reviveFact, touchGraphFact } from "./hippocampus.js";
+import { searchColdFacts, searchGraphFacts, queryEdgesForFact, insertHotFact, touchHotFact, reviveFact, touchGraphFact } from "./hippocampus.js";
 
 // ---------------------------------------------------------------------------
 // Tool Definitions
@@ -534,7 +534,7 @@ export function executeCodeSearch(args: { query: string; limit?: number }): stri
   }
 }
 
-/** Execute memory_query — vector search against cold storage + hot tracking */
+/** Execute memory_query — vector search against graph + cold storage, merged + deduped */
 export async function executeMemoryQuery(
   db: DatabaseSync,
   args: { query: string; limit?: number },
@@ -545,58 +545,106 @@ export async function executeMemoryQuery(
   // Embed the query
   const queryEmbedding = await embedFn(args.query);
 
-  // Search cold storage
-  const results = searchColdFacts(db, queryEmbedding, limit);
+  // Search both sources
+  const coldResults = searchColdFacts(db, queryEmbedding, limit);
+  const graphResults = searchGraphFacts(db, queryEmbedding, limit);
 
-  // Check if any cold results match evicted graph facts — revive them
-  for (const fact of results) {
-    const evictedMatch = db.prepare(
-      `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'evicted'`,
-    ).get(fact.factText) as { id: string } | undefined;
-
-    if (evictedMatch) {
-      reviveFact(db, evictedMatch.id);
-    }
+  // Build a unified result list, deduping by fact text (prefer graph version)
+  interface MergedFact {
+    text: string;
+    distance: number;
+    source: "graph" | "cold";
+    factId?: string;
+    edges?: Array<{ type: string; target: string }>;
+    archivedAt?: string;
   }
 
-  // Touch graph facts that match active results
-  for (const fact of results) {
-    const graphMatch = db.prepare(
-      `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'active'`,
-    ).get(fact.factText) as { id: string } | undefined;
+  const seen = new Set<string>();
+  const merged: MergedFact[] = [];
 
-    if (graphMatch) {
-      touchGraphFact(db, graphMatch.id);
-    }
+  // Add graph results first (preferred for dedup)
+  for (const gf of graphResults) {
+    const key = gf.factText.trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // Fetch edges for this graph fact
+    const rawEdges = queryEdgesForFact(db, gf.id, 5);
+    const edges = rawEdges.map((e) => ({
+      type: e.edgeType,
+      target: e.targetHint,
+    }));
+
+    merged.push({
+      text: gf.factText,
+      distance: gf.distance,
+      source: "graph",
+      factId: gf.id,
+      edges: edges.length > 0 ? edges : undefined,
+    });
   }
 
-  // Tracking hook: retrieved facts stay hot
-  for (const fact of results) {
-    // Check if fact already exists in hot memory (by exact text)
+  // Add cold results (skip duplicates already seen from graph)
+  for (const cf of coldResults) {
+    const key = cf.factText.trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    merged.push({
+      text: cf.factText,
+      distance: cf.distance,
+      source: "cold",
+      archivedAt: cf.archivedAt,
+    });
+  }
+
+  // Sort by distance (best match first) and trim to limit
+  merged.sort((a, b) => a.distance - b.distance);
+  const finalResults = merged.slice(0, limit);
+
+  // --- Side effects: revive evicted, touch active, promote to hot ---
+
+  for (const fact of finalResults) {
+    if (fact.source === "graph") {
+      // Touch active graph fact
+      touchGraphFact(db, fact.factId!);
+    } else {
+      // Check if cold fact matches an evicted graph fact — revive it
+      const evictedMatch = db.prepare(
+        `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'evicted'`,
+      ).get(fact.text) as { id: string } | undefined;
+
+      if (evictedMatch) {
+        reviveFact(db, evictedMatch.id);
+      }
+
+      // Also touch if it matches an active graph fact
+      const activeMatch = db.prepare(
+        `SELECT id FROM hippocampus_facts WHERE fact_text = ? AND status = 'active'`,
+      ).get(fact.text) as { id: string } | undefined;
+
+      if (activeMatch) {
+        touchGraphFact(db, activeMatch.id);
+      }
+    }
+
+    // Tracking hook: retrieved facts stay hot
     const existing = db.prepare(
       `SELECT id FROM cortex_hot_memory WHERE fact_text = ?`,
-    ).get(fact.factText) as { id: string } | undefined;
+    ).get(fact.text) as { id: string } | undefined;
 
     if (existing) {
-      // Touch existing hot fact
       touchHotFact(db, existing.id);
     } else {
-      // Promote cold fact back to hot memory
-      insertHotFact(db, { factText: fact.factText });
+      insertHotFact(db, { factText: fact.text });
     }
   }
 
-  if (results.length === 0) {
+  if (finalResults.length === 0) {
     return JSON.stringify({ facts: [], message: "No matching facts found." });
   }
 
-  return JSON.stringify({
-    facts: results.map((r) => ({
-      text: r.factText,
-      distance: r.distance,
-      archivedAt: r.archivedAt,
-    })),
-  });
+  return JSON.stringify({ facts: finalResults });
 }
 
 /** Execute read_file — read local file contents synchronously */
