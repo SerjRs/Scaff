@@ -53,8 +53,7 @@ import {
   dumpFacts,
   dumpEdges,
   dumpCold,
-  mockEmbedFn,
-  mockEmbedding,
+  embedFn,
 } from "./helpers/hippo-test-utils.js";
 
 // ---------------------------------------------------------------------------
@@ -448,8 +447,8 @@ describe("B. Fact Extraction from Conversations", () => {
     }
 
     const fact = { text: "Serj prefers dark mode", type: "fact", confidence: "high" as const };
-    await dedupAndInsertGraphFact(db, fact, "conversation", mockEmbedFn);
-    await dedupAndInsertGraphFact(db, fact, "conversation", mockEmbedFn);
+    await dedupAndInsertGraphFact(db, fact, "conversation", embedFn);
+    await dedupAndInsertGraphFact(db, fact, "conversation", embedFn);
 
     const count = countRows("hippocampus_facts");
     const data = dumpFacts(db, "After double insert");
@@ -487,7 +486,7 @@ describe("B. Fact Extraction from Conversations", () => {
       db,
       { text: "SQLite for graph", type: "fact", confidence: "medium" },
       "conversation",
-      mockEmbedFn,
+      embedFn,
     );
 
     // Insert longer version with similar embedding — use same seed to get high similarity
@@ -496,7 +495,7 @@ describe("B. Fact Extraction from Conversations", () => {
       db,
       { text: longText, type: "fact", confidence: "medium" },
       "conversation",
-      mockEmbedFn,
+      embedFn,
     );
 
     const rows = db.prepare(`SELECT fact_text FROM hippocampus_facts`).all() as Array<{ fact_text: string }>;
@@ -535,13 +534,13 @@ describe("B. Fact Extraction from Conversations", () => {
       db,
       { text: "Serj uses dark mode everywhere", type: "fact", confidence: "high" },
       "conversation",
-      mockEmbedFn,
+      embedFn,
     );
     await dedupAndInsertGraphFact(
       db,
       { text: "The project uses TypeScript exclusively", type: "fact", confidence: "high" },
       "conversation",
-      mockEmbedFn,
+      embedFn,
     );
 
     const count = countRows("hippocampus_facts");
@@ -780,7 +779,7 @@ describe("D. System Floor — Knowledge Graph Injection", () => {
     // Evict f2 — need vec tables for eviction
     const vecAvailable = await tryInitVec();
     if (vecAvailable) {
-      const emb = await mockEmbedFn("Will be evicted");
+      const emb = await embedFn("Will be evicted");
       evictFact(db, f2, emb);
     } else {
       updateFactStatus(db, f2, "evicted");
@@ -1323,7 +1322,7 @@ describe("G. Fact Lifecycle — Promotion & Demotion", () => {
     }
 
     const id = insertFact(db, { factText: "Will be evicted to cold storage" });
-    const emb = await mockEmbedFn("Will be evicted to cold storage");
+    const emb = await embedFn("Will be evicted to cold storage");
     evictFact(db, id, emb);
 
     const fact = db.prepare(`SELECT status, cold_vector_id FROM hippocampus_facts WHERE id = ?`).get(id) as Record<string, unknown>;
@@ -1384,7 +1383,7 @@ describe("G. Fact Lifecycle — Promotion & Demotion", () => {
     }
 
     const id = insertFact(db, { factText: "Fact for revival" });
-    const emb = await mockEmbedFn("Fact for revival");
+    const emb = await embedFn("Fact for revival");
     evictFact(db, id, emb);
 
     // Verify evicted
@@ -1431,7 +1430,7 @@ describe("G. Fact Lifecycle — Promotion & Demotion", () => {
     const e2 = insertEdge(db, { fromFactId: a, toFactId: c, edgeType: "resulted_in" });
 
     // Evict A
-    const emb = await mockEmbedFn("Fact A: hub");
+    const emb = await embedFn("Fact A: hub");
     evictFact(db, a, emb);
 
     // Check edges are stubs
@@ -1479,8 +1478,8 @@ describe("G. Fact Lifecycle — Promotion & Demotion", () => {
     const eid = insertEdge(db, { fromFactId: a, toFactId: b, edgeType: "related_to" });
 
     // Evict both
-    evictFact(db, a, await mockEmbedFn("Fact A"));
-    evictFact(db, b, await mockEmbedFn("Fact B"));
+    evictFact(db, a, await embedFn("Fact A"));
+    evictFact(db, b, await embedFn("Fact B"));
 
     // Revive only A
     reviveFact(db, a);
@@ -1520,8 +1519,8 @@ describe("G. Fact Lifecycle — Promotion & Demotion", () => {
     const b = insertFact(db, { factText: "B" });
     const eid = insertEdge(db, { fromFactId: a, toFactId: b, edgeType: "related_to" });
 
-    evictFact(db, a, await mockEmbedFn("A"));
-    evictFact(db, b, await mockEmbedFn("B"));
+    evictFact(db, a, await embedFn("A"));
+    evictFact(db, b, await embedFn("B"));
     ageEdge(eid, 120);
 
     const pruned = pruneOldStubs(db, 90);
@@ -1558,8 +1557,8 @@ describe("G. Fact Lifecycle — Promotion & Demotion", () => {
     const b = insertFact(db, { factText: "B" });
     insertEdge(db, { fromFactId: a, toFactId: b, edgeType: "related_to" });
 
-    evictFact(db, a, await mockEmbedFn("A"));
-    evictFact(db, b, await mockEmbedFn("B"));
+    evictFact(db, a, await embedFn("A"));
+    evictFact(db, b, await embedFn("B"));
     // Don't age the edge — it's recent
 
     const pruned = pruneOldStubs(db, 90);
@@ -1594,7 +1593,7 @@ describe("G. Fact Lifecycle — Promotion & Demotion", () => {
     const b = insertFact(db, { factText: "B (evicted)" });
     const eid = insertEdge(db, { fromFactId: a, toFactId: b, edgeType: "related_to" });
 
-    evictFact(db, b, await mockEmbedFn("B"));
+    evictFact(db, b, await embedFn("B"));
     ageEdge(eid, 120);
 
     const pruned = pruneOldStubs(db, 90);
@@ -1681,8 +1680,8 @@ describe("H. Full Vector Evictor Integration", () => {
     const b = insertFact(db, { factText: "B" });
     const eid = insertEdge(db, { fromFactId: a, toFactId: b, edgeType: "related_to" });
 
-    evictFact(db, a, await mockEmbedFn("A"));
-    evictFact(db, b, await mockEmbedFn("B"));
+    evictFact(db, a, await embedFn("A"));
+    evictFact(db, b, await embedFn("B"));
     ageEdge(eid, 120);
 
     const pruned = pruneOldStubs(db, 90);
@@ -1742,7 +1741,7 @@ describe("I. Memory Query Integration", () => {
       return;
     }
 
-    const emb = await mockEmbedFn("dark mode preference");
+    const emb = await embedFn("dark mode preference");
     insertColdFact(db, "Serj prefers dark mode everywhere", emb);
 
     const results = searchColdFacts(db, emb, 5);
@@ -1775,7 +1774,7 @@ describe("I. Memory Query Integration", () => {
     }
 
     const id = insertFact(db, { factText: "Evicted then revived" });
-    evictFact(db, id, await mockEmbedFn("Evicted then revived"));
+    evictFact(db, id, await embedFn("Evicted then revived"));
 
     let row = db.prepare(`SELECT status FROM hippocampus_facts WHERE id = ?`).get(id) as { status: string };
     expect(row.status).toBe("evicted");
@@ -1950,7 +1949,7 @@ describe("J. End-to-End Lifecycle Scenarios", () => {
     setHitCount(id, 1);
 
     // 4. Eviction
-    const emb = await mockEmbedFn("Lifecycle test fact");
+    const emb = await embedFn("Lifecycle test fact");
     evictFact(db, id, emb);
     row = db.prepare(`SELECT status, cold_vector_id FROM hippocampus_facts WHERE id = ?`).get(id) as any;
     expect(row.status).toBe("evicted");
