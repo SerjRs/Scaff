@@ -59,7 +59,7 @@
       "name": "pipeline-monitor",
       "enabled": true,
       "createdAtMs": 1773649538996,
-      "updatedAtMs": 1773670200121,
+      "updatedAtMs": 1773670320652,
       "schedule": {
         "kind": "every",
         "everyMs": 120000,
@@ -72,14 +72,13 @@
         "text": "PIPELINE_CHECK"
       },
       "state": {
-        "nextRunAtMs": 1773670299692,
-        "lastRunAtMs": 1773670179692,
+        "nextRunAtMs": 1773670419725,
+        "lastRunAtMs": 1773670299725,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 20429,
+        "lastDurationMs": 20927,
         "lastDeliveryStatus": "not-requested",
-        "consecutiveErrors": 0,
-        "runningAtMs": 1773670299715
+        "consecutiveErrors": 0
       }
     }
   ]
