@@ -58,6 +58,8 @@ export interface SpawnParams {
   resources?: ResolvedResource[];
   /** Executor type — "coding" routes to coding_run template (Claude Code). Default: agent_run. */
   executor?: "coding";
+  /** Channel to route the task result back to (e.g. "webchat", "telegram"). */
+  replyChannel?: string;
 }
 
 export interface CortexLoopOptions {
@@ -735,6 +737,7 @@ export function startLoop(opts: CortexLoopOptions): CortexLoop {
               task, resultPriority, envelopeId: msg.envelope.id, taskId,
               resources: resolvedResources.length > 0 ? resolvedResources : undefined,
               executor,
+              replyChannel: msg.envelope.channel,
             });
 
             if (!jobId) {
