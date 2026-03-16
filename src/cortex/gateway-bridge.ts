@@ -386,64 +386,84 @@ export async function initGatewayCortex(params: {
                   taskDescription = `Library ingestion: ${libraryUrl}`;
 
                   // --- Graph ingestion (017e): extract facts+edges into hippocampus ---
-                  try {
-                    const hippo = require("./hippocampus.js");
-                    const parsedFacts = parsed.facts as Array<{ id: string; text: string; type?: string; confidence?: string }> | undefined;
-                    const parsedEdges = parsed.edges as Array<{ from: string; to: string; type: string }> | undefined;
+                  // Wrapped in async IIFE — outer callback is synchronous
+                  (async () => {
+                    try {
+                      const hippo = require("./hippocampus.js");
+                      const { dedupAndInsertGraphFact } = require("./gardener.js");
+                      const parsedFacts = parsed.facts as Array<{ id: string; text: string; type?: string; confidence?: string }> | undefined;
+                      const parsedEdges = parsed.edges as Array<{ from: string; to: string; type: string }> | undefined;
 
-                    if (parsedFacts && parsedFacts.length > 0) {
-                      // Create article source node
-                      const sourceFactId = hippo.insertFact(instance.db, {
-                        factText: `Article: ${parsed.title}`,
-                        factType: "source",
-                        confidence: "high",
-                        sourceType: "article",
-                        sourceRef: `library://item/${itemId}`,
-                      });
+                      async function embedForLibrary(text: string): Promise<Float32Array> {
+                        const res = await fetch("http://127.0.0.1:11434/api/embeddings", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ model: "nomic-embed-text", prompt: text }),
+                        });
+                        const json = await res.json() as { embedding: number[] };
+                        return new Float32Array(json.embedding);
+                      }
 
-                      // Map local IDs (f1, f2...) to real UUIDs
-                      const idMap = new Map<string, string>();
+                      if (parsedFacts && parsedFacts.length > 0) {
+                        // Create article source node with embedding
+                        let sourceEmbedding: Float32Array | undefined;
+                        try {
+                          sourceEmbedding = await embedForLibrary(`Article: ${parsed.title}`);
+                        } catch { /* graceful — insert without embedding */ }
 
-                      for (const f of parsedFacts) {
-                        if (!f.text?.trim()) continue;
-                        const factId = hippo.insertFact(instance.db, {
-                          factText: f.text.trim(),
-                          factType: f.type ?? "fact",
-                          confidence: f.confidence ?? "medium",
+                        const sourceFactId = hippo.insertFact(instance.db, {
+                          factText: `Article: ${parsed.title}`,
+                          factType: "source",
+                          confidence: "high",
                           sourceType: "article",
                           sourceRef: `library://item/${itemId}`,
+                          embedding: sourceEmbedding,
                         });
-                        idMap.set(f.id, factId);
 
-                        // Link fact to article source
-                        hippo.insertEdge(instance.db, {
-                          fromFactId: factId,
-                          toFactId: sourceFactId,
-                          edgeType: "sourced_from",
-                        });
-                      }
+                        // Map local IDs (f1, f2...) to real UUIDs
+                        const idMap = new Map<string, string>();
 
-                      // Insert edges between facts
-                      if (parsedEdges) {
-                        for (const e of parsedEdges) {
-                          const fromId = idMap.get(e.from);
-                          const toId = idMap.get(e.to);
-                          if (fromId && toId && fromId !== toId) {
-                            hippo.insertEdge(instance.db, {
-                              fromFactId: fromId,
-                              toFactId: toId,
-                              edgeType: e.type,
-                            });
+                        for (const f of parsedFacts) {
+                          if (!f.text?.trim()) continue;
+                          const { factId } = await dedupAndInsertGraphFact(
+                            instance.db,
+                            { id: f.id, text: f.text.trim(), type: f.type ?? "fact", confidence: f.confidence ?? "medium" },
+                            "article",
+                            embedForLibrary,
+                            `library://item/${itemId}`,
+                          );
+                          idMap.set(f.id, factId);
+
+                          // Link fact to article source
+                          hippo.insertEdge(instance.db, {
+                            fromFactId: factId,
+                            toFactId: sourceFactId,
+                            edgeType: "sourced_from",
+                          });
+                        }
+
+                        // Insert edges between facts
+                        if (parsedEdges) {
+                          for (const e of parsedEdges) {
+                            const fromId = idMap.get(e.from);
+                            const toId = idMap.get(e.to);
+                            if (fromId && toId && fromId !== toId) {
+                              hippo.insertEdge(instance.db, {
+                                fromFactId: fromId,
+                                toFactId: toId,
+                                edgeType: e.type,
+                              });
+                            }
                           }
                         }
-                      }
 
-                      params.log.warn(`[library] Graph: ${parsedFacts.length} facts + ${parsedEdges?.length ?? 0} edges from "${parsed.title}"`);
+                        params.log.warn(`[library] Graph: ${parsedFacts.length} facts + ${parsedEdges?.length ?? 0} edges from "${parsed.title}"`);
+                      }
+                    } catch (graphErr) {
+                      // Graph ingestion is best-effort — don't fail the Library write
+                      params.log.warn(`[library] Graph ingestion failed: ${graphErr instanceof Error ? graphErr.message : String(graphErr)}`);
                     }
-                  } catch (graphErr) {
-                    // Graph ingestion is best-effort — don't fail the Library write
-                    params.log.warn(`[library] Graph ingestion failed: ${graphErr instanceof Error ? graphErr.message : String(graphErr)}`);
-                  }
+                  })();
                 } finally {
                   libraryDb.close();
                 }
