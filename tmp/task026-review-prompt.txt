@@ -1,0 +1,24 @@
+Review branch feat/026-cortex-honesty-fixes for task 026 (Cortex Honesty Fixes).
+
+Steps to execute in order:
+
+1. Run: git diff main..feat/026-cortex-honesty-fixes
+   Show all changes with full context.
+
+2. Verify the changes against the SPEC:
+   - Fix 1: In src/cortex/loop.ts, the hardcoded 'On it — working in the background.' synthetic response should be replaced with result-aware logic (or removed/changed to non-committal text). Check that the asyncCalls + toolResults logic is correct.
+   - Fix 2 (if present): Suppression of optimistic LLM text alongside async tool calls.
+   - Fix 3: In src/cortex/context.ts or src/cortex/llm-caller.ts, honesty rules added to the system prompt.
+
+3. Run the targeted tests:
+   npx vitest run --reporter=verbose src/cortex/__tests__/e2e-loop src/cortex/__tests__/e2e-delegation src/cortex/__tests__/e2e-silence src/cortex/__tests__/e2e-output src/cortex/__tests__/e2e-context src/cortex/__tests__/e2e-webchat-library
+
+4. Check if a PR exists: gh pr list --head feat/026-cortex-honesty-fixes
+
+5. If PR exists, merge it: gh pr merge --squash --auto
+
+6. Report back with:
+   - Full diff summary (files changed, what changed)
+   - Whether changes correctly implement the SPEC
+   - Test results (pass/fail counts, any failures)
+   - PR number and merge status

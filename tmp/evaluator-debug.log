@@ -707,3 +707,17 @@ Error: Error: All models failed (3): anthropic/claude-sonnet-4-6: ⚠️ API rat
     at Receiver._write (C:\Users\Temp User\.openclaw\node_modules\.pnpm\ws@8.19.0\node_modules\ws\lib\receiver.js:94:10)
     at writeOrBuffer (node:internal/streams/writable:570:12)
 
+[2026-03-16T15:40:48.861Z] sonnet failed: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+Error: gateway timeout after 30000ms
+Gateway target: ws://127.0.0.1:18789
+Source: local loopback
+Config: C:\Users\Temp User\.openclaw\openclaw.json
+Bind: loopback
+    at Timeout.<anonymous> (file:///C:/Users/Temp%20User/.openclaw/dist/call-CL6w2n5x.js:452:9)
+    at listOnTimeout (node:internal/timers:605:17)
+    at processTimers (node:internal/timers:541:7)
+

@@ -53,33 +53,6 @@
         "lastDeliveryStatus": "not-requested",
         "consecutiveErrors": 1
       }
-    },
-    {
-      "id": "b02b4d09-b141-4320-8b28-015a44272a90",
-      "name": "pipeline-monitor",
-      "enabled": true,
-      "createdAtMs": 1773649538996,
-      "updatedAtMs": 1773670320652,
-      "schedule": {
-        "kind": "every",
-        "everyMs": 120000,
-        "anchorMs": 1773649538996
-      },
-      "sessionTarget": "main",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "systemEvent",
-        "text": "PIPELINE_CHECK"
-      },
-      "state": {
-        "nextRunAtMs": 1773670419725,
-        "lastRunAtMs": 1773670299725,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 20927,
-        "lastDeliveryStatus": "not-requested",
-        "consecutiveErrors": 0
-      }
     }
   ]
 }
