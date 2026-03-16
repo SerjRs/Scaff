@@ -10,7 +10,7 @@
  *   E6: Revival on cold search hit
  *
  * Uses programmatic Cortex API — no gateway, no WebSocket.
- * All LLMs are mocked. All tests are deterministic.
+ * LLM calls are mocked. Embeddings use real Ollama nomic-embed-text (no mocks).
  */
 
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
@@ -35,8 +35,7 @@ import {
 } from "../gardener.js";
 import {
   TestReporter,
-  mockEmbedFn,
-  mockEmbedding,
+  embedFn,
   insertTestMessage,
 } from "./helpers/hippo-test-utils.js";
 
@@ -106,7 +105,7 @@ describe("E — Hippocampus Integration", () => {
         maxContextTokens: 10000,
         pollIntervalMs: 50,
         hippocampusEnabled: true,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
         callLLM: async (ctx) => {
           receivedContext = ctx;
           return { text: "Got it!", toolCalls: [] };
@@ -154,7 +153,7 @@ describe("E — Hippocampus Integration", () => {
         maxContextTokens: 10000,
         pollIntervalMs: 50,
         hippocampusEnabled: true,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
         callLLM: async (ctx) => {
           receivedContext = ctx;
           return { text: "Noted!", toolCalls: [] };
@@ -215,7 +214,7 @@ describe("E — Hippocampus Integration", () => {
         maxContextTokens: 10000,
         pollIntervalMs: 50,
         hippocampusEnabled: true,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
         callLLM: async () => ({ text: "OK", toolCalls: [] }),
       });
       instance.registerAdapter({
@@ -234,7 +233,7 @@ describe("E — Hippocampus Integration", () => {
       const result = await runFactExtractor({
         db: instance.db,
         extractLLM: mockExtractLLM,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
       });
 
       // Verify facts were extracted
@@ -277,7 +276,7 @@ describe("E — Hippocampus Integration", () => {
         maxContextTokens: 10000,
         pollIntervalMs: 50,
         hippocampusEnabled: true,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
         callLLM: async (_ctx: AssembledContext): Promise<CortexLLMResult> => {
           callCount++;
           if (callCount === 1) {
@@ -295,14 +294,14 @@ describe("E — Hippocampus Integration", () => {
       });
 
       // Insert a hot graph fact with embedding
-      const embedding = await mockEmbedFn("TypeScript project setup");
+      const embedding = await embedFn("TypeScript project setup");
       insertFact(instance.db, {
         factText: "Project is built with TypeScript and Node.js",
         embedding,
       });
 
       // Insert a cold fact with embedding
-      const coldEmbedding = await mockEmbedFn("Project setup and configuration");
+      const coldEmbedding = await embedFn("Project setup and configuration");
       insertColdFact(instance.db, "Initial setup was done in March 2026", coldEmbedding);
 
       instance.registerAdapter({
@@ -341,7 +340,7 @@ describe("E — Hippocampus Integration", () => {
         maxContextTokens: 10000,
         pollIntervalMs: 50,
         hippocampusEnabled: true,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
         callLLM: async () => ({ text: "OK", toolCalls: [] }),
       });
 
@@ -351,7 +350,7 @@ describe("E — Hippocampus Integration", () => {
       const edgeId = insertEdge(instance.db, { fromFactId: factA, toFactId: factB, edgeType: "related_to" });
 
       // Evict factB — edge should become a stub
-      const embedding = await mockEmbedFn("Queue supports priority ordering");
+      const embedding = await embedFn("Queue supports priority ordering");
       evictFact(instance.db, factB, embedding);
 
       // Check the edge is now a stub
@@ -384,7 +383,7 @@ describe("E — Hippocampus Integration", () => {
         maxContextTokens: 10000,
         pollIntervalMs: 50,
         hippocampusEnabled: true,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
         callLLM: async (ctx) => {
           receivedContext = ctx;
           return { text: "OK", toolCalls: [] };
@@ -426,7 +425,7 @@ describe("E — Hippocampus Integration", () => {
         maxContextTokens: 10000,
         pollIntervalMs: 50,
         hippocampusEnabled: true,
-        embedFn: mockEmbedFn,
+        embedFn: embedFn,
         callLLM: async () => ({ text: "OK", toolCalls: [] }),
       });
 
@@ -436,7 +435,7 @@ describe("E — Hippocampus Integration", () => {
       const edgeId = insertEdge(instance.db, { fromFactId: factA, toFactId: factB, edgeType: "related_to" });
 
       // Evict factB
-      const embedding = await mockEmbedFn("Cortex uses unified context window");
+      const embedding = await embedFn("Cortex uses unified context window");
       evictFact(instance.db, factB, embedding);
 
       // Verify edge is stubbed
