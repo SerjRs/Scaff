@@ -10,10 +10,11 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { complete } from "../src/llm/simple-complete.js";
+import { insertFact, insertEdge } from "../src/cortex/hippocampus.js";
+import { dedupAndInsertGraphFact } from "../src/cortex/gardener.js";
 
 // ---------------------------------------------------------------------------
 // CLI flags
@@ -40,62 +41,16 @@ async function callLLM(prompt: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Graph helpers (self-contained SQL)
+// Embedding helper (Ollama nomic-embed-text)
 // ---------------------------------------------------------------------------
-function ensureGraphTables(db: DatabaseSync) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS hippocampus_facts (
-      id               TEXT PRIMARY KEY,
-      fact_text        TEXT NOT NULL,
-      fact_type        TEXT DEFAULT 'fact',
-      confidence       TEXT DEFAULT 'medium',
-      status           TEXT DEFAULT 'active',
-      source_type      TEXT,
-      source_ref       TEXT,
-      created_at       TEXT NOT NULL,
-      last_accessed_at TEXT NOT NULL,
-      hit_count        INTEGER NOT NULL DEFAULT 0,
-      cold_vector_id   INTEGER
-    )
-  `);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS hippocampus_edges (
-      id             TEXT PRIMARY KEY,
-      from_fact_id   TEXT NOT NULL,
-      to_fact_id     TEXT NOT NULL,
-      edge_type      TEXT NOT NULL,
-      confidence     TEXT DEFAULT 'medium',
-      is_stub        INTEGER DEFAULT 0,
-      stub_topic     TEXT,
-      created_at     TEXT NOT NULL
-    )
-  `);
-}
-
-function insertFact(db: DatabaseSync, opts: {
-  factText: string; factType?: string; confidence?: string;
-  sourceType?: string; sourceRef?: string;
-}): string {
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO hippocampus_facts (id, fact_text, fact_type, confidence, status, source_type, source_ref, created_at, last_accessed_at, hit_count)
-    VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, 0)
-  `).run(id, opts.factText, opts.factType ?? "fact", opts.confidence ?? "medium",
-    opts.sourceType ?? null, opts.sourceRef ?? null, now, now);
-  return id;
-}
-
-function insertEdge(db: DatabaseSync, opts: {
-  fromFactId: string; toFactId: string; edgeType: string;
-}): string {
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  db.prepare(`
-    INSERT INTO hippocampus_edges (id, from_fact_id, to_fact_id, edge_type, confidence, created_at)
-    VALUES (?, ?, ?, ?, 'medium', ?)
-  `).run(id, opts.fromFactId, opts.toFactId, opts.edgeType, now);
-  return id;
+async function embedFn(text: string): Promise<Float32Array> {
+  const res = await fetch("http://127.0.0.1:11434/api/embeddings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "nomic-embed-text", prompt: text }),
+  });
+  const json = await res.json() as { embedding: number[] };
+  return new Float32Array(json.embedding);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,8 +99,9 @@ async function main() {
   if (!existsSync(busDbPath)) { console.error("Bus DB not found!"); process.exit(1); }
 
   const libraryDb = new DatabaseSync(libraryDbPath, { open: true });
-  const busDb = new DatabaseSync(busDbPath, { open: true });
-  ensureGraphTables(busDb);
+  const busDb = new DatabaseSync(busDbPath, { open: true, allowExtension: true });
+  const sqliteVec = await import("sqlite-vec");
+  sqliteVec.load(busDb);
 
   const items = libraryDb.prepare(`
     SELECT id, url, title, summary, key_concepts, tags, content_type, full_text

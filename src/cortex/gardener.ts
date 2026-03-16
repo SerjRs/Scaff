@@ -472,6 +472,7 @@ export async function dedupAndInsertGraphFact(
   fact: ExtractedFact,
   sourceType: string,
   embedFn?: EmbedFunction,
+  sourceRef?: string,
 ): Promise<{ factId: string; inserted: boolean }> {
   // 1. Exact match
   const exactMatch = db.prepare(
@@ -487,6 +488,7 @@ export async function dedupAndInsertGraphFact(
       factType: fact.type,
       confidence: fact.confidence,
       sourceType,
+      sourceRef,
     });
     return { factId: id, inserted: true };
   }
@@ -502,6 +504,7 @@ export async function dedupAndInsertGraphFact(
       factType: fact.type,
       confidence: fact.confidence,
       sourceType,
+      sourceRef,
     });
     return { factId: id, inserted: true };
   }
@@ -517,6 +520,7 @@ export async function dedupAndInsertGraphFact(
       factType: fact.type,
       confidence: fact.confidence,
       sourceType,
+      sourceRef,
       embedding,
     });
     return { factId: id, inserted: true };
@@ -551,6 +555,7 @@ export async function dedupAndInsertGraphFact(
     factType: fact.type,
     confidence: fact.confidence,
     sourceType,
+    sourceRef,
     embedding,
   });
   return { factId: id, inserted: true };
