@@ -37,7 +37,6 @@ impl AppController {
         self.state
     }
 
-    #[allow(dead_code)]
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
     }
