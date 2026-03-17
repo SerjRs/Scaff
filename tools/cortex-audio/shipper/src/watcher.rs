@@ -59,7 +59,7 @@ impl OutboxWatcher {
                         // Check stability
                         let now = Instant::now();
                         let mut ready = Vec::new();
-                        for (path, (last_size, last_changed)) in &mut *&mut pending {
+                        for (path, (last_size, last_changed)) in &mut pending {
                             if !path.exists() {
                                 ready.push(path.clone());
                                 continue;
