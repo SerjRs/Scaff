@@ -14,7 +14,7 @@
 - [x] Integration tests with wiremock (5 tests)
 - [x] cargo test — 79 tests pass (35 capture + 23 shipper + 16 tray + 5 integration)
 - [x] cargo build --release — clean
-- [ ] Commit, merge to main, push
+- [x] Commit, merge to main, pushed
 
 ## Files Changed
 - `tray/Cargo.toml` — added shipper, tokio, reqwest deps + wiremock/tokio dev-deps
