@@ -133,8 +133,13 @@ fn capture_worker(
     // Get default output (speaker) device for loopback
     let output_device = host.default_output_device();
 
+    // Use the device's preferred channel count (typically 2 for headsets/USB)
+    let default_input_config = input_device.default_input_config().ok();
+    let input_channels = default_input_config.as_ref().map(|c| c.channels()).unwrap_or(1);
+    eprintln!("[capture] Input device config: {:?}", default_input_config);
+
     let stream_config = cpal::StreamConfig {
-        channels: 1,
+        channels: input_channels,
         sample_rate: cpal::SampleRate(config.sample_rate),
         buffer_size: cpal::BufferSize::Default,
     };
@@ -143,13 +148,23 @@ fn capture_worker(
     let mic_buffer: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
     let speaker_buffer: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
 
-    // Build input (mic) stream
+    // Build input (mic) stream — downmix to mono if device is multi-channel
     let mic_buf_clone = mic_buffer.clone();
+    let mic_channels = input_channels;
     let input_stream = match input_device.build_input_stream(
         &stream_config,
         move |data: &[f32], _: &cpal::InputCallbackInfo| {
             if let Ok(mut buf) = mic_buf_clone.lock() {
-                buf.extend_from_slice(data);
+                if mic_channels <= 1 {
+                    buf.extend_from_slice(data);
+                } else {
+                    // Downmix N channels to mono by averaging
+                    let ch = mic_channels as usize;
+                    for frame in data.chunks(ch) {
+                        let sum: f32 = frame.iter().sum();
+                        buf.push(sum / ch as f32);
+                    }
+                }
             }
         },
         |err| eprintln!("Input stream error: {}", err),
@@ -176,12 +191,29 @@ fn capture_worker(
     // Build output loopback stream (optional — may not be available)
     let output_stream = output_device.and_then(|device| {
         let spk_buf_clone = speaker_buffer.clone();
+        // Use output device's preferred channel count
+        let out_default = device.default_output_config().ok();
+        let out_channels = out_default.as_ref().map(|c| c.channels()).unwrap_or(input_channels);
+        eprintln!("[capture] Output device config: {:?}", out_default);
+        let out_stream_config = cpal::StreamConfig {
+            channels: out_channels,
+            sample_rate: cpal::SampleRate(config.sample_rate),
+            buffer_size: cpal::BufferSize::Default,
+        };
         device
             .build_input_stream(
-                &stream_config,
+                &out_stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     if let Ok(mut buf) = spk_buf_clone.lock() {
-                        buf.extend_from_slice(data);
+                        if out_channels <= 1 {
+                            buf.extend_from_slice(data);
+                        } else {
+                            let ch = out_channels as usize;
+                            for frame in data.chunks(ch) {
+                                let sum: f32 = frame.iter().sum();
+                                buf.push(sum / ch as f32);
+                            }
+                        }
                     }
                 },
                 |err| eprintln!("Output loopback error: {}", err),
