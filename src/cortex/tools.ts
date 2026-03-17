@@ -715,7 +715,7 @@ export function executeReadFile(
     }
     return `${header}\nShowing lines ${offset}-${endLine} of ${totalLines}:\n\n${result}${paginationHint}`;
   }
-  return `${header}\n\n${result}`;
+  return `${header}\n\n${result}\n\n[EOF — ${totalLines}/${totalLines} lines, complete]`;
 }
 
 /** Execute write_file — write or append to a local file */

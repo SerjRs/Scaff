@@ -1,0 +1,19 @@
+[package]
+name = "cortex-audio-capture"
+version = "0.1.0"
+edition = "2021"
+description = "Audio capture engine — WASAPI stereo capture & chunking"
+
+[lib]
+name = "capture"
+path = "src/lib.rs"
+
+[dependencies]
+cpal = "0.15"
+hound = "3.5"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
