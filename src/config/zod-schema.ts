@@ -765,6 +765,21 @@ export const OpenClawSchema = z
       })
       .strict()
       .optional(),
+    audioCapture: z
+      .object({
+        enabled: z.boolean().optional(),
+        apiKey: z.string().optional().register(sensitive),
+        maxChunkSizeMB: z.number().int().positive().optional(),
+        dataDir: z.string().optional(),
+        port: z.number().int().positive().nullable().optional(),
+        whisperBinary: z.string().optional(),
+        whisperModel: z.string().optional(),
+        whisperLanguage: z.string().optional(),
+        whisperThreads: z.number().int().positive().optional(),
+        retentionDays: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
