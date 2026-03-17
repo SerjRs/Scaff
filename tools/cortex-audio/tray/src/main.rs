@@ -30,10 +30,34 @@ fn icon_for_state(state: AppState) -> TrayIconIcon {
     }
 }
 
+/// Writes log output to both stdout and a log file side-by-side.
+struct TeeWriter {
+    stdout: std::io::Stdout,
+    file: Option<std::fs::File>,
+}
+impl std::io::Write for TeeWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = self.stdout.write(buf);
+        if let Some(ref mut f) = self.file { let _ = f.write(buf); }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        let _ = self.stdout.flush();
+        if let Some(ref mut f) = self.file { let _ = f.flush(); }
+        Ok(())
+    }
+}
+
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .target(env_logger::Target::Stderr)
+    let log_path = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|d| d.join("cortex-audio.log")))
+        .unwrap_or_else(|| std::path::PathBuf::from("cortex-audio.log"));
+    let log_file = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).ok();
+    let tee = TeeWriter { stdout: std::io::stdout(), file: log_file };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
+        .target(env_logger::Target::Pipe(Box::new(tee)))
         .init();
+    log::info!("Log file: {}", log_path.display());
 
     // Load or create default config
     let tray_config = match load_config() {
@@ -149,7 +173,7 @@ fn handle_start(
             update_ui(controller, tray_icon, mi_start, mi_stop);
         }
         Err(e) => {
-            log::error!("Failed to start capture: {e}");
+            log::error!("Failed to start capture: {e:#}");
             controller.set_error();
             update_ui(controller, tray_icon, mi_start, mi_stop);
         }

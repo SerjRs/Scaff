@@ -157,9 +157,16 @@ fn capture_worker(
     ) {
         Ok(s) => s,
         Err(e) => {
+            // Enumerate supported configs to help diagnose the mismatch
+            let supported = input_device.supported_input_configs()
+                .map(|iter| iter.map(|c| format!(
+                    "ch={} rate={}-{} fmt={:?}",
+                    c.channels(), c.min_sample_rate().0, c.max_sample_rate().0, c.sample_format()
+                )).collect::<Vec<_>>().join(", "))
+                .unwrap_or_else(|_| "unavailable".into());
             let _ = tx.send(CaptureEvent::Error(format!(
-                "Failed to build input stream: {}",
-                e
+                "Failed to build input stream: {e:#}\n  Requested: ch={} rate={}\n  Device supports: {}",
+                stream_config.channels, stream_config.sample_rate.0, supported
             )));
             capturing.store(false, Ordering::SeqCst);
             return;
