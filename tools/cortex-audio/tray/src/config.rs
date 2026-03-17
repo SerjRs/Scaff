@@ -80,7 +80,16 @@ pub fn app_data_dir() -> PathBuf {
 }
 
 /// Path to the config file.
+/// Checks for `config.json` next to the exe first, then falls back to %LOCALAPPDATA%\CortexAudio\.
 pub fn config_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let local = dir.join("config.json");
+            if local.exists() {
+                return local;
+            }
+        }
+    }
     app_data_dir().join("config.json")
 }
 
