@@ -90,6 +90,7 @@ import {
 } from "./server/health-state.js";
 import { loadGatewayTlsRuntime } from "./server/tls.js";
 import { ensureGatewayStartupAuth } from "./startup-auth.js";
+import { initGatewayAudioCapture, type AudioCaptureHandle } from "./server-audio.js";
 
 export { __resetModelCatalogCacheForTest } from "./server-model-catalog.js";
 
@@ -358,6 +359,19 @@ export async function startGatewayServer(
   if (cfgAtStart.gateway?.tls?.enabled && !gatewayTls.enabled) {
     throw new Error(gatewayTls.error ?? "gateway tls: failed to enable");
   }
+
+  // Initialize audio capture handler (if enabled in config).
+  let audioCaptureHandle: AudioCaptureHandle | null = null;
+  try {
+    audioCaptureHandle = initGatewayAudioCapture({
+      audioCaptureConfig: cfgAtStart.audioCapture,
+      stateDir: defaultWorkspaceDir,
+      log,
+    });
+  } catch (err) {
+    log.warn(`[audio] Failed to initialize audio capture: ${String(err)}`);
+  }
+
   const {
     canvasHost,
     httpServer,
@@ -400,6 +414,7 @@ export async function startGatewayServer(
     log,
     logHooks,
     logPlugins,
+    handleAudioRequest: audioCaptureHandle?.handler,
   });
   let bonjourStop: (() => Promise<void>) | null = null;
   const nodeRegistry = new NodeRegistry();
@@ -778,6 +793,7 @@ export async function startGatewayServer(
       skillsChangeUnsub();
       authRateLimiter?.dispose();
       channelHealthMonitor?.stop();
+      audioCaptureHandle?.close();
       await close(opts);
     },
   };

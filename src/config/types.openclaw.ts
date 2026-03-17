@@ -19,6 +19,7 @@ import type {
   CommandsConfig,
   MessagesConfig,
 } from "./types.messages.js";
+import type { AudioCaptureConfig } from "../audio/types.js";
 import type { ModelsConfig } from "./types.models.js";
 import type { NodeHostConfig } from "./types.node-host.js";
 import type { PluginsConfig } from "./types.plugins.js";
@@ -108,6 +109,8 @@ export type OpenClawConfig = {
   talk?: TalkConfig;
   gateway?: GatewayConfig;
   memory?: MemoryConfig;
+  /** Audio capture pipeline config (ingest + transcription + hippocampus). */
+  audioCapture?: Partial<AudioCaptureConfig>;
 };
 
 export type ConfigValidationIssue = {

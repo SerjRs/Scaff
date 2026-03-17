@@ -18,8 +18,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { requireNodeSqlite } from "../memory/sqlite.js";
-import type { AudioConfig } from "./types.js";
-import { DEFAULT_AUDIO_CONFIG } from "./types.js";
+import type { AudioConfig, AudioCaptureConfig } from "./types.js";
+import { DEFAULT_AUDIO_CONFIG, DEFAULT_AUDIO_CAPTURE_CONFIG } from "./types.js";
+import type { WorkerConfig, WorkerDeps } from "./worker.js";
+import { transcribeSession } from "./worker.js";
 import {
   initAudioSessionTable,
   upsertSession,
@@ -48,6 +50,26 @@ export function loadAudioConfig(openclawConfigPath: string): AudioConfig {
   } catch {
     return { ...DEFAULT_AUDIO_CONFIG };
   }
+}
+
+/** Load audio capture config from the `audioCapture` key in openclaw.json. */
+export function loadAudioCaptureConfig(
+  partialConfig?: Partial<AudioCaptureConfig>,
+): AudioCaptureConfig {
+  const d = DEFAULT_AUDIO_CAPTURE_CONFIG;
+  if (!partialConfig) return { ...d };
+  return {
+    enabled: partialConfig.enabled ?? d.enabled,
+    apiKey: partialConfig.apiKey ?? d.apiKey,
+    maxChunkSizeMB: partialConfig.maxChunkSizeMB ?? d.maxChunkSizeMB,
+    dataDir: partialConfig.dataDir ?? d.dataDir,
+    port: partialConfig.port ?? d.port,
+    whisperBinary: partialConfig.whisperBinary ?? d.whisperBinary,
+    whisperModel: partialConfig.whisperModel ?? d.whisperModel,
+    whisperLanguage: partialConfig.whisperLanguage ?? d.whisperLanguage,
+    whisperThreads: partialConfig.whisperThreads ?? d.whisperThreads,
+    retentionDays: partialConfig.retentionDays ?? d.retentionDays,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +235,7 @@ async function handleChunkUpload(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   db: DatabaseSync,
-  config: AudioConfig,
+  config: Pick<AudioConfig, "maxChunkSizeMB" | "dataDir">,
 ): Promise<void> {
   const contentType = req.headers["content-type"] ?? "";
   const boundary = extractBoundary(contentType);
@@ -296,7 +318,7 @@ async function handleSessionEnd(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   db: DatabaseSync,
-  config: AudioConfig,
+  config: Pick<AudioConfig, "dataDir">,
 ): Promise<void> {
   const maxBytes = 1024 * 64; // 64 KB for JSON payload
   let body: Buffer;
@@ -447,6 +469,114 @@ export function createAudioRequestHandler(db: DatabaseSync, config: AudioConfig)
     sendError(res, 404, "Not found");
     return true;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Gateway-compatible handler (with worker integration)
+// ---------------------------------------------------------------------------
+
+export interface AudioGatewayDeps {
+  db: DatabaseSync;
+  config: AudioCaptureConfig;
+  workerDeps?: WorkerDeps;
+  log?: { info: (msg: string) => void; warn: (msg: string) => void };
+}
+
+/**
+ * Create an audio HTTP request handler for the gateway.
+ *
+ * Same pattern as `handleSlackHttpRequest`, `handlePluginRequest`:
+ * returns `true` if the request was handled, `false` to let other handlers try.
+ *
+ * When `workerDeps` is provided, session-end triggers the transcription
+ * pipeline asynchronously (fire-and-forget after responding).
+ */
+export function createGatewayAudioHandler(deps: AudioGatewayDeps) {
+  const { db, config, workerDeps, log } = deps;
+
+  const workerConfig: WorkerConfig = {
+    dataDir: config.dataDir,
+    whisper: {
+      whisperBinary: config.whisperBinary,
+      whisperModel: config.whisperModel,
+      language: config.whisperLanguage,
+      threads: config.whisperThreads,
+    },
+  };
+
+  return async function handleAudioHttpRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<boolean> {
+    const url = req.url ?? "";
+    const method = req.method ?? "GET";
+
+    if (!url.startsWith("/audio/")) {
+      return false;
+    }
+
+    if (!config.enabled) {
+      return false; // disabled → skip silently, let other handlers try
+    }
+
+    if (!checkAuth(req, config.apiKey)) {
+      sendError(res, 401, "Unauthorized");
+      return true;
+    }
+
+    // POST /audio/chunk
+    if (url === "/audio/chunk" && method === "POST") {
+      await handleChunkUpload(req, res, db, config);
+      return true;
+    }
+
+    // POST /audio/session-end
+    if (url === "/audio/session-end" && method === "POST") {
+      await handleSessionEnd(req, res, db, config);
+
+      // Fire-and-forget: trigger worker pipeline after responding
+      if (workerDeps) {
+        void triggerPendingTranscriptions(db, workerConfig, workerDeps, log);
+      }
+      return true;
+    }
+
+    // GET /audio/session/:id/status
+    const statusMatch = url.match(SESSION_STATUS_RE);
+    if (statusMatch && method === "GET") {
+      handleSessionStatus(req, res, db, statusMatch[1]);
+      return true;
+    }
+
+    sendError(res, 404, "Not found");
+    return true;
+  };
+}
+
+/** Find sessions in pending_transcription state and run the worker on them. */
+async function triggerPendingTranscriptions(
+  db: DatabaseSync,
+  workerConfig: WorkerConfig,
+  workerDeps: WorkerDeps,
+  log?: { info: (msg: string) => void; warn: (msg: string) => void },
+): Promise<void> {
+  try {
+    const rows = db.prepare(
+      `SELECT session_id FROM audio_sessions WHERE status = 'pending_transcription'`,
+    ).all() as Array<{ session_id: string }>;
+
+    for (const row of rows) {
+      try {
+        log?.info(`[audio] Starting transcription for session ${row.session_id}`);
+        await transcribeSession(row.session_id, workerConfig, workerDeps);
+        log?.info(`[audio] Transcription complete for session ${row.session_id}`);
+      } catch (err) {
+        log?.warn(`[audio] Transcription failed for session ${row.session_id}: ${String(err)}`);
+      }
+    }
+  } catch (err) {
+    log?.warn(`[audio] Failed to query pending transcriptions: ${String(err)}`);
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -56,6 +56,8 @@ export async function createGatewayRuntimeState(params: {
   log: { info: (msg: string) => void; warn: (msg: string) => void };
   logHooks: ReturnType<typeof createSubsystemLogger>;
   logPlugins: ReturnType<typeof createSubsystemLogger>;
+  /** Optional audio capture HTTP handler (created at startup when audioCapture.enabled). */
+  handleAudioRequest?: (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => Promise<boolean>;
 }): Promise<{
   canvasHost: CanvasHostHandler | null;
   httpServer: HttpServer;
@@ -132,6 +134,7 @@ export async function createGatewayRuntimeState(params: {
       strictTransportSecurityHeader: params.strictTransportSecurityHeader,
       handleHooksRequest,
       handlePluginRequest,
+      handleAudioRequest: params.handleAudioRequest,
       resolvedAuth: params.resolvedAuth,
       rateLimiter: params.rateLimiter,
       tlsOptions: params.gatewayTls?.enabled ? params.gatewayTls.tlsOptions : undefined,

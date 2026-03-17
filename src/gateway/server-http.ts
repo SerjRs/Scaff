@@ -420,6 +420,7 @@ export function createGatewayHttpServer(opts: {
   strictTransportSecurityHeader?: string;
   handleHooksRequest: HooksRequestHandler;
   handlePluginRequest?: HooksRequestHandler;
+  handleAudioRequest?: HooksRequestHandler;
   resolvedAuth: ResolvedGatewayAuth;
   /** Optional rate limiter for auth brute-force protection. */
   rateLimiter?: AuthRateLimiter;
@@ -437,6 +438,7 @@ export function createGatewayHttpServer(opts: {
     strictTransportSecurityHeader,
     handleHooksRequest,
     handlePluginRequest,
+    handleAudioRequest,
     resolvedAuth,
     rateLimiter,
   } = opts;
@@ -507,6 +509,11 @@ export function createGatewayHttpServer(opts: {
           }
         }
         if (await handlePluginRequest(req, res)) {
+          return;
+        }
+      }
+      if (handleAudioRequest) {
+        if (await handleAudioRequest(req, res)) {
           return;
         }
       }
