@@ -447,16 +447,20 @@ name = "cortex-audio-tray"
 version = "0.1.0"
 dependencies = [
  "cortex-audio-capture",
+ "cortex-audio-shipper",
  "dirs",
  "env_logger",
  "log",
  "muda",
+ "reqwest",
  "serde",
  "serde_json",
  "tao",
  "tempfile",
+ "tokio",
  "tray-icon",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]

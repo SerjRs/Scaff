@@ -9,6 +9,9 @@ use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tray_icon::{Icon as TrayIconIcon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
+use shipper::{ChunkShipper, ShipperEvent};
+use std::sync::mpsc as std_mpsc;
+
 /// Create a solid-color 16×16 RGBA icon.
 fn make_icon(r: u8, g: u8, b: u8) -> TrayIconIcon {
     let size = 16u32;
@@ -48,6 +51,115 @@ impl std::io::Write for TeeWriter {
     }
 }
 
+/// Holds the shipper handle and the tokio runtime for async bridging.
+struct ShipperBridge {
+    runtime: tokio::runtime::Runtime,
+    /// Channel to send stop signal to the shipper task
+    stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    /// Receiver for shipper events (bridged from tokio mpsc to std mpsc)
+    event_rx: std_mpsc::Receiver<ShipperEvent>,
+    /// Shipper config (needed for session-end calls)
+    shipper_config: shipper::ShipperConfig,
+}
+
+impl ShipperBridge {
+    fn new(tray_config: &TrayConfig) -> Result<Self, String> {
+        let shipper_config = tray_config.to_shipper_config();
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
+
+        let (event_tx, event_rx) = std_mpsc::channel::<ShipperEvent>();
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let cfg = shipper_config.clone();
+        runtime.spawn(async move {
+            let mut shipper = match ChunkShipper::new(cfg) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("Failed to create shipper: {e}");
+                    return;
+                }
+            };
+
+            let mut events = match shipper.start().await {
+                Ok(rx) => rx,
+                Err(e) => {
+                    log::error!("Failed to start shipper: {e}");
+                    return;
+                }
+            };
+
+            log::info!("Shipper started, watching outbox for chunks");
+
+            // Forward shipper events to std_mpsc until stop signal
+            tokio::select! {
+                _ = async {
+                    while let Some(ev) = events.recv().await {
+                        if event_tx.send(ev).is_err() {
+                            break;
+                        }
+                    }
+                } => {}
+                _ = stop_rx => {
+                    log::info!("Shipper bridge received stop signal");
+                }
+            }
+
+            let _ = shipper.stop().await;
+            log::info!("Shipper stopped");
+        });
+
+        Ok(Self {
+            runtime,
+            stop_tx: Some(stop_tx),
+            event_rx,
+            shipper_config,
+        })
+    }
+
+    /// Send session-end to the server (blocking call on the tokio runtime).
+    fn send_session_end(&self, session_id: &str) {
+        let cfg = self.shipper_config.clone();
+        let sid = session_id.to_string();
+        self.runtime.spawn(async move {
+            let client = reqwest::Client::new();
+            match shipper::upload::send_session_end(
+                &client,
+                &cfg.server_url,
+                &cfg.api_key,
+                &sid,
+            )
+            .await
+            {
+                Ok(()) => log::info!("Session-end sent for {sid}"),
+                Err(e) => log::error!("Failed to send session-end for {sid}: {e}"),
+            }
+        });
+    }
+
+    /// Poll shipper events (non-blocking).
+    fn poll_events(&self) -> Vec<ShipperEvent> {
+        let mut events = Vec::new();
+        while let Ok(ev) = self.event_rx.try_recv() {
+            events.push(ev);
+        }
+        events
+    }
+
+    /// Stop the shipper and shutdown the runtime.
+    fn shutdown(mut self) {
+        if let Some(tx) = self.stop_tx.take() {
+            let _ = tx.send(());
+        }
+        // Give the shipper a moment to finish
+        self.runtime.shutdown_timeout(std::time::Duration::from_secs(5));
+    }
+}
+
 fn main() {
     let log_path = std::env::current_exe().ok()
         .and_then(|p| p.parent().map(|d| d.join("cortex-audio.log")))
@@ -77,6 +189,20 @@ fn main() {
     if let Err(e) = std::fs::create_dir_all(&tray_config.outbox_dir) {
         log::error!("Cannot create outbox dir: {e}");
     }
+
+    // Start the shipper bridge (tokio runtime + shipper in background)
+    let shipper_bridge = match ShipperBridge::new(&tray_config) {
+        Ok(b) => {
+            log::info!("Shipper bridge started");
+            Some(b)
+        }
+        Err(e) => {
+            log::error!("Failed to start shipper bridge: {e}");
+            None
+        }
+    };
+    // Wrap in Option for move into closure (need to take ownership on quit)
+    let mut shipper_bridge = shipper_bridge;
 
     let mut controller = AppController::new(tray_config);
 
@@ -122,11 +248,20 @@ fn main() {
             if event.id == start_id {
                 handle_start(&mut controller, &tray_icon, &mi_start, &mi_stop);
             } else if event.id == stop_id {
-                handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop);
+                handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop, &shipper_bridge);
             } else if event.id == quit_id {
-                // Clean shutdown
+                // Clean shutdown: stop capture, send session-end, stop shipper
                 if controller.state() == AppState::Capturing {
+                    if let Some(sid) = controller.session_id() {
+                        if let Some(ref bridge) = shipper_bridge {
+                            bridge.send_session_end(sid);
+                        }
+                    }
                     let _ = controller.stop();
+                }
+                // Shutdown shipper bridge
+                if let Some(bridge) = shipper_bridge.take() {
+                    bridge.shutdown();
                 }
                 log::info!("Quitting");
                 *control_flow = ControlFlow::Exit;
@@ -143,13 +278,37 @@ fn main() {
                     }
                     capture::CaptureEvent::SessionEnd { session_id, chunks } => {
                         log::info!("Session {session_id} ended — {chunks} chunks");
+                        // Send session-end to server
+                        if let Some(ref bridge) = shipper_bridge {
+                            bridge.send_session_end(&session_id);
+                        }
                         // Engine stopped itself (e.g. silence timeout)
-                        handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop);
+                        handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop, &shipper_bridge);
                     }
                     capture::CaptureEvent::Error(msg) => {
                         log::error!("Capture error: {msg}");
                         controller.set_error();
                         update_ui(&controller, &tray_icon, &mi_start, &mi_stop);
+                    }
+                }
+            }
+        }
+
+        // Poll shipper events
+        if let Some(ref bridge) = shipper_bridge {
+            for ev in bridge.poll_events() {
+                match ev {
+                    ShipperEvent::ChunkUploaded { path, sequence } => {
+                        log::info!("Chunk #{sequence} uploaded: {}", path.display());
+                    }
+                    ShipperEvent::ChunkFailed { path, error, retries } => {
+                        log::warn!(
+                            "Chunk upload failed after {retries} retries: {} — {error}",
+                            path.display()
+                        );
+                    }
+                    ShipperEvent::SessionEndSent { session_id } => {
+                        log::info!("Session-end confirmed for {session_id}");
                     }
                 }
             }
@@ -185,7 +344,15 @@ fn handle_stop(
     tray_icon: &TrayIcon,
     mi_start: &MenuItem,
     mi_stop: &MenuItem,
+    shipper_bridge: &Option<ShipperBridge>,
 ) {
+    // Send session-end before stopping (so we have the session ID)
+    if let Some(sid) = controller.session_id() {
+        if let Some(ref bridge) = shipper_bridge {
+            bridge.send_session_end(sid);
+        }
+    }
+
     match controller.stop() {
         Ok(()) => {
             log::info!("Capture stopped");
