@@ -1,0 +1,24 @@
+[package]
+name = "cortex-audio-tray"
+version = "0.1.0"
+edition = "2021"
+description = "System tray UI for CortexAudio capture engine"
+
+[[bin]]
+name = "cortex-audio"
+path = "src/main.rs"
+
+[dependencies]
+capture = { path = "../capture", package = "cortex-audio-capture" }
+tray-icon = "0.19"
+tao = "0.31"
+muda = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+dirs = "6"
+log = "0.4"
+env_logger = "0.11"
+
+[dev-dependencies]
+tempfile = "3"
