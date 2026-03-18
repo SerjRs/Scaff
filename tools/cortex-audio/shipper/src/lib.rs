@@ -128,7 +128,7 @@ impl ChunkShipper {
                             .insert(sequence, path);
 
                         // Drain in-order chunks
-                        let expected = next_seq.entry(session_id.clone()).or_insert(1);
+                        let expected = next_seq.entry(session_id.clone()).or_insert(0);
                         while let Some(chunk_path) = queues
                             .get(&session_id)
                             .and_then(|q| q.get(expected).cloned())
@@ -391,15 +391,15 @@ mod tests {
         // Wait for watcher to be ready
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        // Write chunk 1
-        let p1 = outbox.join("test-sess_chunk_0001.wav");
+        // Write chunk 0
+        let p1 = outbox.join("test-sess_chunk_0000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
         }
 
-        // Write chunk 2
-        let p2 = outbox.join("test-sess_chunk_0002.wav");
+        // Write chunk 1
+        let p2 = outbox.join("test-sess_chunk_0001.wav");
         {
             let mut f = std::fs::File::create(&p2).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -417,7 +417,7 @@ mod tests {
             }
         }
 
-        assert_eq!(uploaded, vec![1, 2], "Chunks should be uploaded in order");
+        assert_eq!(uploaded, vec![0, 1], "Chunks should be uploaded in order");
 
         // Files should be deleted after successful upload
         assert!(!p1.exists());
@@ -458,7 +458,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        let p1 = outbox.join("sess_chunk_0001.wav");
+        let p1 = outbox.join("sess_chunk_0000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -474,7 +474,7 @@ mod tests {
 
         // File should be moved to failed/
         assert!(!p1.exists());
-        assert!(outbox.join("failed").join("sess_chunk_0001.wav").exists());
+        assert!(outbox.join("failed").join("sess_chunk_0000.wav").exists());
 
         shipper.stop().await.unwrap();
     }
@@ -538,8 +538,8 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        // Write chunks out of order: 3, 1, 2
-        for seq in [3, 1, 2] {
+        // Write chunks out of order: 2, 0, 1
+        for seq in [2, 0, 1] {
             let p = outbox.join(format!("sess_chunk_{:04}.wav", seq));
             let mut f = std::fs::File::create(&p).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -558,7 +558,7 @@ mod tests {
             }
         }
 
-        assert_eq!(uploaded, vec![1, 2, 3], "Chunks must be uploaded in sequence order");
+        assert_eq!(uploaded, vec![0, 1, 2], "Chunks must be uploaded in sequence order");
         shipper.stop().await.unwrap();
     }
 
@@ -591,7 +591,7 @@ mod tests {
         let outbox = tmp.path();
 
         // Create a file that will never be uploaded (shipper not started)
-        std::fs::write(outbox.join("sess_chunk_0001.wav"), b"RIFF data").unwrap();
+        std::fs::write(outbox.join("sess_chunk_0000.wav"), b"RIFF data").unwrap();
 
         let cfg = ShipperConfig {
             server_url: "http://localhost".into(),
@@ -648,7 +648,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         // Write a chunk
-        let p1 = outbox.join("drain-sess_chunk_0001.wav");
+        let p1 = outbox.join("drain-sess_chunk_0000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -699,7 +699,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        let p1 = outbox.join("fail-sess_chunk_0001.wav");
+        let p1 = outbox.join("fail-sess_chunk_0000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -715,7 +715,7 @@ mod tests {
 
         // File should be in failed/ dir
         assert!(!p1.exists());
-        assert!(outbox.join("failed").join("fail-sess_chunk_0001.wav").exists());
+        assert!(outbox.join("failed").join("fail-sess_chunk_0000.wav").exists());
 
         shipper.stop().await.unwrap();
     }

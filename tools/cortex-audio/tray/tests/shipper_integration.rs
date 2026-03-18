@@ -73,13 +73,13 @@ async fn chunk_detected_and_uploaded_to_mock_server() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Write a chunk file
-    write_fake_wav(&outbox, "test-session_chunk_0001.wav");
+    write_fake_wav(&outbox, "test-session_chunk_0000.wav");
 
     // Wait for upload event
     let deadline = std::time::Duration::from_secs(10);
     match tokio::time::timeout(deadline, events.recv()).await {
         Ok(Some(ShipperEvent::ChunkUploaded { sequence, .. })) => {
-            assert_eq!(sequence, 1);
+            assert_eq!(sequence, 0);
         }
         other => panic!("Expected ChunkUploaded, got {:?}", other),
     }
@@ -142,9 +142,9 @@ async fn full_flow_capture_upload_session_end() {
 
     // Simulate capture: write 2 chunks
     let session_id = "full-flow-sess";
-    write_fake_wav(&outbox, &format!("{session_id}_chunk_0001.wav"));
+    write_fake_wav(&outbox, &format!("{session_id}_chunk_0000.wav"));
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    write_fake_wav(&outbox, &format!("{session_id}_chunk_0002.wav"));
+    write_fake_wav(&outbox, &format!("{session_id}_chunk_0001.wav"));
 
     // Collect upload events
     let mut uploaded = Vec::new();
@@ -157,7 +157,7 @@ async fn full_flow_capture_upload_session_end() {
             _ => break,
         }
     }
-    assert_eq!(uploaded, vec![1, 2], "Both chunks should be uploaded in order");
+    assert_eq!(uploaded, vec![0, 1], "Both chunks should be uploaded in order");
 
     // Send session-end (simulating what tray does on stop)
     shipper.signal_session_end(session_id).await.unwrap();
@@ -198,7 +198,7 @@ async fn pre_existing_chunk_uploaded_on_startup() {
     std::fs::create_dir_all(&outbox).unwrap();
 
     // Write chunk BEFORE starting shipper
-    write_fake_wav(&outbox, "pre-session_chunk_0001.wav");
+    write_fake_wav(&outbox, "pre-session_chunk_0000.wav");
 
     let cfg = test_shipper_config(&server.uri(), outbox.clone());
     let mut shipper = ChunkShipper::new(cfg).unwrap();
@@ -208,7 +208,7 @@ async fn pre_existing_chunk_uploaded_on_startup() {
     let deadline = std::time::Duration::from_secs(10);
     match tokio::time::timeout(deadline, events.recv()).await {
         Ok(Some(ShipperEvent::ChunkUploaded { sequence, .. })) => {
-            assert_eq!(sequence, 1);
+            assert_eq!(sequence, 0);
         }
         other => panic!("Expected ChunkUploaded for pre-existing chunk, got {:?}", other),
     }
@@ -230,16 +230,16 @@ async fn pre_existing_and_new_chunks_both_uploaded_no_duplicates() {
     let outbox = tmp.path().join("outbox");
     std::fs::create_dir_all(&outbox).unwrap();
 
-    // Write chunk 1 BEFORE starting shipper
-    write_fake_wav(&outbox, "dedup-session_chunk_0001.wav");
+    // Write chunk 0 BEFORE starting shipper
+    write_fake_wav(&outbox, "dedup-session_chunk_0000.wav");
 
     let cfg = test_shipper_config(&server.uri(), outbox.clone());
     let mut shipper = ChunkShipper::new(cfg).unwrap();
     let mut events = shipper.start().await.unwrap();
 
-    // Wait for watcher to be ready, then write chunk 2
+    // Wait for watcher to be ready, then write chunk 1
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    write_fake_wav(&outbox, "dedup-session_chunk_0002.wav");
+    write_fake_wav(&outbox, "dedup-session_chunk_0001.wav");
 
     // Collect upload events
     let mut uploaded = Vec::new();
@@ -253,7 +253,7 @@ async fn pre_existing_and_new_chunks_both_uploaded_no_duplicates() {
         }
     }
 
-    assert_eq!(uploaded, vec![1, 2], "Both pre-existing and new chunks should be uploaded in order");
+    assert_eq!(uploaded, vec![0, 1], "Both pre-existing and new chunks should be uploaded in order");
 
     // Verify no duplicates — wiremock expect(2) enforces exactly 2 calls
     // Also check sequences are unique
