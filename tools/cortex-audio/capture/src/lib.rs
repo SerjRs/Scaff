@@ -275,7 +275,7 @@ fn capture_worker(
 
         // Check silence on mixed signal
         if silence_det.process(&stereo_f32) {
-            if let Ok(Some((path, seq))) = chunk_writer.finalize() {
+            if let Ok(Some((path, seq))) = chunk_writer.flush() {
                 let _ = tx.send(CaptureEvent::ChunkReady {
                     path,
                     sequence: seq,
@@ -308,8 +308,8 @@ fn capture_worker(
         }
     }
 
-    // Finalize remaining chunk on stop
-    if let Ok(Some((path, seq))) = chunk_writer.finalize() {
+    // Flush remaining partial chunk on stop (skips if <0.5s of audio)
+    if let Ok(Some((path, seq))) = chunk_writer.flush() {
         let _ = tx.send(CaptureEvent::ChunkReady {
             path,
             sequence: seq,

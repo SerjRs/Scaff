@@ -89,6 +89,28 @@ impl ChunkWriter {
         self.finalize_current()
     }
 
+    /// Flush the current partial chunk to disk, enforcing a minimum duration.
+    /// Returns (path, sequence) if a chunk was written, None if skipped.
+    /// Skips if no writer is open or if accumulated audio is less than 0.5 seconds.
+    pub fn flush(&mut self) -> Result<Option<(PathBuf, u32)>, CaptureError> {
+        // Minimum 0.5s of PCM data: sample_rate × channels(2) × bytes_per_sample(2) × 0.5
+        let min_data_bytes = (self.sample_rate as usize) * 2;
+        let data_bytes = self.current_size.saturating_sub(WAV_HEADER_SIZE);
+
+        if self.current_writer.is_none() || data_bytes < min_data_bytes {
+            // Not enough audio — discard the partial chunk file
+            if let Some(writer) = self.current_writer.take() {
+                let _ = writer.finalize(); // finalize to avoid hound panic on drop
+                if let Some(path) = self.current_path.take() {
+                    let _ = fs::remove_file(&path);
+                }
+            }
+            return Ok(None);
+        }
+
+        self.finalize_current()
+    }
+
     /// Get the total number of completed chunks.
     pub fn chunk_count(&self) -> u32 {
         self.sequence
@@ -231,5 +253,93 @@ mod tests {
         writer.write_samples(&samples).unwrap();
         writer.finalize().unwrap();
         assert_eq!(writer.chunk_count(), 1);
+    }
+
+    #[test]
+    fn test_flush_writes_valid_wav_for_partial_data() {
+        let tmp = TempDir::new().unwrap();
+        let mut writer = make_writer(tmp.path(), 1_000_000);
+
+        // Write 1 second of stereo audio at 44100 Hz = 88200 samples
+        let num_samples = 44100 * 2; // 1 second, stereo
+        let samples: Vec<i16> = (0..num_samples).map(|i| (i % 1000) as i16).collect();
+        writer.write_samples(&samples).unwrap();
+
+        let result = writer.flush().unwrap();
+        assert!(result.is_some(), "flush() should write a chunk for 1s of audio");
+
+        let (path, seq) = result.unwrap();
+        assert_eq!(seq, 0);
+
+        // Verify it's a valid WAV
+        let reader = WavReader::open(&path).unwrap();
+        let spec = reader.spec();
+        assert_eq!(spec.channels, 2);
+        assert_eq!(spec.sample_rate, 44100);
+        assert_eq!(spec.bits_per_sample, 16);
+
+        let read_samples: Vec<i16> = reader.into_samples::<i16>().map(|s| s.unwrap()).collect();
+        assert_eq!(read_samples.len(), num_samples);
+    }
+
+    #[test]
+    fn test_flush_empty_buffer_produces_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let mut writer = make_writer(tmp.path(), 1_000_000);
+
+        // Don't write any samples — no writer is even open
+        let result = writer.flush().unwrap();
+        assert!(result.is_none(), "flush() should return None for empty buffer");
+
+        // No WAV files should exist
+        let files: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "wav").unwrap_or(false))
+            .collect();
+        assert_eq!(files.len(), 0);
+    }
+
+    #[test]
+    fn test_flush_short_audio_produces_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let mut writer = make_writer(tmp.path(), 1_000_000);
+
+        // Write 0.3s of stereo audio at 44100 Hz (below 0.5s threshold)
+        // 0.3s * 44100 * 2 channels = 26460 samples
+        let num_samples = (44100.0 * 0.3) as usize * 2;
+        let samples: Vec<i16> = vec![100; num_samples];
+        writer.write_samples(&samples).unwrap();
+
+        let result = writer.flush().unwrap();
+        assert!(result.is_none(), "flush() should return None for <0.5s of audio");
+
+        // The partial WAV file should have been cleaned up
+        let files: Vec<_> = fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "wav").unwrap_or(false))
+            .collect();
+        assert_eq!(files.len(), 0);
+    }
+
+    #[test]
+    fn test_flush_at_threshold_produces_file() {
+        let tmp = TempDir::new().unwrap();
+        let mut writer = make_writer(tmp.path(), 1_000_000);
+
+        // Write exactly 0.5s of stereo audio at 44100 Hz
+        // min_data_bytes = sample_rate * 2 = 88200 bytes = 44100 samples
+        let num_samples = 44100; // 0.5s * 44100 * 2 channels
+        let samples: Vec<i16> = vec![100; num_samples];
+        writer.write_samples(&samples).unwrap();
+
+        let result = writer.flush().unwrap();
+        assert!(result.is_some(), "flush() should write a chunk at exactly 0.5s threshold");
+
+        let (path, _) = result.unwrap();
+        let reader = WavReader::open(&path).unwrap();
+        let read_samples: Vec<i16> = reader.into_samples::<i16>().map(|s| s.unwrap()).collect();
+        assert_eq!(read_samples.len(), num_samples);
     }
 }
