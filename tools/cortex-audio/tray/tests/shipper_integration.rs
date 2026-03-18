@@ -166,6 +166,22 @@ async fn full_flow_capture_upload_session_end() {
     // Wiremock verifies all mocks were called the expected number of times
 }
 
+#[test]
+fn capture_engine_filenames_parseable_by_shipper() {
+    // Simulate what ChunkWriter actually produces
+    let session_id = "d4e5f6a7-1234-5678-9abc-def012345678";
+    let timestamp = 1710700000u64;
+    for seq in 0..5u32 {
+        let filename = format!("{}_chunk-{:04}_{}.wav", session_id, seq, timestamp + seq as u64);
+        let path = std::path::Path::new(&filename);
+        let parsed = shipper::watcher::parse_chunk_filename(path);
+        assert!(parsed.is_some(), "Failed to parse: {}", filename);
+        let (sid, s) = parsed.unwrap();
+        assert_eq!(sid, session_id);
+        assert_eq!(s, seq);
+    }
+}
+
 #[tokio::test]
 async fn shipper_config_built_from_tray_config() {
     // This tests the TrayConfig -> ShipperConfig conversion at the integration level.

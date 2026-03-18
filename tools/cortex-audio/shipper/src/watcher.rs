@@ -107,14 +107,31 @@ fn is_in_failed_dir(p: &Path, outbox: &Path) -> bool {
 }
 
 /// Parse session_id and sequence from a chunk filename.
-/// Expected format: `{session_id}_chunk_{sequence:04}.wav`
+/// Supported formats:
+///   {session_id}_chunk-{seq:04}_{timestamp}.wav  (capture engine output)
+///   {session_id}_chunk_{seq:04}.wav              (legacy/test format)
 pub fn parse_chunk_filename(path: &Path) -> Option<(String, u32)> {
     let stem = path.file_stem()?.to_str()?;
-    let idx = stem.rfind("_chunk_")?;
-    let session_id = &stem[..idx];
-    let seq_str = &stem[idx + 7..]; // skip "_chunk_"
-    let sequence = seq_str.parse::<u32>().ok()?;
-    Some((session_id.to_string(), sequence))
+
+    // Try capture engine format first: _chunk-{seq}_{ts}
+    if let Some(idx) = stem.rfind("_chunk-") {
+        let session_id = &stem[..idx];
+        let after = &stem[idx + 7..]; // skip "_chunk-"
+        // after = "0001_1710700000" — take digits before the first underscore
+        let seq_str = after.split('_').next()?;
+        let sequence = seq_str.parse::<u32>().ok()?;
+        return Some((session_id.to_string(), sequence));
+    }
+
+    // Fallback: legacy format _chunk_{seq}
+    if let Some(idx) = stem.rfind("_chunk_") {
+        let session_id = &stem[..idx];
+        let seq_str = &stem[idx + 7..];
+        let sequence = seq_str.parse::<u32>().ok()?;
+        return Some((session_id.to_string(), sequence));
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -133,6 +150,29 @@ mod tests {
         let (sid2, seq2) = parse_chunk_filename(p2).unwrap();
         assert_eq!(sid2, "my-session");
         assert_eq!(seq2, 42);
+    }
+
+    #[test]
+    fn parse_capture_engine_format() {
+        // Real capture engine output: {session}_chunk-{seq}_{timestamp}.wav
+        let p = Path::new("/tmp/outbox/abc123_chunk-0001_1710700000.wav");
+        let (sid, seq) = parse_chunk_filename(p).unwrap();
+        assert_eq!(sid, "abc123");
+        assert_eq!(seq, 1);
+
+        let p2 = Path::new("/tmp/outbox/my-uuid-session_chunk-0042_1710700999.wav");
+        let (sid2, seq2) = parse_chunk_filename(p2).unwrap();
+        assert_eq!(sid2, "my-uuid-session");
+        assert_eq!(seq2, 42);
+    }
+
+    #[test]
+    fn parse_legacy_format() {
+        // Legacy/test format: {session}_chunk_{seq}.wav
+        let p = Path::new("/tmp/outbox/sess-abc_chunk_0001.wav");
+        let (sid, seq) = parse_chunk_filename(p).unwrap();
+        assert_eq!(sid, "sess-abc");
+        assert_eq!(seq, 1);
     }
 
     #[test]
