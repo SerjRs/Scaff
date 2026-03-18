@@ -38,5 +38,13 @@
 - tray integration: 5 passed (all new)
 ```
 
+## Fix: Chunk Filename Mismatch (2026-03-18)
+
+**Bug:** `parse_chunk_filename()` in `shipper/src/watcher.rs` expected `{session}_chunk_{seq}.wav` but the capture engine writes `{session}_chunk-{seq}_{timestamp}.wav`. Two mismatches: dash vs underscore separator, and extra timestamp suffix. Result: all chunks silently skipped in production.
+
+**Fix:** Updated parser to try capture engine format (`_chunk-`) first, then fall back to legacy format (`_chunk_`). Added 2 unit tests + 1 cross-crate integration test. All 82 tests pass.
+
+**Commit:** `9423a30c0` on `fix/028-chunk-filename-mismatch`, merged to main.
+
 ## Errors
 (none)
