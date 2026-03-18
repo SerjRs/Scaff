@@ -2,6 +2,14 @@ use reqwest::multipart;
 use std::path::Path;
 use thiserror::Error;
 
+// Cross-stack contract constants — these values must match the TypeScript server.
+// See src/audio/__tests__/cross-stack.test.ts for the server-side contract tests.
+pub const FIELD_SESSION_ID: &str = "session_id";
+pub const FIELD_SEQUENCE: &str = "sequence";
+pub const FIELD_AUDIO: &str = "audio";
+pub const CHUNK_UPLOAD_PATH: &str = "/audio/chunk";
+pub const SESSION_END_PATH: &str = "/audio/session-end";
+
 #[derive(Error, Debug)]
 pub enum UploadError {
     #[error("HTTP request failed: {0}")]
@@ -29,10 +37,10 @@ pub async fn upload_chunk(
         .into_owned();
 
     let form = multipart::Form::new()
-        .text("session_id", session_id.to_string())
-        .text("sequence", sequence.to_string())
+        .text(FIELD_SESSION_ID, session_id.to_string())
+        .text(FIELD_SEQUENCE, sequence.to_string())
         .part(
-            "audio",
+            FIELD_AUDIO,
             multipart::Part::bytes(data)
                 .file_name(file_name)
                 .mime_str("audio/wav")
@@ -40,7 +48,7 @@ pub async fn upload_chunk(
         );
 
     let resp = client
-        .post(format!("{}/audio/chunk", server_url))
+        .post(format!("{}{}", server_url, CHUNK_UPLOAD_PATH))
         .header("Authorization", format!("Bearer {}", api_key))
         .multipart(form)
         .send()
@@ -66,10 +74,10 @@ pub async fn send_session_end(
     session_id: &str,
 ) -> Result<(), UploadError> {
     let resp = client
-        .post(format!("{}/audio/session-end", server_url))
+        .post(format!("{}{}", server_url, SESSION_END_PATH))
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
-        .body(format!(r#"{{"session_id":"{}"}}"#, session_id))
+        .body(format!(r#"{{"{}":"{}"}}"#, FIELD_SESSION_ID, session_id))
         .send()
         .await?;
 
