@@ -5,6 +5,8 @@ pub mod watcher;
 use backoff::Backoff;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use upload::UploadError;
@@ -66,6 +68,8 @@ pub enum ShipperError {
 pub struct ChunkShipper {
     config: ShipperConfig,
     stop_tx: Option<mpsc::Sender<()>>,
+    /// Per-session count of successfully uploaded chunks.
+    uploaded_counts: Arc<Mutex<HashMap<String, u32>>>,
 }
 
 impl ChunkShipper {
@@ -74,6 +78,7 @@ impl ChunkShipper {
         Ok(Self {
             config,
             stop_tx: None,
+            uploaded_counts: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -89,6 +94,7 @@ impl ChunkShipper {
 
         let mut outbox_watcher = OutboxWatcher::new(&self.config.outbox_dir)?;
         let config = self.config.clone();
+        let uploaded_counts = self.uploaded_counts.clone();
 
         tokio::spawn(async move {
             let client = reqwest::Client::new();
@@ -144,6 +150,9 @@ impl ChunkShipper {
                             }
 
                             if ok {
+                                if let Ok(mut counts) = uploaded_counts.lock() {
+                                    *counts.entry(session_id.clone()).or_insert(0) += 1;
+                                }
                                 *expected = seq + 1;
                             } else {
                                 // Failed after max retries — skip to next
@@ -164,6 +173,33 @@ impl ChunkShipper {
         upload::send_session_end(&client, &self.config.server_url, &self.config.api_key, session_id)
             .await?;
         Ok(())
+    }
+
+    /// Wait until all chunks for the given session have been uploaded or failed.
+    /// Returns the count of successfully uploaded chunks.
+    pub async fn drain_session(&self, session_id: &str, timeout: Duration) -> Result<u32, ShipperError> {
+        let start = std::time::Instant::now();
+        let poll_interval = Duration::from_millis(250);
+
+        loop {
+            let pending = watcher::pending_for_session(&self.config.outbox_dir, session_id);
+            if pending == 0 {
+                break;
+            }
+            if start.elapsed() >= timeout {
+                warn!(session_id, pending, "drain_session timed out");
+                break;
+            }
+            tokio::time::sleep(poll_interval).await;
+        }
+
+        let count = self
+            .uploaded_counts
+            .lock()
+            .ok()
+            .and_then(|c| c.get(session_id).copied())
+            .unwrap_or(0);
+        Ok(count)
     }
 
     /// Stop the shipper.
@@ -523,6 +559,164 @@ mod tests {
         }
 
         assert_eq!(uploaded, vec![1, 2, 3], "Chunks must be uploaded in sequence order");
+        shipper.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn drain_session_immediate_when_no_pending() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = ShipperConfig {
+            server_url: "http://localhost".into(),
+            api_key: "key".into(),
+            outbox_dir: tmp.path().to_path_buf(),
+            max_retries: 3,
+            initial_backoff_ms: 1000,
+            max_backoff_ms: 60000,
+        };
+
+        let shipper = ChunkShipper::new(cfg).unwrap();
+        let start = std::time::Instant::now();
+        let result = shipper
+            .drain_session("nonexistent", Duration::from_secs(5))
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+        // Should return almost immediately (well under 1s)
+        assert!(start.elapsed() < Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn drain_session_times_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outbox = tmp.path();
+
+        // Create a file that will never be uploaded (shipper not started)
+        std::fs::write(outbox.join("sess_chunk_0001.wav"), b"RIFF data").unwrap();
+
+        let cfg = ShipperConfig {
+            server_url: "http://localhost".into(),
+            api_key: "key".into(),
+            outbox_dir: outbox.to_path_buf(),
+            max_retries: 3,
+            initial_backoff_ms: 1000,
+            max_backoff_ms: 60000,
+        };
+
+        let shipper = ChunkShipper::new(cfg).unwrap();
+        let start = std::time::Instant::now();
+        let result = shipper
+            .drain_session("sess", Duration::from_millis(600))
+            .await;
+        assert!(result.is_ok());
+        // Should have waited at least the timeout duration
+        assert!(start.elapsed() >= Duration::from_millis(600));
+        // But not too long
+        assert!(start.elapsed() < Duration::from_secs(3));
+    }
+
+    #[tokio::test]
+    async fn drain_session_waits_for_upload() {
+        use std::io::Write;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/audio/chunk"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let outbox = tmp.path().join("outbox");
+        std::fs::create_dir_all(&outbox).unwrap();
+
+        let cfg = ShipperConfig {
+            server_url: server.uri(),
+            api_key: "test-key".into(),
+            outbox_dir: outbox.clone(),
+            max_retries: 2,
+            initial_backoff_ms: 50,
+            max_backoff_ms: 200,
+        };
+
+        let mut shipper = ChunkShipper::new(cfg).unwrap();
+        let _events = shipper.start().await.unwrap();
+
+        // Wait for watcher to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Write a chunk
+        let p1 = outbox.join("drain-sess_chunk_0001.wav");
+        {
+            let mut f = std::fs::File::create(&p1).unwrap();
+            f.write_all(b"RIFF....WAVEfmt data").unwrap();
+        }
+
+        // Drain should wait for the upload to complete
+        let result = shipper
+            .drain_session("drain-sess", Duration::from_secs(15))
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+
+        // File should have been uploaded and deleted
+        assert!(!p1.exists());
+
+        shipper.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn drain_session_with_failed_chunk_not_blocked() {
+        use std::io::Write;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        // Always return 500 — chunk will fail
+        Mock::given(method("POST"))
+            .and(path("/audio/chunk"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("error"))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let outbox = tmp.path().join("outbox");
+        std::fs::create_dir_all(&outbox).unwrap();
+
+        let cfg = ShipperConfig {
+            server_url: server.uri(),
+            api_key: "test-key".into(),
+            outbox_dir: outbox.clone(),
+            max_retries: 0, // Fail immediately
+            initial_backoff_ms: 50,
+            max_backoff_ms: 100,
+        };
+
+        let mut shipper = ChunkShipper::new(cfg).unwrap();
+        let _events = shipper.start().await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let p1 = outbox.join("fail-sess_chunk_0001.wav");
+        {
+            let mut f = std::fs::File::create(&p1).unwrap();
+            f.write_all(b"RIFF....WAVEfmt data").unwrap();
+        }
+
+        // Drain should complete because failed chunks are moved to failed/
+        let result = shipper
+            .drain_session("fail-sess", Duration::from_secs(15))
+            .await;
+        assert!(result.is_ok());
+        // 0 uploaded (it failed)
+        assert_eq!(result.unwrap(), 0);
+
+        // File should be in failed/ dir
+        assert!(!p1.exists());
+        assert!(outbox.join("failed").join("fail-sess_chunk_0001.wav").exists());
+
         shipper.stop().await.unwrap();
     }
 }

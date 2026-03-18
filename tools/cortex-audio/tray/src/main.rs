@@ -121,11 +121,61 @@ impl ShipperBridge {
         })
     }
 
-    /// Send session-end to the server (blocking call on the tokio runtime).
-    fn send_session_end(&self, session_id: &str) {
+    /// Drain pending uploads for a session, then send session-end (async, fire-and-forget).
+    fn drain_and_end(&self, session_id: String, timeout: std::time::Duration) {
+        let cfg = self.shipper_config.clone();
+        self.runtime.spawn(async move {
+            let start = std::time::Instant::now();
+            let poll_interval = std::time::Duration::from_millis(250);
+
+            loop {
+                let pending = shipper::watcher::pending_for_session(&cfg.outbox_dir, &session_id);
+                if pending == 0 {
+                    break;
+                }
+                if start.elapsed() >= timeout {
+                    log::warn!("Drain timed out for {session_id} with {pending} pending chunks");
+                    break;
+                }
+                tokio::time::sleep(poll_interval).await;
+            }
+
+            let client = reqwest::Client::new();
+            match shipper::upload::send_session_end(
+                &client,
+                &cfg.server_url,
+                &cfg.api_key,
+                &session_id,
+            )
+            .await
+            {
+                Ok(()) => log::info!("Session-end sent for {session_id} after drain"),
+                Err(e) => log::error!("Failed to send session-end for {session_id}: {e}"),
+            }
+        });
+    }
+
+    /// Drain pending uploads then send session-end, blocking until complete.
+    /// Used for quit/shutdown paths where we must finish before exiting.
+    fn drain_and_end_blocking(&self, session_id: &str, timeout: std::time::Duration) {
         let cfg = self.shipper_config.clone();
         let sid = session_id.to_string();
-        self.runtime.spawn(async move {
+        self.runtime.block_on(async move {
+            let start = std::time::Instant::now();
+            let poll_interval = std::time::Duration::from_millis(250);
+
+            loop {
+                let pending = shipper::watcher::pending_for_session(&cfg.outbox_dir, &sid);
+                if pending == 0 {
+                    break;
+                }
+                if start.elapsed() >= timeout {
+                    log::warn!("Drain timed out for {sid} with {pending} pending chunks");
+                    break;
+                }
+                tokio::time::sleep(poll_interval).await;
+            }
+
             let client = reqwest::Client::new();
             match shipper::upload::send_session_end(
                 &client,
@@ -135,7 +185,7 @@ impl ShipperBridge {
             )
             .await
             {
-                Ok(()) => log::info!("Session-end sent for {sid}"),
+                Ok(()) => log::info!("Session-end sent for {sid} after drain (blocking)"),
                 Err(e) => log::error!("Failed to send session-end for {sid}: {e}"),
             }
         });
@@ -169,6 +219,10 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
         .target(env_logger::Target::Pipe(Box::new(tee)))
         .init();
+    let version = env!("CARGO_PKG_VERSION");
+    let build_ts = env!("BUILD_TIMESTAMP");
+    println!("cortex-audio v{version} (built {build_ts})");
+    log::info!("cortex-audio v{version} (built {build_ts})");
     log::info!("Log file: {}", log_path.display());
 
     // Load or create default config
@@ -248,16 +302,23 @@ fn main() {
             if event.id == start_id {
                 handle_start(&mut controller, &tray_icon, &mi_start, &mi_stop);
             } else if event.id == stop_id {
-                handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop, &shipper_bridge);
+                let sid = controller.session_id().map(|s| s.to_string());
+                handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop);
+                if let Some(sid) = sid {
+                    if let Some(ref bridge) = shipper_bridge {
+                        bridge.drain_and_end(sid, std::time::Duration::from_secs(30));
+                    }
+                }
             } else if event.id == quit_id {
-                // Clean shutdown: stop capture, send session-end, stop shipper
+                // Clean shutdown: stop capture, drain uploads, send session-end, stop shipper
                 if controller.state() == AppState::Capturing {
-                    if let Some(sid) = controller.session_id() {
+                    let sid = controller.session_id().map(|s| s.to_string());
+                    let _ = controller.stop();
+                    if let Some(sid) = sid {
                         if let Some(ref bridge) = shipper_bridge {
-                            bridge.send_session_end(sid);
+                            bridge.drain_and_end_blocking(&sid, std::time::Duration::from_secs(5));
                         }
                     }
-                    let _ = controller.stop();
                 }
                 // Shutdown shipper bridge
                 if let Some(bridge) = shipper_bridge.take() {
@@ -278,12 +339,14 @@ fn main() {
                     }
                     capture::CaptureEvent::SessionEnd { session_id, chunks } => {
                         log::info!("Session {session_id} ended — {chunks} chunks");
-                        // Send session-end to server
-                        if let Some(ref bridge) = shipper_bridge {
-                            bridge.send_session_end(&session_id);
+                        // Drain uploads then send session-end (skip if zero chunks)
+                        if chunks > 0 {
+                            if let Some(ref bridge) = shipper_bridge {
+                                bridge.drain_and_end(session_id, std::time::Duration::from_secs(30));
+                            }
                         }
                         // Engine stopped itself (e.g. silence timeout)
-                        handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop, &shipper_bridge);
+                        handle_stop(&mut controller, &tray_icon, &mi_start, &mi_stop);
                     }
                     capture::CaptureEvent::Error(msg) => {
                         log::error!("Capture error: {msg}");
@@ -344,15 +407,7 @@ fn handle_stop(
     tray_icon: &TrayIcon,
     mi_start: &MenuItem,
     mi_stop: &MenuItem,
-    shipper_bridge: &Option<ShipperBridge>,
 ) {
-    // Send session-end before stopping (so we have the session ID)
-    if let Some(sid) = controller.session_id() {
-        if let Some(ref bridge) = shipper_bridge {
-            bridge.send_session_end(sid);
-        }
-    }
-
     match controller.stop() {
         Ok(()) => {
             log::info!("Capture stopped");

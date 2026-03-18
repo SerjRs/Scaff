@@ -131,6 +131,19 @@ pub fn scan_existing_files(outbox: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// Count files in the outbox that belong to a given session (excluding failed/).
+/// Used by drain logic to check if uploads are still pending.
+pub fn pending_for_session(outbox_dir: &Path, session_id: &str) -> usize {
+    scan_existing_files(outbox_dir)
+        .iter()
+        .filter(|p| {
+            parse_chunk_filename(p)
+                .map(|(sid, _)| sid == session_id)
+                .unwrap_or(false)
+        })
+        .count()
+}
+
 /// Parse session_id and sequence from a chunk filename.
 /// Supported formats:
 ///   {session_id}_chunk-{seq:04}_{timestamp}.wav  (capture engine output)
@@ -258,6 +271,33 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let files = scan_existing_files(tmp.path());
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn pending_for_session_counts_matching_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outbox = tmp.path();
+
+        // Create files for two sessions
+        std::fs::write(outbox.join("sess-a_chunk_0001.wav"), b"RIFF").unwrap();
+        std::fs::write(outbox.join("sess-a_chunk_0002.wav"), b"RIFF").unwrap();
+        std::fs::write(outbox.join("sess-b_chunk_0001.wav"), b"RIFF").unwrap();
+
+        assert_eq!(pending_for_session(outbox, "sess-a"), 2);
+        assert_eq!(pending_for_session(outbox, "sess-b"), 1);
+        assert_eq!(pending_for_session(outbox, "sess-c"), 0);
+    }
+
+    #[test]
+    fn pending_for_session_excludes_failed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outbox = tmp.path();
+
+        std::fs::write(outbox.join("sess-a_chunk_0001.wav"), b"RIFF").unwrap();
+        std::fs::create_dir_all(outbox.join("failed")).unwrap();
+        std::fs::write(outbox.join("failed").join("sess-a_chunk_0002.wav"), b"RIFF").unwrap();
+
+        assert_eq!(pending_for_session(outbox, "sess-a"), 1);
     }
 
     #[tokio::test]
