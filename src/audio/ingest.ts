@@ -263,7 +263,7 @@ async function handleChunkUpload(
   // Extract fields
   const sessionIdField = fields.find((f) => f.name === "session_id");
   const sequenceField = fields.find((f) => f.name === "sequence");
-  const fileField = fields.find((f) => f.name === "file");
+  const fileField = fields.find((f) => f.name === "file" || f.name === "audio");
 
   if (!sessionIdField || !sequenceField || !fileField) {
     sendError(res, 400, "Missing required fields: session_id, sequence, file");
