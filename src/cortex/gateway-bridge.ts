@@ -491,6 +491,20 @@ export async function initGatewayCortex(params: {
           params.log.warn(`[library] Task detection error: ${libErr instanceof Error ? libErr.message : String(libErr)}`);
         }
 
+        // Update dispatch lifecycle
+        completeDispatch(instance.db, jobId,
+          job.status === "completed" ? "completed" : "failed",
+          job.result,
+          job.error,
+        );
+
+        // Null channel = system-initiated task (e.g. audio transcript ingestion).
+        // Library DB writes already happened above. Skip user notification + ops-trigger.
+        if (!dispatch?.channel) {
+          params.log.warn(`[cortex] Router result ingested (no-channel): job=${jobId} status=${job.status}`);
+          return;
+        }
+
         if (job.status === "completed") {
           const result = job.result ?? "Task completed.";
 
@@ -536,13 +550,6 @@ export async function initGatewayCortex(params: {
             issuer: cortexIssuer,
           });
         }
-
-        // Update dispatch lifecycle
-        completeDispatch(instance.db, jobId,
-          job.status === "completed" ? "completed" : "failed",
-          job.result,
-          job.error,
-        );
 
         // Send ops trigger to wake the Cortex loop — carry result inline so the loop
         // doesn't depend on the LLM finding it in session history.

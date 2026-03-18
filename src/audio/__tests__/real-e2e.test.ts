@@ -23,9 +23,6 @@ import { createGatewayAudioHandler } from "../ingest.js";
 import type { AudioCaptureConfig } from "../types.js";
 import { initAudioSessionTable, getSession } from "../session-store.js";
 import type { WorkerDeps } from "../worker.js";
-import type { IngestionDeps } from "../ingest-transcript.js";
-import { initGraphTables } from "../../cortex/hippocampus.js";
-import type { ExtractionResult } from "../../cortex/gardener.js";
 
 // ---------------------------------------------------------------------------
 // Environment — ensure PYTHONIOENCODING + ffmpeg are available
@@ -231,25 +228,6 @@ async function pollSessionStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Stub LLM for fact extraction
-// ---------------------------------------------------------------------------
-
-const stubExtractLLM = async (_prompt: string): Promise<string> => {
-  const result: ExtractionResult = {
-    facts: [
-      { id: "f1", text: "Meeting scheduled for Tuesday at 3 PM", type: "fact", confidence: "high" },
-      { id: "f2", text: "Action item: review quarterly report by Friday", type: "decision", confidence: "high" },
-      { id: "f3", text: "Quarterly report review is pending", type: "fact", confidence: "medium" },
-    ],
-    edges: [
-      { from: "f1", to: "f2", type: "related_to" },
-      { from: "f2", to: "f3", type: "resulted_in" },
-    ],
-  };
-  return JSON.stringify(result);
-};
-
-// ---------------------------------------------------------------------------
 // Test suite — real E2E pipeline
 // ---------------------------------------------------------------------------
 
@@ -258,8 +236,7 @@ describeIf("Real E2E pipeline (Whisper + Hippocampus)", () => {
   let baseUrl: string;
   let server: http.Server;
   let sessionDb: ReturnType<typeof requireNodeSqlite>["DatabaseSync"]["prototype"];
-  let libraryDb: ReturnType<typeof requireNodeSqlite>["DatabaseSync"]["prototype"];
-  let busDb: ReturnType<typeof requireNodeSqlite>["DatabaseSync"]["prototype"];
+  const ingestCalls: Array<{ prompt: string; sessionId: string }> = [];
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "real-e2e-"));
@@ -277,46 +254,12 @@ describeIf("Real E2E pipeline (Whisper + Hippocampus)", () => {
     sessionDb.exec("PRAGMA journal_mode = WAL");
     initAudioSessionTable(sessionDb);
 
-    // Library DB (in-memory with schema)
-    libraryDb = new DatabaseSync(":memory:");
-    libraryDb.exec("PRAGMA journal_mode = WAL");
-    libraryDb.exec(`
-      CREATE TABLE IF NOT EXISTS items (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        url             TEXT NOT NULL UNIQUE,
-        title           TEXT NOT NULL,
-        summary         TEXT NOT NULL,
-        key_concepts    TEXT NOT NULL,
-        full_text       TEXT,
-        tags            TEXT NOT NULL,
-        content_type    TEXT NOT NULL,
-        source_quality  TEXT DEFAULT 'medium',
-        partial         INTEGER DEFAULT 0,
-        status          TEXT DEFAULT 'active',
-        error           TEXT,
-        version         INTEGER DEFAULT 1,
-        ingested_at     TEXT NOT NULL,
-        created_at      TEXT DEFAULT (datetime('now')),
-        updated_at      TEXT DEFAULT (datetime('now'))
-      )
-    `);
-
-    // Hippocampus / Bus DB (in-memory)
-    busDb = new DatabaseSync(":memory:");
-    busDb.exec("PRAGMA journal_mode = WAL");
-    initGraphTables(busDb);
-
-    // Ingestion deps
-    const ingestionDeps: IngestionDeps = {
-      libraryDb,
-      busDb,
-      extractLLM: stubExtractLLM,
-    };
-
-    // Worker deps (session DB + ingestion)
+    // Worker deps (session DB + onIngest callback)
     const workerDeps: WorkerDeps = {
       sessionDb,
-      ingestion: ingestionDeps,
+      onIngest: async (prompt, sid) => {
+        ingestCalls.push({ prompt, sessionId: sid });
+      },
     };
 
     // Audio capture config
@@ -369,8 +312,6 @@ describeIf("Real E2E pipeline (Whisper + Hippocampus)", () => {
   afterAll(() => {
     server?.close();
     try { sessionDb?.close(); } catch { /* ignore */ }
-    try { libraryDb?.close(); } catch { /* ignore */ }
-    try { busDb?.close(); } catch { /* ignore */ }
     if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -444,24 +385,11 @@ describeIf("Real E2E pipeline (Whisper + Hippocampus)", () => {
     const processed = fs.readdirSync(processedDir).filter((f) => f.endsWith(".wav"));
     expect(processed.length).toBeGreaterThan(0);
 
-    // Library article exists
-    const item = libraryDb
-      .prepare("SELECT title FROM items WHERE url = ?")
-      .get(`audio-capture://${sessionId}`) as { title: string } | undefined;
-    expect(item).toBeDefined();
-    expect(item!.title).toMatch(/Meeting Transcript/);
-
-    // Hippocampus facts exist
-    const factCount = (
-      busDb.prepare("SELECT COUNT(*) as cnt FROM hippocampus_facts").get() as { cnt: number }
-    ).cnt;
-    expect(factCount).toBeGreaterThan(0);
-
-    // Hippocampus edges exist (sourced_from + inter-fact)
-    const edgeCount = (
-      busDb.prepare("SELECT COUNT(*) as cnt FROM hippocampus_edges").get() as { cnt: number }
-    ).cnt;
-    expect(edgeCount).toBeGreaterThan(0);
+    // onIngest callback was called with Librarian prompt
+    const call = ingestCalls.find((c) => c.sessionId === sessionId);
+    expect(call).toBeDefined();
+    expect(call!.prompt).toContain(`audio-capture://${sessionId}`);
+    expect(call!.prompt).toContain("Librarian");
   }, 300_000);
 
   // -------------------------------------------------------------------------

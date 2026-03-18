@@ -13,9 +13,8 @@ import { requireNodeSqlite } from "../memory/sqlite.js";
 import { loadAudioCaptureConfig, createGatewayAudioHandler } from "../audio/ingest.js";
 import { initAudioSessionTable } from "../audio/session-store.js";
 import type { AudioCaptureConfig } from "../audio/types.js";
-import type { IngestionDeps } from "../audio/ingest-transcript.js";
 import type { WorkerDeps } from "../audio/worker.js";
-import { complete } from "../llm/simple-complete.js";
+import crypto from "node:crypto";
 
 export interface AudioCaptureHandle {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
@@ -37,7 +36,6 @@ export interface AudioCaptureHandle {
 export function initGatewayAudioCapture(opts: {
   audioCaptureConfig?: Partial<AudioCaptureConfig>;
   stateDir: string;
-  ingestionDeps?: Omit<IngestionDeps, "extractLLM">;
   log: { info: (msg: string) => void; warn: (msg: string) => void };
 }): AudioCaptureHandle | null {
   const config = loadAudioCaptureConfig(opts.audioCaptureConfig);
@@ -70,22 +68,51 @@ export function initGatewayAudioCapture(opts: {
     fs.mkdirSync(path.join(dataDir, sub), { recursive: true });
   }
 
-  // Build worker deps (optional — only if ingestion DBs are available)
-  let workerDeps: WorkerDeps | undefined;
-  if (opts.ingestionDeps) {
-    const extractLLM = async (prompt: string): Promise<string> => {
-      return complete(prompt, { model: "claude-haiku-4-5" });
-    };
-    workerDeps = {
-      sessionDb: db,
-      ingestion: {
-        ...opts.ingestionDeps,
-        extractLLM,
-      },
-    };
-  } else {
-    workerDeps = { sessionDb: db };
-  }
+  // Build worker deps with lazy Librarian ingestion via Router
+  // Cortex and Router are initialized after audio — resolve at call time via singletons
+  const workerDeps: WorkerDeps = {
+    sessionDb: db,
+    onIngest: (librarianPrompt: string, sessionId: string) => {
+      try {
+        // Lazy-import singletons — Cortex + Router may not be ready at init time
+        const { getGatewayCortex } = require("../cortex/gateway-bridge.js");
+        const { getGatewayRouter } = require("../router/gateway-integration.js");
+        const { storeDispatch } = require("../cortex/session.js");
+        const { storeLibraryTaskMeta } = require("../library/db.js");
+        const { getCortexSessionKey } = require("../cortex/session.js");
+
+        const cortex = getGatewayCortex();
+        const router = getGatewayRouter();
+        if (!cortex?.instance?.db || !router) {
+          opts.log.warn(`[audio] Librarian ingestion skipped for session ${sessionId} — Cortex or Router not available`);
+          return;
+        }
+
+        const cortexDb = cortex.instance.db;
+        const taskId = crypto.randomUUID();
+        const url = `audio-capture://${sessionId}`;
+
+        // Store dispatch context with null channel (no user conversation to notify)
+        storeDispatch(cortexDb, {
+          taskId,
+          channel: null,
+          taskSummary: librarianPrompt.slice(0, 200),
+          priority: "normal",
+        });
+
+        // Link taskId to URL so gateway-bridge knows this is a Library task
+        storeLibraryTaskMeta(cortexDb, taskId, url);
+
+        // Spawn executor via Router (same pattern as gateway-bridge onSpawn)
+        const issuer = getCortexSessionKey("main");
+        const jobId = router.enqueue("agent_run", { message: librarianPrompt, context: JSON.stringify({ source: "audio-capture" }) }, issuer, taskId);
+
+        opts.log.info(`[audio] Librarian ingestion spawned: taskId=${taskId}, jobId=${jobId}, session=${sessionId}`);
+      } catch (err) {
+        opts.log.warn(`[audio] Librarian ingestion failed for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  };
 
   const handler = createGatewayAudioHandler({
     db,

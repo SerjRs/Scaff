@@ -104,7 +104,7 @@ export interface SessionMessage {
 /** Task dispatch context stored by Cortex at spawn time */
 export interface TaskDispatch {
   taskId: string;
-  channel: string;
+  channel: string | null;
   channelContext: Record<string, unknown> | null;
   counterpartId: string | null;
   counterpartName: string | null;
@@ -357,7 +357,7 @@ export function getChannelStates(db: DatabaseSync): ChannelState[] {
 /** Record dispatch context when Cortex spawns a task. */
 export function storeDispatch(db: DatabaseSync, params: {
   taskId: string;
-  channel: string;
+  channel: string | null;
   channelContext?: Record<string, unknown> | null;
   counterpartId?: string | null;
   counterpartName?: string | null;

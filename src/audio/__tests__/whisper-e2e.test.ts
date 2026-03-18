@@ -20,10 +20,6 @@ import { splitStereoToMono } from "../wav-utils.js";
 import { initAudioSessionTable, upsertSession, getSession } from "../session-store.js";
 import { transcribeSession } from "../worker.js";
 import type { WorkerConfig, WorkerDeps } from "../worker.js";
-import { initGraphTables, insertFact, insertEdge } from "../../cortex/hippocampus.js";
-import { insertItem } from "../../library/db.js";
-import type { IngestionDeps } from "../ingest-transcript.js";
-import type { ExtractionResult } from "../../cortex/gardener.js";
 
 // ---------------------------------------------------------------------------
 // Environment — ensure PYTHONIOENCODING + ffmpeg are available
@@ -208,7 +204,7 @@ describeIf("Whisper E2E (real binary)", () => {
     }
   }, 120_000);
 
-  it("full pipeline with ingestion into Hippocampus", async () => {
+  it("full pipeline calls onIngest with Librarian prompt", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-e2e-4-"));
     const dataDir = path.join(tmpDir, "data", "audio");
     const sessionId = "e2e-ingest-" + Date.now();
@@ -225,55 +221,12 @@ describeIf("Whisper E2E (real binary)", () => {
     initAudioSessionTable(sessionDb);
     upsertSession(sessionDb, sessionId);
 
-    // Library DB (in-memory with required schema)
-    const libraryDb = new DatabaseSync(":memory:");
-    libraryDb.exec("PRAGMA journal_mode = WAL");
-    libraryDb.exec(`
-      CREATE TABLE IF NOT EXISTS items (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        url             TEXT NOT NULL UNIQUE,
-        title           TEXT NOT NULL,
-        summary         TEXT NOT NULL,
-        key_concepts    TEXT NOT NULL,
-        full_text       TEXT,
-        tags            TEXT NOT NULL,
-        content_type    TEXT NOT NULL,
-        source_quality  TEXT DEFAULT 'medium',
-        partial         INTEGER DEFAULT 0,
-        status          TEXT DEFAULT 'active',
-        error           TEXT,
-        version         INTEGER DEFAULT 1,
-        ingested_at     TEXT NOT NULL,
-        created_at      TEXT DEFAULT (datetime('now')),
-        updated_at      TEXT DEFAULT (datetime('now'))
-      )
-    `);
-
-    // Hippocampus / Bus DB (in-memory)
-    const busDb = new DatabaseSync(":memory:");
-    busDb.exec("PRAGMA journal_mode = WAL");
-    initGraphTables(busDb);
-
-    // Stub LLM for fact extraction — returns hardcoded facts
-    const stubExtractLLM = async (_prompt: string): Promise<string> => {
-      const result: ExtractionResult = {
-        facts: [
-          { id: "f1", text: "Meeting scheduled for Tuesday at 3 PM", type: "fact", confidence: "high" },
-          { id: "f2", text: "Action item: review quarterly report by Friday", type: "decision", confidence: "high" },
-          { id: "f3", text: "Quarterly report review is pending", type: "fact", confidence: "medium" },
-        ],
-        edges: [
-          { from: "f1", to: "f2", type: "related_to" },
-          { from: "f2", to: "f3", type: "resulted_in" },
-        ],
-      };
-      return JSON.stringify(result);
-    };
-
-    const ingestionDeps: IngestionDeps = {
-      libraryDb,
-      busDb,
-      extractLLM: stubExtractLLM,
+    // Track onIngest calls
+    let ingestPrompt = "";
+    let ingestSessionId = "";
+    const onIngest = async (prompt: string, sid: string) => {
+      ingestPrompt = prompt;
+      ingestSessionId = sid;
     };
 
     const workerConfig: WorkerConfig = {
@@ -283,30 +236,17 @@ describeIf("Whisper E2E (real binary)", () => {
 
     const deps: WorkerDeps = {
       sessionDb,
-      ingestion: ingestionDeps,
+      onIngest,
     };
 
     try {
       const result = await transcribeSession(sessionId, workerConfig, deps);
 
-      // Verify ingestion happened
-      expect(result.ingestion).toBeDefined();
-      expect(result.ingestion!.libraryItemId).toBeGreaterThan(0);
-      expect(result.ingestion!.factsInserted).toBeGreaterThan(0);
-      expect(result.ingestion!.edgesInserted).toBeGreaterThan(0);
-
-      // Verify library article title
-      const item = libraryDb.prepare("SELECT title FROM items WHERE id = ?").get(result.ingestion!.libraryItemId) as { title: string } | undefined;
-      expect(item).toBeDefined();
-      expect(item!.title).toMatch(/Meeting Transcript/);
-
-      // Verify facts in hippocampus
-      const factCount = (busDb.prepare("SELECT COUNT(*) as cnt FROM hippocampus_facts").get() as { cnt: number }).cnt;
-      expect(factCount).toBeGreaterThan(0);
-
-      // Verify edges
-      const edgeCount = (busDb.prepare("SELECT COUNT(*) as cnt FROM hippocampus_edges").get() as { cnt: number }).cnt;
-      expect(edgeCount).toBeGreaterThan(0);
+      // Verify onIngest was called with correct params
+      expect(ingestSessionId).toBe(sessionId);
+      expect(ingestPrompt).toContain(`audio-capture://${sessionId}`);
+      expect(ingestPrompt).toContain("Librarian");
+      expect(result.transcript.fullText.length).toBeGreaterThan(0);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

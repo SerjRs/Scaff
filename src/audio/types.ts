@@ -82,3 +82,22 @@ export const DEFAULT_AUDIO_CONFIG: AudioConfig = {
   dataDir: "data/audio",
   port: 9500,
 };
+
+// ---------------------------------------------------------------------------
+// Transcript
+// ---------------------------------------------------------------------------
+
+export interface Transcript {
+  sessionId: string;
+  startedAt: string;
+  endedAt?: string;
+  durationMinutes: number;
+  language: string;
+  segments: Array<{
+    speaker: "user" | "others";
+    start: number;
+    end: number;
+    text: string;
+  }>;
+  fullText: string;
+}

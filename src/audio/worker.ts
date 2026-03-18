@@ -14,9 +14,8 @@ import { updateSessionStatus, getSession } from "./session-store.js";
 import { concatenateWavFiles, splitStereoToMono } from "./wav-utils.js";
 import { runWhisper, mergeSegments, buildFullText } from "./transcribe.js";
 import type { TranscriptSegment, WhisperConfig } from "./transcribe.js";
-import { ingestTranscript } from "./ingest-transcript.js";
-import type { Transcript } from "./ingest-transcript.js";
-import type { IngestionDeps, IngestionResult } from "./ingest-transcript.js";
+import type { Transcript } from "./types.js";
+import { buildLibrarianPrompt } from "../library/librarian-prompt.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,14 +29,13 @@ export interface WorkerConfig {
 export interface WorkerDeps {
   /** Audio session database. */
   sessionDb: DatabaseSync;
-  /** Ingestion dependencies (Library + Hippocampus DBs, optional LLM). */
-  ingestion?: IngestionDeps;
+  /** Called after transcription to trigger Librarian ingestion via Router. */
+  onIngest?: (librarianPrompt: string, sessionId: string) => void | Promise<void>;
 }
 
 export interface WorkerResult {
   sessionId: string;
   transcript: Transcript;
-  ingestion?: IngestionResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,13 +146,18 @@ export async function transcribeSession(
     // 9. Update session status
     updateSessionStatus(deps.sessionDb, sessionId, "done");
 
-    // 10. Trigger ingestion (optional)
-    let ingestionResult: IngestionResult | undefined;
-    if (deps.ingestion) {
-      ingestionResult = await ingestTranscript(transcript, deps.ingestion);
+    // 10. Trigger Librarian ingestion (optional)
+    if (transcript.fullText && deps.onIngest) {
+      const MAX_TRANSCRIPT_CHARS = 50_000;
+      let text = transcript.fullText;
+      if (text.length > MAX_TRANSCRIPT_CHARS) {
+        text = text.slice(0, MAX_TRANSCRIPT_CHARS) + "\n\n[TRUNCATED]";
+      }
+      const prompt = buildLibrarianPrompt(`audio-capture://${sessionId}`, text);
+      await deps.onIngest(prompt, sessionId);
     }
 
-    return { sessionId, transcript, ingestion: ingestionResult };
+    return { sessionId, transcript };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     updateSessionStatus(deps.sessionDb, sessionId, "failed", { error: message });

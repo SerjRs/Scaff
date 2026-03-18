@@ -12,11 +12,19 @@
  * Build the Librarian executor prompt for a given URL and its content.
  */
 export function buildLibrarianPrompt(url: string, content: string): string {
+  const isTranscript = url.startsWith("audio-capture://");
+
+  const contentTypeGuide = isTranscript
+    ? `If the URL starts with "audio-capture://", this is a meeting transcript.
+Focus on: action items and decisions made, key quotes and statements, participants mentioned,
+deadlines and commitments. Use content_type: "transcript".`
+    : "";
+
   return `You are a Librarian. Your job is to read, understand, and catalog knowledge.
 
 You have been given content from this URL:
 ${url}
-
+${contentTypeGuide ? `\n${contentTypeGuide}\n` : ""}
 CONTENT:
 ${content}
 
@@ -28,7 +36,7 @@ Output ONLY valid JSON, no markdown, no explanation:
   "summary": "200-500 word summary capturing key ideas — what matters, not surface description. Focus on insights, findings, and actionable knowledge.",
   "key_concepts": ["atomic statement 1", "atomic statement 2", ...],
   "tags": ["kebab-case-tag-1", "kebab-case-tag-2", ...],
-  "content_type": "article|documentation|tutorial|research|tool|discussion",
+  "content_type": "article|documentation|tutorial|research|tool|discussion|transcript",
   "source_quality": "high|medium|low",
   "full_text": "raw article content (see rules)",
   "facts": [
