@@ -13,6 +13,17 @@ import path from "node:path";
 import os from "node:os";
 
 // ---------------------------------------------------------------------------
+// Ensure ffmpeg is on PATH for Whisper (WinGet install location)
+// ---------------------------------------------------------------------------
+const FFMPEG_DIR = path.join(
+  os.homedir(),
+  "AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe/ffmpeg-8.1-full_build/bin",
+);
+if (fs.existsSync(FFMPEG_DIR) && !process.env.PATH?.includes(FFMPEG_DIR)) {
+  process.env.PATH = `${FFMPEG_DIR}${path.delimiter}${process.env.PATH}`;
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -154,7 +165,7 @@ export function buildFullText(segments: TranscriptSegment[]): string {
 
 function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(cmd, args, { maxBuffer: 50 * 1024 * 1024, env: { ...process.env, PYTHONIOENCODING: "utf-8" } }, (err, stdout, stderr) => {
       if (err) {
         reject(new Error(`Whisper failed: ${err.message}\nstderr: ${stderr}`));
       } else {
