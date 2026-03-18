@@ -1,5 +1,5 @@
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -36,7 +36,15 @@ impl OutboxWatcher {
         let outbox = outbox_dir.to_path_buf();
         tokio::spawn(async move {
             let mut pending: HashMap<PathBuf, (u64, Instant)> = HashMap::new();
+            let mut sent: HashSet<PathBuf> = HashSet::new();
             let mut check_interval = tokio::time::interval(std::time::Duration::from_millis(500));
+
+            // Scan for pre-existing files before entering event loop
+            let existing = scan_existing_files(&outbox);
+            for p in existing {
+                let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+                pending.insert(p, (size, Instant::now()));
+            }
 
             loop {
                 tokio::select! {
@@ -46,7 +54,7 @@ impl OutboxWatcher {
                             match evt.kind {
                                 EventKind::Create(_) | EventKind::Modify(_) => {
                                     for p in &evt.paths {
-                                        if is_wav(p) && !is_in_failed_dir(p, &outbox) {
+                                        if is_wav(p) && !is_in_failed_dir(p, &outbox) && !sent.contains(p) {
                                             let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
                                             pending.insert(p.clone(), (size, Instant::now()));
                                         }
@@ -75,7 +83,8 @@ impl OutboxWatcher {
 
                         for path in &ready {
                             pending.remove(path);
-                            if path.exists() {
+                            if path.exists() && !sent.contains(path) {
+                                sent.insert(path.clone());
                                 let _ = tx.send(path.clone()).await;
                             }
                         }
@@ -104,6 +113,22 @@ fn is_wav(p: &Path) -> bool {
 
 fn is_in_failed_dir(p: &Path, outbox: &Path) -> bool {
     p.starts_with(outbox.join("failed"))
+}
+
+/// Scan the outbox directory for existing `.wav` files, excluding `failed/`.
+/// Returns sorted paths (ensures chunk ordering).
+pub fn scan_existing_files(outbox: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(outbox) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if is_wav(&path) && !is_in_failed_dir(&path, outbox) {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
 }
 
 /// Parse session_id and sequence from a chunk filename.
@@ -201,6 +226,38 @@ mod tests {
             Path::new("/tmp/outbox/chunk.wav"),
             outbox
         ));
+    }
+
+    #[test]
+    fn scan_existing_files_finds_wavs_sorted_excludes_failed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outbox = tmp.path();
+
+        // Create wav files (out of alphabetical order)
+        let mut f1 = std::fs::File::create(outbox.join("b_chunk_0002.wav")).unwrap();
+        f1.write_all(b"RIFF").unwrap();
+        let mut f2 = std::fs::File::create(outbox.join("a_chunk_0001.wav")).unwrap();
+        f2.write_all(b"RIFF").unwrap();
+
+        // Non-wav file (should be excluded)
+        std::fs::File::create(outbox.join("readme.txt")).unwrap();
+
+        // Failed dir with a wav (should be excluded)
+        std::fs::create_dir_all(outbox.join("failed")).unwrap();
+        let mut f3 = std::fs::File::create(outbox.join("failed").join("bad_chunk_0001.wav")).unwrap();
+        f3.write_all(b"RIFF").unwrap();
+
+        let files = scan_existing_files(outbox);
+        assert_eq!(files.len(), 2);
+        assert!(files[0].to_string_lossy().contains("a_chunk_0001.wav"));
+        assert!(files[1].to_string_lossy().contains("b_chunk_0002.wav"));
+    }
+
+    #[test]
+    fn scan_existing_files_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files = scan_existing_files(tmp.path());
+        assert!(files.is_empty());
     }
 
     #[tokio::test]

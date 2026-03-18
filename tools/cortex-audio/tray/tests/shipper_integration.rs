@@ -4,6 +4,7 @@
 //! chunks to a mock server via wiremock.
 
 use shipper::{ChunkShipper, ShipperConfig, ShipperEvent};
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 use wiremock::matchers::{method, path};
@@ -180,6 +181,86 @@ fn capture_engine_filenames_parseable_by_shipper() {
         assert_eq!(sid, session_id);
         assert_eq!(s, seq);
     }
+}
+
+#[tokio::test]
+async fn pre_existing_chunk_uploaded_on_startup() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let outbox = tmp.path().join("outbox");
+    std::fs::create_dir_all(&outbox).unwrap();
+
+    // Write chunk BEFORE starting shipper
+    write_fake_wav(&outbox, "pre-session_chunk_0001.wav");
+
+    let cfg = test_shipper_config(&server.uri(), outbox.clone());
+    let mut shipper = ChunkShipper::new(cfg).unwrap();
+    let mut events = shipper.start().await.unwrap();
+
+    // Should detect and upload the pre-existing chunk
+    let deadline = std::time::Duration::from_secs(10);
+    match tokio::time::timeout(deadline, events.recv()).await {
+        Ok(Some(ShipperEvent::ChunkUploaded { sequence, .. })) => {
+            assert_eq!(sequence, 1);
+        }
+        other => panic!("Expected ChunkUploaded for pre-existing chunk, got {:?}", other),
+    }
+
+    shipper.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn pre_existing_and_new_chunks_both_uploaded_no_duplicates() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let outbox = tmp.path().join("outbox");
+    std::fs::create_dir_all(&outbox).unwrap();
+
+    // Write chunk 1 BEFORE starting shipper
+    write_fake_wav(&outbox, "dedup-session_chunk_0001.wav");
+
+    let cfg = test_shipper_config(&server.uri(), outbox.clone());
+    let mut shipper = ChunkShipper::new(cfg).unwrap();
+    let mut events = shipper.start().await.unwrap();
+
+    // Wait for watcher to be ready, then write chunk 2
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    write_fake_wav(&outbox, "dedup-session_chunk_0002.wav");
+
+    // Collect upload events
+    let mut uploaded = Vec::new();
+    let deadline = std::time::Duration::from_secs(10);
+    while uploaded.len() < 2 {
+        match tokio::time::timeout(deadline, events.recv()).await {
+            Ok(Some(ShipperEvent::ChunkUploaded { sequence, .. })) => {
+                uploaded.push(sequence);
+            }
+            _ => break,
+        }
+    }
+
+    assert_eq!(uploaded, vec![1, 2], "Both pre-existing and new chunks should be uploaded in order");
+
+    // Verify no duplicates — wiremock expect(2) enforces exactly 2 calls
+    // Also check sequences are unique
+    let unique: HashSet<u32> = uploaded.iter().cloned().collect();
+    assert_eq!(unique.len(), uploaded.len(), "No duplicate uploads");
+
+    shipper.stop().await.unwrap();
 }
 
 #[tokio::test]
