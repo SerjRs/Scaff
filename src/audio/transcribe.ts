@@ -69,6 +69,8 @@ export interface WhisperConfig {
   whisperModel: string;
   language: string;
   threads: number;
+  /** Optional timeout in milliseconds for the Whisper process. */
+  timeoutMs?: number;
 }
 
 export const DEFAULT_WHISPER_CONFIG: WhisperConfig = {
@@ -107,18 +109,23 @@ export async function runWhisper(
       "--output_dir", outputDir,
     ];
 
-    await execFileAsync(config.whisperBinary, args);
+    await execFileAsync(config.whisperBinary, args, config.timeoutMs);
 
     // Whisper outputs {basename}.json in the output dir
     const basename = path.basename(wavPath, path.extname(wavPath));
     const jsonPath = path.join(outputDir, `${basename}.json`);
 
     if (!fs.existsSync(jsonPath)) {
-      throw new Error(`Whisper output not found at ${jsonPath}`);
+      throw new Error(`Whisper output not found at ${jsonPath} — the process may have crashed before producing output`);
     }
 
     const raw = fs.readFileSync(jsonPath, "utf-8");
-    const whisperOutput = JSON.parse(raw) as WhisperOutput;
+    let whisperOutput: WhisperOutput;
+    try {
+      whisperOutput = JSON.parse(raw) as WhisperOutput;
+    } catch (parseErr) {
+      throw new Error(`Whisper output is not valid JSON at ${jsonPath}: ${(parseErr as Error).message}`);
+    }
 
     return whisperOutput.segments.map((seg) => ({
       speaker,
@@ -172,11 +179,29 @@ export function buildFullText(segments: TranscriptSegment[]): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+function execFileAsync(cmd: string, args: string[], timeoutMs?: number): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { maxBuffer: 50 * 1024 * 1024, env: { ...process.env, PYTHONIOENCODING: "utf-8" } }, (err, stdout, stderr) => {
+    execFile(cmd, args, {
+      maxBuffer: 50 * 1024 * 1024,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+      ...(timeoutMs ? { timeout: timeoutMs } : {}),
+    }, (err, stdout, stderr) => {
       if (err) {
-        reject(new Error(`Whisper failed: ${err.message}\nstderr: ${stderr}`));
+        // Provide clear, actionable error messages for common failure modes
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") {
+          reject(new Error(`Whisper binary not found: "${cmd}" is not installed or not on PATH`));
+        } else if ((err as any).killed && (err as any).signal === "SIGTERM") {
+          reject(new Error(`Whisper timed out after ${timeoutMs}ms`));
+        } else {
+          // Detect common sub-dependency failures in stderr
+          const combined = `${err.message} ${stderr}`;
+          if (combined.includes("ffmpeg") && (combined.includes("not found") || combined.includes("FileNotFoundError") || combined.includes("No such file"))) {
+            reject(new Error(`ffmpeg not found — Whisper requires ffmpeg to be installed and on PATH\nstderr: ${stderr}`));
+          } else {
+            reject(new Error(`Whisper process failed (exit code ${(err as any).code ?? "unknown"}): ${err.message}${stderr ? `\nstderr: ${stderr}` : ""}`));
+          }
+        }
       } else {
         resolve({ stdout, stderr });
       }
