@@ -1,6 +1,6 @@
 [package]
 name = "cortex-audio-tray"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "System tray UI for CortexAudio capture engine"
 
@@ -22,6 +22,9 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "6"
 log = "0.4"
 env_logger = "0.11"
+
+[build-dependencies]
+chrono = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
