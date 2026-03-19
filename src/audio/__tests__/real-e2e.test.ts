@@ -24,10 +24,13 @@ import { fileURLToPath } from "node:url";
 // Production imports — importing ingest.js triggers transcribe.ts PATH setup
 import { initGatewayAudioCapture } from "../../gateway/server-audio.js";
 import type { AudioCaptureHandle } from "../../gateway/server-audio.js";
+import { _setGatewayCortexForTest } from "../../cortex/gateway-bridge.js";
+import { initSessionTables } from "../../cortex/session.js";
 import { createGatewayAudioHandler } from "../ingest.js";
 import { initAudioSessionTable, getSession } from "../session-store.js";
 import { requireNodeSqlite } from "../../memory/sqlite.js";
 import type { WorkerDeps } from "../worker.js";
+import type { DatabaseSync } from "node:sqlite";
 
 // ---------------------------------------------------------------------------
 // Skip guard — CI fails loudly, local skips gracefully
@@ -244,9 +247,27 @@ describeIf("Server-side E2E pipeline (initGatewayAudioCapture → Whisper → tr
   let baseUrl: string;
   let server: http.Server;
   let audioHandle: AudioCaptureHandle;
+  let cortexDb: DatabaseSync;
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "server-e2e-032-"));
+
+    // --- Minimal Cortex/Router singletons for real onIngest ---
+    const { DatabaseSync: DBSync } = requireNodeSqlite();
+    cortexDb = new DBSync(path.join(tmpDir, "bus.sqlite"));
+    cortexDb.exec("PRAGMA journal_mode = WAL");
+    initSessionTables(cortexDb);
+
+    _setGatewayCortexForTest({
+      instance: { db: cortexDb } as any,
+      shadowHook: null,
+      config: {} as any,
+      getChannelMode: () => "off",
+    });
+
+    (globalThis as any).__openclaw_router_instance__ = {
+      enqueue: () => crypto.randomUUID(),
+    };
 
     // Use initGatewayAudioCapture — the REAL production init path.
     // This is the function called in server.impl.ts. Bug #5 lived here.
@@ -299,6 +320,9 @@ describeIf("Server-side E2E pipeline (initGatewayAudioCapture → Whisper → tr
   afterAll(() => {
     server?.close();
     audioHandle?.close();
+    try { cortexDb?.close(); } catch { /* */ }
+    _setGatewayCortexForTest(null);
+    delete (globalThis as any).__openclaw_router_instance__;
     if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

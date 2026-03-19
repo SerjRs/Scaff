@@ -73,30 +73,29 @@ export function initGatewayAudioCapture(opts: {
   // Cortex and Router are initialized after audio — resolve at call time via singletons
   const workerDeps: WorkerDeps = {
     sessionDb: db,
-    onIngest: (librarianPrompt: string, sessionId: string) => {
+    onIngest: async (librarianPrompt: string, sessionId: string) => {
       try {
-        // Lazy-import singletons — Cortex + Router may not be ready at init time
-        const { getGatewayCortex } = require("../cortex/gateway-bridge.js");
-        const { getGatewayRouter } = require("../router/gateway-integration.js");
-        const { storeDispatch } = require("../cortex/session.js");
-        const { storeLibraryTaskMeta } = require("../library/db.js");
-        const { getCortexSessionKey } = require("../cortex/session.js");
+        // Dynamic import singletons — Cortex + Router may not be ready at init time
+        const { getGatewayCortex } = await import("../cortex/gateway-bridge.js");
+        const { getGatewayRouter } = await import("../router/gateway-integration.js");
+        const { storeDispatch, getCortexSessionKey } = await import("../cortex/session.js");
+        const { storeLibraryTaskMeta } = await import("../library/db.js");
 
         const cortex = getGatewayCortex();
         const router = getGatewayRouter();
         if (!cortex?.instance?.db || !router) {
           opts.log.warn(`[audio] Librarian ingestion skipped for session ${sessionId} — Cortex or Router not available`);
-          return;
+          throw new Error(`Cortex or Router not available for session ${sessionId}`);
         }
 
         const cortexDb = cortex.instance.db;
         const taskId = crypto.randomUUID();
         const url = `audio-capture://${sessionId}`;
 
-        // Store dispatch context with null channel (no user conversation to notify)
+        // Store dispatch context with "system" channel (no user conversation to notify)
         storeDispatch(cortexDb, {
           taskId,
-          channel: null,
+          channel: "system",
           taskSummary: librarianPrompt.slice(0, 200),
           priority: "normal",
         });
@@ -111,6 +110,7 @@ export function initGatewayAudioCapture(opts: {
         opts.log.info(`[audio] Librarian ingestion spawned: taskId=${taskId}, jobId=${jobId}, session=${sessionId}`);
       } catch (err) {
         opts.log.warn(`[audio] Librarian ingestion failed for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
       }
     },
   };

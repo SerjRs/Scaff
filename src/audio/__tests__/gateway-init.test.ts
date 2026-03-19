@@ -258,7 +258,7 @@ describe("initGatewayAudioCapture", () => {
   });
 
   // Test 6 — THE critical test: bug #5 was that onIngest was never wired
-  it("workerDeps includes onIngest callback", () => {
+  it("workerDeps includes onIngest callback", async () => {
     const { handle, log } = initWithDefaults();
     expect(handle).not.toBeNull();
 
@@ -267,13 +267,15 @@ describe("initGatewayAudioCapture", () => {
     expect(handle!.workerDeps.sessionDb).toBe(handle!.db);
     expect(typeof handle!.workerDeps.onIngest).toBe("function");
 
-    // Calling onIngest should not crash — lazy Cortex/Router imports will fail
-    // in test context, but the try/catch in server-audio.ts handles it gracefully
-    handle!.workerDeps.onIngest!("test prompt", "test-session-id");
+    // Calling onIngest without Cortex/Router singletons should throw —
+    // ingestion failure must be visible, not silently swallowed
+    await expect(
+      handle!.workerDeps.onIngest!("test prompt", "test-session-id"),
+    ).rejects.toThrow();
 
-    // Verify graceful failure (warning logged, no crash)
+    // Warning is still logged before the throw
     expect(log.messages.some((m) => m.includes("[warn]") && m.includes("Librarian ingestion"))).toBe(true);
-  });
+  }, 15_000);
 
   // Test 7
   it("handler accepts chunk upload via real HTTP", async () => {

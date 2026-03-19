@@ -1,6 +1,9 @@
 /**
- * Canary test — single WAV chunk → Whisper → transcript → onIngest.
- * Fast smoke test for the entire audio pipeline glue. Target: <15s.
+ * Canary test — single WAV chunk → Whisper → transcript → real onIngest → DB side effects.
+ *
+ * Exercises the REAL production onIngest from initGatewayAudioCapture(), NOT a spy.
+ * Verifies DB-level side effects: cortex_task_dispatch row + library_pending_tasks row.
+ * Target: <20s.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -12,10 +15,11 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-import { createGatewayAudioHandler } from "../ingest.js";
-import { initAudioSessionTable } from "../session-store.js";
+import { initGatewayAudioCapture, type AudioCaptureHandle } from "../../gateway/server-audio.js";
+import { _setGatewayCortexForTest } from "../../cortex/gateway-bridge.js";
+import { initSessionTables } from "../../cortex/session.js";
 import { requireNodeSqlite } from "../../memory/sqlite.js";
-import type { WorkerDeps } from "../worker.js";
+import type { DatabaseSync } from "node:sqlite";
 
 // -- Skip guard ---------------------------------------------------------------
 
@@ -82,40 +86,62 @@ describeIf("Audio pipeline canary", () => {
   let tmpDir: string;
   let baseUrl: string;
   let server: http.Server;
-  let sessionDb: InstanceType<ReturnType<typeof requireNodeSqlite>["DatabaseSync"]>;
-  const ingestCalls: Array<{ prompt: string; sessionId: string }> = [];
+  let audioHandle: AudioCaptureHandle;
+  let cortexDb: DatabaseSync;
+  const enqueuedJobs: Array<{ type: string; payload: any; issuer: string; taskId: string }> = [];
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "canary-audio-"));
     const dataDir = path.join(tmpDir, "audio");
-    for (const sub of ["inbox", "processed", "transcripts"]) {
-      fs.mkdirSync(path.join(dataDir, sub), { recursive: true });
-    }
 
-    const { DatabaseSync } = requireNodeSqlite();
-    sessionDb = new DatabaseSync(path.join(dataDir, "audio.sqlite"));
-    sessionDb.exec("PRAGMA journal_mode = WAL");
-    initAudioSessionTable(sessionDb);
+    // --- Cortex DB (minimal — just the tables onIngest writes to) ---
+    const { DatabaseSync: DBSync } = requireNodeSqlite();
+    cortexDb = new DBSync(path.join(tmpDir, "bus.sqlite"));
+    cortexDb.exec("PRAGMA journal_mode = WAL");
+    initSessionTables(cortexDb);
 
-    const workerDeps: WorkerDeps = {
-      sessionDb,
-      onIngest: async (prompt, sid) => { ingestCalls.push({ prompt, sessionId: sid }); },
-    };
-
-    const handler = createGatewayAudioHandler({
-      db: sessionDb,
-      config: {
-        enabled: true, apiKey: API_KEY, maxChunkSizeMB: 15, dataDir, port: null,
-        whisperBinary: "whisper", whisperModel: "base.en", whisperLanguage: "en",
-        whisperThreads: 4, retentionDays: 30,
-      },
-      workerDeps,
-      log: { info: (m: string) => console.log(m), warn: (m: string) => console.warn(m) },
+    // --- Inject Cortex singleton ---
+    _setGatewayCortexForTest({
+      instance: { db: cortexDb } as any,
+      shadowHook: null,
+      config: {} as any,
+      getChannelMode: () => "off",
     });
 
+    // --- Inject Router singleton ---
+    const fakeRouter = {
+      enqueue: (type: string, payload: any, issuer: string, taskId: string) => {
+        const jobId = crypto.randomUUID();
+        enqueuedJobs.push({ type, payload, issuer, taskId });
+        return jobId;
+      },
+    };
+    (globalThis as any).__openclaw_router_instance__ = fakeRouter;
+
+    // --- Init audio capture (production path — real onIngest closure) ---
+    audioHandle = initGatewayAudioCapture({
+      audioCaptureConfig: {
+        enabled: true,
+        apiKey: API_KEY,
+        maxChunkSizeMB: 15,
+        dataDir,
+        port: null,
+        whisperBinary: "whisper",
+        whisperModel: "base.en",
+        whisperLanguage: "en",
+        whisperThreads: 4,
+        retentionDays: 30,
+      },
+      stateDir: tmpDir,
+      log: { info: (m: string) => console.log(m), warn: (m: string) => console.warn(m) },
+    })!;
+
+    expect(audioHandle).not.toBeNull();
+
+    // --- HTTP server ---
     server = http.createServer(async (rq, rs) => {
       try {
-        if (!(await handler(rq, rs))) { rs.statusCode = 404; rs.end("{}"); }
+        if (!(await audioHandle.handler(rq, rs))) { rs.statusCode = 404; rs.end("{}"); }
       } catch (e) {
         if (!rs.headersSent) { rs.statusCode = 500; rs.end(JSON.stringify({ error: String(e) })); }
       }
@@ -126,11 +152,14 @@ describeIf("Audio pipeline canary", () => {
 
   afterAll(() => {
     server?.close();
-    try { sessionDb?.close(); } catch { /* */ }
+    audioHandle?.close();
+    try { cortexDb?.close(); } catch { /* */ }
+    _setGatewayCortexForTest(null);
+    delete (globalThis as any).__openclaw_router_instance__;
     if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("1 chunk → Whisper → transcript on disk → onIngest fires", async () => {
+  it("1 chunk → Whisper → transcript → real onIngest → dispatch + library task in DB", async () => {
     const sessionId = crypto.randomUUID();
     const wav = fs.readFileSync(path.join(FIXTURE_DIR, "test-speech-chunk-00.wav"));
 
@@ -148,7 +177,7 @@ describeIf("Audio pipeline canary", () => {
       JSON.stringify({ session_id: sessionId }));
     expect(end.status).toBe(200);
 
-    // Poll for done
+    // Poll for done (not "transcribed" — "done" means ingestion completed too)
     const deadline = Date.now() + 120_000;
     let status = "";
     while (Date.now() < deadline) {
@@ -159,15 +188,36 @@ describeIf("Audio pipeline canary", () => {
     }
     expect(status).toBe("done");
 
-    // Transcript exists
+    // Transcript exists on disk
     const tp = path.join(tmpDir, "audio", "transcripts", `${sessionId}.json`);
     expect(fs.existsSync(tp)).toBe(true);
     const t = JSON.parse(fs.readFileSync(tp, "utf-8"));
     expect(t.fullText.length).toBeGreaterThan(0);
 
-    // onIngest was called
-    const call = ingestCalls.find((c) => c.sessionId === sessionId);
-    expect(call).toBeDefined();
-    expect(call!.prompt).toContain(`audio-capture://${sessionId}`);
+    // --- DB-level side effects of the REAL onIngest ---
+
+    // 1. cortex_task_dispatch row exists with channel="system"
+    const dispatch = cortexDb.prepare(
+      `SELECT * FROM cortex_task_dispatch WHERE task_summary LIKE ?`
+    ).get(`%audio-capture://${sessionId}%`) as Record<string, unknown> | undefined;
+    expect(dispatch).toBeDefined();
+    expect(dispatch!.channel).toBe("system");
+    expect(dispatch!.priority).toBe("normal");
+    expect(dispatch!.task_id).toBeTruthy();
+
+    // 2. library_pending_tasks row exists linking taskId → URL
+    const taskId = dispatch!.task_id as string;
+    const libraryTask = cortexDb.prepare(
+      `SELECT * FROM library_pending_tasks WHERE task_id = ?`
+    ).get(taskId) as Record<string, unknown> | undefined;
+    expect(libraryTask).toBeDefined();
+    expect(libraryTask!.url).toBe(`audio-capture://${sessionId}`);
+
+    // 3. Router job was enqueued with correct args
+    const job = enqueuedJobs.find((j) => j.taskId === taskId);
+    expect(job).toBeDefined();
+    expect(job!.type).toBe("agent_run");
+    expect(job!.payload.message).toContain(`audio-capture://${sessionId}`);
+    expect(job!.issuer).toBe("agent:main:cortex");
   }, 120_000);
 });

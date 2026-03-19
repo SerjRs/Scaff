@@ -643,6 +643,11 @@ export function getGatewayCortex(): GatewayCortexHandle | null {
   return handle;
 }
 
+/** Test-only: inject a Cortex handle without booting the full stack. */
+export function _setGatewayCortexForTest(h: GatewayCortexHandle | null): void {
+  handle = h;
+}
+
 /** Check if Cortex is active and what mode a channel is in. */
 export function getCortexChannelMode(channel: ChannelId): CortexMode {
   if (!handle) return "off";

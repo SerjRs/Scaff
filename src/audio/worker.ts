@@ -143,8 +143,8 @@ export async function transcribeSession(
     // Remove empty inbox dir
     try { fs.rmdirSync(inboxDir); } catch { /* may not be empty */ }
 
-    // 9. Update session status
-    updateSessionStatus(deps.sessionDb, sessionId, "done");
+    // 9. Mark transcription complete (ingestion still pending)
+    updateSessionStatus(deps.sessionDb, sessionId, "transcribed");
 
     // 10. Trigger Librarian ingestion (optional)
     if (transcript.fullText && deps.onIngest) {
@@ -156,6 +156,9 @@ export async function transcribeSession(
       const prompt = buildLibrarianPrompt(`audio-capture://${sessionId}`, text);
       await deps.onIngest(prompt, sessionId);
     }
+
+    // 11. All steps complete
+    updateSessionStatus(deps.sessionDb, sessionId, "done");
 
     return { sessionId, transcript };
   } catch (err) {
