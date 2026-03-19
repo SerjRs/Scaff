@@ -20,6 +20,7 @@ export interface AudioCaptureHandle {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
   db: DatabaseSync;
   config: AudioCaptureConfig;
+  workerDeps: WorkerDeps;
   close: () => void;
 }
 
@@ -127,6 +128,7 @@ export function initGatewayAudioCapture(opts: {
     handler,
     db,
     config: resolvedConfig,
+    workerDeps,
     close: () => {
       try { db.close(); } catch { /* ignore */ }
     },
