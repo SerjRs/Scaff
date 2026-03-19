@@ -13,7 +13,7 @@ import path from "node:path";
 import os from "node:os";
 
 // ---------------------------------------------------------------------------
-// Ensure ffmpeg is on PATH for Whisper (WinGet install location)
+// Ensure ffmpeg + whisper are on PATH (platform-specific install locations)
 // ---------------------------------------------------------------------------
 const FFMPEG_DIR = path.join(
   os.homedir(),
@@ -21,6 +21,15 @@ const FFMPEG_DIR = path.join(
 );
 if (fs.existsSync(FFMPEG_DIR) && !process.env.PATH?.includes(FFMPEG_DIR)) {
   process.env.PATH = `${FFMPEG_DIR}${path.delimiter}${process.env.PATH}`;
+}
+
+// Python Scripts dir (where pip-installed whisper lives)
+const PYTHON_SCRIPTS_DIR = path.join(
+  os.homedir(),
+  "AppData/Local/Python/pythoncore-3.14-64/Scripts",
+);
+if (fs.existsSync(PYTHON_SCRIPTS_DIR) && !process.env.PATH?.includes(PYTHON_SCRIPTS_DIR)) {
+  process.env.PATH = `${PYTHON_SCRIPTS_DIR}${path.delimiter}${process.env.PATH}`;
 }
 
 // ---------------------------------------------------------------------------
