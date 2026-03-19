@@ -263,6 +263,171 @@ async fn pre_existing_and_new_chunks_both_uploaded_no_duplicates() {
     shipper.stop().await.unwrap();
 }
 
+// ---------------------------------------------------------------------------
+// Helpers for multipart body inspection
+// ---------------------------------------------------------------------------
+
+fn extract_multipart_text_field(body: &[u8], field_name: &str) -> Option<String> {
+    let body_str = String::from_utf8_lossy(body);
+    let search = format!("name=\"{}\"", field_name);
+    let pos = body_str.find(&search)?;
+    let after_headers = body_str[pos..].find("\r\n\r\n")?;
+    let value_start = pos + after_headers + 4;
+    let value_end = body_str[value_start..].find("\r\n--")?;
+    Some(body_str[value_start..value_start + value_end].to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Body assertion tests for integration context
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn upload_body_contains_correct_session_id_and_sequence() {
+    // Verify that when ChunkShipper uploads via watcher → upload pipeline,
+    // the actual HTTP body contains the correct field values — not just that
+    // the right number of calls were made.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let outbox = tmp.path().join("outbox");
+    std::fs::create_dir_all(&outbox).unwrap();
+
+    let cfg = test_shipper_config(&server.uri(), outbox.clone());
+    let mut shipper = ChunkShipper::new(cfg).unwrap();
+    let mut events = shipper.start().await.unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let session_id = "body-check-sess";
+    write_fake_wav(&outbox, &format!("{session_id}_chunk-0000_1710700000.wav"));
+
+    let deadline = std::time::Duration::from_secs(10);
+    match tokio::time::timeout(deadline, events.recv()).await {
+        Ok(Some(ShipperEvent::ChunkUploaded { sequence, .. })) => {
+            assert_eq!(sequence, 0);
+        }
+        other => panic!("Expected ChunkUploaded, got {:?}", other),
+    }
+
+    // Now inspect the actual HTTP body
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let body = &requests[0].body;
+
+    let sid = extract_multipart_text_field(body, "session_id")
+        .expect("multipart body must contain session_id");
+    assert_eq!(sid, session_id, "session_id in body must match");
+
+    let seq = extract_multipart_text_field(body, "sequence")
+        .expect("multipart body must contain sequence");
+    assert_eq!(seq, "0", "first chunk sequence must be 0");
+
+    shipper.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn multi_chunk_upload_bodies_have_correct_sequences() {
+    // Verify sequence values 0, 1, 2 in the actual multipart bodies
+    // when ChunkShipper uploads multiple chunks through the full pipeline.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(3)
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let outbox = tmp.path().join("outbox");
+    std::fs::create_dir_all(&outbox).unwrap();
+
+    let cfg = test_shipper_config(&server.uri(), outbox.clone());
+    let mut shipper = ChunkShipper::new(cfg).unwrap();
+    let mut events = shipper.start().await.unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let session_id = "multi-body-sess";
+    for seq in 0..3u32 {
+        write_fake_wav(
+            &outbox,
+            &format!("{}_chunk-{:04}_{}.wav", session_id, seq, 1710700000 + seq),
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    let mut uploaded = Vec::new();
+    let deadline = std::time::Duration::from_secs(15);
+    while uploaded.len() < 3 {
+        match tokio::time::timeout(deadline, events.recv()).await {
+            Ok(Some(ShipperEvent::ChunkUploaded { sequence, .. })) => {
+                uploaded.push(sequence);
+            }
+            _ => break,
+        }
+    }
+    assert_eq!(uploaded, vec![0, 1, 2]);
+
+    // Inspect all 3 request bodies
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+
+    for (i, req) in requests.iter().enumerate() {
+        let body = &req.body;
+        let sid = extract_multipart_text_field(body, "session_id")
+            .unwrap_or_else(|| panic!("request {} must have session_id", i));
+        assert_eq!(sid, session_id, "request {} session_id", i);
+
+        let seq = extract_multipart_text_field(body, "sequence")
+            .unwrap_or_else(|| panic!("request {} must have sequence", i));
+        assert_eq!(
+            seq,
+            i.to_string(),
+            "request {} sequence must be {}",
+            i,
+            i
+        );
+    }
+
+    shipper.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn session_end_body_contains_correct_session_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/session-end"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = test_shipper_config(&server.uri(), tmp.path().to_path_buf());
+
+    let session_id = "end-body-check-sess";
+    let shipper = ChunkShipper::new(cfg).unwrap();
+    shipper.signal_session_end(session_id).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+
+    let body_str = String::from_utf8_lossy(&requests[0].body);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body_str).expect("session-end body must be valid JSON");
+    assert_eq!(
+        parsed.get("session_id").and_then(|v| v.as_str()),
+        Some(session_id),
+        "session-end JSON must contain correct session_id"
+    );
+}
+
 #[tokio::test]
 async fn shipper_config_built_from_tray_config() {
     // This tests the TrayConfig -> ShipperConfig conversion at the integration level.

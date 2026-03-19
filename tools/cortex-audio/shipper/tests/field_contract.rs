@@ -90,6 +90,56 @@ fn has_multipart_file_field(body: &[u8], field_name: &str) -> bool {
     }
 }
 
+/// Extract the Content-Type header value for a multipart file part.
+/// Looks for `name="<field_name>"` in Content-Disposition, then finds the
+/// Content-Type header within the same part.
+fn extract_multipart_file_content_type(body: &[u8], field_name: &str) -> Option<String> {
+    let body_str = String::from_utf8_lossy(body);
+    let search = format!("name=\"{}\"", field_name);
+
+    let pos = body_str.find(&search)?;
+
+    // The Content-Type header for this part should be on the next line(s) before \r\n\r\n
+    let after_headers = body_str[pos..].find("\r\n\r\n")?;
+    let headers_block = &body_str[pos..pos + after_headers];
+
+    // Find Content-Type within the headers block
+    for line in headers_block.split("\r\n") {
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("content-type:") {
+            return Some(line["content-type:".len()..].trim().to_string());
+        }
+    }
+    None
+}
+
+/// Extract the raw bytes of a file part from a multipart body.
+/// Works directly on raw bytes to avoid UTF-8 lossy conversion position drift.
+fn extract_multipart_file_bytes(body: &[u8], field_name: &str) -> Option<Vec<u8>> {
+    let search = format!("name=\"{}\"", field_name);
+    let search_bytes = search.as_bytes();
+
+    // Find the field name in the raw body
+    let pos = body
+        .windows(search_bytes.len())
+        .position(|w| w == search_bytes)?;
+
+    // Find the double CRLF that ends the headers for this part
+    let header_end_marker = b"\r\n\r\n";
+    let after_pos = body[pos..]
+        .windows(4)
+        .position(|w| w == header_end_marker)?;
+    let data_start = pos + after_pos + 4;
+
+    // Find the next boundary marker (\r\n--)
+    let boundary_marker = b"\r\n--";
+    let data_end = body[data_start..]
+        .windows(4)
+        .position(|w| w == boundary_marker)?;
+
+    Some(body[data_start..data_start + data_end].to_vec())
+}
+
 // ---------------------------------------------------------------------------
 // Body content assertion tests
 // ---------------------------------------------------------------------------
@@ -221,5 +271,79 @@ async fn send_session_end_body_format() {
         parsed.get("session_id").and_then(|v| v.as_str()),
         Some(session_id),
         "session-end JSON must contain session_id field with correct value"
+    );
+
+    // Verify no extra fields beyond session_id
+    let obj = parsed.as_object().expect("session-end body must be a JSON object");
+    assert_eq!(
+        obj.len(),
+        1,
+        "session-end JSON must contain exactly one field (session_id), got: {:?}",
+        obj.keys().collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn upload_chunk_audio_content_type_is_wav() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let wav = create_wav_file(tmp.path(), "ct-sess_chunk-0000_1710700000.wav", 32);
+    let client = reqwest::Client::new();
+
+    let result = upload_chunk(&client, &server.uri(), "test-key", "ct-sess", 0, &wav).await;
+    assert!(result.is_ok());
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let req_body = &requests[0].body;
+
+    let content_type = extract_multipart_file_content_type(req_body, FIELD_AUDIO)
+        .expect("audio part must have a Content-Type header");
+    assert_eq!(
+        content_type, "audio/wav",
+        "audio part Content-Type must be audio/wav"
+    );
+}
+
+#[tokio::test]
+async fn upload_chunk_wav_bytes_round_trip() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    // Create WAV with known extra bytes pattern for exact matching
+    let wav = create_wav_file(tmp.path(), "rt-sess_chunk-0000_1710700000.wav", 256);
+    let original_bytes = std::fs::read(&wav).unwrap();
+    let client = reqwest::Client::new();
+
+    let result = upload_chunk(&client, &server.uri(), "test-key", "rt-sess", 0, &wav).await;
+    assert!(result.is_ok());
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let req_body = &requests[0].body;
+
+    let uploaded_bytes = extract_multipart_file_bytes(req_body, FIELD_AUDIO)
+        .expect("audio part must contain file data");
+    assert_eq!(
+        uploaded_bytes.len(),
+        original_bytes.len(),
+        "uploaded WAV size must match original (expected {}, got {})",
+        original_bytes.len(),
+        uploaded_bytes.len()
+    );
+    assert_eq!(
+        uploaded_bytes, original_bytes,
+        "uploaded WAV bytes must exactly match the original file"
     );
 }
