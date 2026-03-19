@@ -310,7 +310,7 @@ mod tests {
         let out = outbox.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            let p = out.join("sess1_chunk_0001.wav");
+            let p = out.join("sess1_chunk-0001_1710700000.wav");
             let mut f = std::fs::File::create(&p).unwrap();
             f.write_all(b"RIFF....WAVEfmt ").unwrap();
         });
@@ -319,6 +319,6 @@ mod tests {
         let result = tokio::time::timeout(std::time::Duration::from_secs(5), w.next_file()).await;
         assert!(result.is_ok());
         let path = result.unwrap().unwrap();
-        assert!(path.to_string_lossy().contains("sess1_chunk_0001.wav"));
+        assert!(path.to_string_lossy().contains("sess1_chunk-0001_1710700000.wav"));
     }
 }

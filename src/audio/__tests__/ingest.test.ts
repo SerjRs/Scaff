@@ -1,3 +1,11 @@
+/**
+ * Audio ingest HTTP API tests — auth, chunk upload, session-end, status, disabled mode.
+ *
+ * Uses createTestServer() (test helper) and createGatewayAudioHandler() (production factory).
+ * Client side is hand-crafted multipart matching the Rust shipper's format.
+ * Real SQLite, real file I/O. No mocks, no environment patching.
+ */
+
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";

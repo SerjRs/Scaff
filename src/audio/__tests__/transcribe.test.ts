@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+/**
+ * Transcribe module unit tests — pure function tests for mergeSegments,
+ * buildFullText, and the WAV processing pipeline (concatenate → split).
+ *
+ * Does NOT call runWhisper() — see whisper-e2e.test.ts for real Whisper tests.
+ * No mocks, no environment patching.
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";

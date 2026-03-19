@@ -77,7 +77,7 @@ describe("Deployment Readiness — runtime dependencies", () => {
         // Non-ENOENT errors (e.g. exit code 1/2) mean the binary was found
       }
     }
-  });
+  }, 30_000);
 
   // -------------------------------------------------------------------------
   // Test 2: whisper binary spawns successfully

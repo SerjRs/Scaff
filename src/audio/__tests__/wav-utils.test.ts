@@ -1,3 +1,10 @@
+/**
+ * WAV utility tests — parseWav, buildWav, splitStereoToMono, concatenateWavFiles.
+ *
+ * Pure function tests with Buffer manipulation. No I/O dependencies beyond
+ * temp files for concatenateWavFiles. No mocks, no environment patching.
+ */
+
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";

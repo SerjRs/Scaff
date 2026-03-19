@@ -231,7 +231,7 @@ function sendSessionEndLikeRust(
 // Test suite
 // ---------------------------------------------------------------------------
 
-describe("cross-stack: Rust shipper → TypeScript ingest", () => {
+describe("cross-stack contract: TypeScript multipart (matching Rust format) → TypeScript ingest server", () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cross-stack-"));
     srv = createTestServer({ dataDir: tmpDir });

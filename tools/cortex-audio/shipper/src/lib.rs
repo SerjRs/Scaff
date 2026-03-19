@@ -391,15 +391,15 @@ mod tests {
         // Wait for watcher to be ready
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        // Write chunk 0
-        let p1 = outbox.join("test-sess_chunk_0000.wav");
+        // Write chunk 0 (capture engine format: {session}_chunk-{seq}_{ts}.wav)
+        let p1 = outbox.join("test-sess_chunk-0000_1710700000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
         }
 
         // Write chunk 1
-        let p2 = outbox.join("test-sess_chunk_0001.wav");
+        let p2 = outbox.join("test-sess_chunk-0001_1710700030.wav");
         {
             let mut f = std::fs::File::create(&p2).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -458,7 +458,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        let p1 = outbox.join("sess_chunk_0000.wav");
+        let p1 = outbox.join("sess_chunk-0000_1710700000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -474,7 +474,7 @@ mod tests {
 
         // File should be moved to failed/
         assert!(!p1.exists());
-        assert!(outbox.join("failed").join("sess_chunk_0000.wav").exists());
+        assert!(outbox.join("failed").join("sess_chunk-0000_1710700000.wav").exists());
 
         shipper.stop().await.unwrap();
     }
@@ -540,7 +540,7 @@ mod tests {
 
         // Write chunks out of order: 2, 0, 1
         for seq in [2, 0, 1] {
-            let p = outbox.join(format!("sess_chunk_{:04}.wav", seq));
+            let p = outbox.join(format!("sess_chunk-{:04}_{}.wav", seq, 1710700000 + seq));
             let mut f = std::fs::File::create(&p).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
             // Small delay between writes so watcher picks them up
@@ -591,7 +591,7 @@ mod tests {
         let outbox = tmp.path();
 
         // Create a file that will never be uploaded (shipper not started)
-        std::fs::write(outbox.join("sess_chunk_0000.wav"), b"RIFF data").unwrap();
+        std::fs::write(outbox.join("sess_chunk-0000_1710700000.wav"), b"RIFF data").unwrap();
 
         let cfg = ShipperConfig {
             server_url: "http://localhost".into(),
@@ -648,7 +648,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         // Write a chunk
-        let p1 = outbox.join("drain-sess_chunk_0000.wav");
+        let p1 = outbox.join("drain-sess_chunk-0000_1710700000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -699,7 +699,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        let p1 = outbox.join("fail-sess_chunk_0000.wav");
+        let p1 = outbox.join("fail-sess_chunk-0000_1710700000.wav");
         {
             let mut f = std::fs::File::create(&p1).unwrap();
             f.write_all(b"RIFF....WAVEfmt data").unwrap();
@@ -715,7 +715,7 @@ mod tests {
 
         // File should be in failed/ dir
         assert!(!p1.exists());
-        assert!(outbox.join("failed").join("fail-sess_chunk_0000.wav").exists());
+        assert!(outbox.join("failed").join("fail-sess_chunk-0000_1710700000.wav").exists());
 
         shipper.stop().await.unwrap();
     }

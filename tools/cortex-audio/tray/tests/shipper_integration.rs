@@ -73,7 +73,7 @@ async fn chunk_detected_and_uploaded_to_mock_server() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Write a chunk file
-    write_fake_wav(&outbox, "test-session_chunk_0000.wav");
+    write_fake_wav(&outbox, "test-session_chunk-0000_1710700000.wav");
 
     // Wait for upload event
     let deadline = std::time::Duration::from_secs(10);
@@ -142,9 +142,9 @@ async fn full_flow_capture_upload_session_end() {
 
     // Simulate capture: write 2 chunks
     let session_id = "full-flow-sess";
-    write_fake_wav(&outbox, &format!("{session_id}_chunk_0000.wav"));
+    write_fake_wav(&outbox, &format!("{session_id}_chunk-0000_1710700000.wav"));
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    write_fake_wav(&outbox, &format!("{session_id}_chunk_0001.wav"));
+    write_fake_wav(&outbox, &format!("{session_id}_chunk-0001_1710700030.wav"));
 
     // Collect upload events
     let mut uploaded = Vec::new();
@@ -198,7 +198,7 @@ async fn pre_existing_chunk_uploaded_on_startup() {
     std::fs::create_dir_all(&outbox).unwrap();
 
     // Write chunk BEFORE starting shipper
-    write_fake_wav(&outbox, "pre-session_chunk_0000.wav");
+    write_fake_wav(&outbox, "pre-session_chunk-0000_1710700000.wav");
 
     let cfg = test_shipper_config(&server.uri(), outbox.clone());
     let mut shipper = ChunkShipper::new(cfg).unwrap();
@@ -231,7 +231,7 @@ async fn pre_existing_and_new_chunks_both_uploaded_no_duplicates() {
     std::fs::create_dir_all(&outbox).unwrap();
 
     // Write chunk 0 BEFORE starting shipper
-    write_fake_wav(&outbox, "dedup-session_chunk_0000.wav");
+    write_fake_wav(&outbox, "dedup-session_chunk-0000_1710700000.wav");
 
     let cfg = test_shipper_config(&server.uri(), outbox.clone());
     let mut shipper = ChunkShipper::new(cfg).unwrap();
@@ -239,7 +239,7 @@ async fn pre_existing_and_new_chunks_both_uploaded_no_duplicates() {
 
     // Wait for watcher to be ready, then write chunk 1
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    write_fake_wav(&outbox, "dedup-session_chunk_0001.wav");
+    write_fake_wav(&outbox, "dedup-session_chunk-0001_1710700030.wav");
 
     // Collect upload events
     let mut uploaded = Vec::new();
