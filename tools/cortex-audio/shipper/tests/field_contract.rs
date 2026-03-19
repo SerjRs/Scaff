@@ -311,6 +311,109 @@ async fn upload_chunk_audio_content_type_is_wav() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Test 8: shipper next_seq starts at 0 (regression for or_insert(1) bug)
+//
+// The off-by-one bug was: next_seq.entry(session).or_insert(1) — the first
+// chunk was uploaded with sequence=1 instead of sequence=0. The fix is
+// or_insert(0) in lib.rs. This test verifies that upload_chunk() sends
+// sequence=0 when called with sequence=0 — the value the shipper's event
+// loop passes for the first chunk.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn shipper_next_seq_starts_at_0_regression() {
+    // Regression test for or_insert(1) bug — MUST send sequence "0" for first chunk
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let wav = create_wav_file(tmp.path(), "regr_chunk-0000_1710700000.wav", 64);
+    let client = reqwest::Client::new();
+
+    // Simulate what the shipper does for the FIRST chunk: sequence=0
+    let result = upload_chunk(&client, &server.uri(), "test-key", "regr-session", 0, &wav).await;
+    assert!(result.is_ok());
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+
+    let seq_value = extract_multipart_text_field(&requests[0].body, "sequence")
+        .expect("must contain sequence field");
+    assert_eq!(
+        seq_value, "0",
+        "REGRESSION: first chunk sequence must be '0', not '1' (or_insert bug)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 9: parsed sequence from filename matches upload body sequence
+//
+// ChunkWriter produces filenames like sess_chunk-0002_ts.wav. The shipper
+// parses these to get the sequence number and passes it to upload_chunk().
+// This test verifies that for sequences 0, 1, 2 the upload body's sequence
+// field matches the value parsed from the filename.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn parsed_sequence_matches_upload_body_sequence() {
+    use cortex_audio_shipper::watcher::parse_chunk_filename;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/audio/chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let client = reqwest::Client::new();
+
+    for expected_seq in 0u32..3 {
+        let filename = format!("test-sess_chunk-{:04}_1710700000.wav", expected_seq);
+        let wav = create_wav_file(tmp.path(), &filename, 32);
+
+        // Parse sequence from filename (same as shipper does)
+        let filepath = tmp.path().join(&filename);
+        let (_, parsed_seq) = parse_chunk_filename(&filepath)
+            .expect("filename must be parseable");
+        assert_eq!(parsed_seq, expected_seq);
+
+        // Upload with the parsed sequence
+        let result = upload_chunk(
+            &client,
+            &server.uri(),
+            "test-key",
+            "test-sess",
+            parsed_seq,
+            &wav,
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+
+    // Verify each upload body's sequence matches the expected value
+    for (i, expected_seq) in [0u32, 1, 2].iter().enumerate() {
+        let body_seq = extract_multipart_text_field(&requests[i].body, "sequence")
+            .expect("must contain sequence field");
+        assert_eq!(
+            body_seq,
+            expected_seq.to_string(),
+            "upload {} must have sequence={}, got {}",
+            i,
+            expected_seq,
+            body_seq
+        );
+    }
+}
+
 #[tokio::test]
 async fn upload_chunk_wav_bytes_round_trip() {
     let server = MockServer::start().await;
