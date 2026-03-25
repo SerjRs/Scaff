@@ -159,6 +159,52 @@ None. All new files.
 - All 62 existing mocked tests still pass
 - Committed, merged to main
 
+## ⚠️ Why This Test Failed In Production (2026-03-18 Post-Mortem)
+
+This test was marked "Done" and all 4 tests passed. Yet the live pipeline failed. Here's why:
+
+### 1. Environment mismatch — test patched its own PATH
+The test hardcodes the WinGet ffmpeg path and adds it to `process.env.PATH` at runtime (lines 39-43). The gateway process doesn't have this. So the test finds ffmpeg, Whisper works. The gateway can't find ffmpeg, Whisper crashes with `FileNotFoundError`. **The test proved Whisper works in the test process, not in the gateway.**
+
+### 2. Environment mismatch — PYTHONIOENCODING
+The test sets `process.env.PYTHONIOENCODING = "utf-8"` at runtime. The gateway didn't have this set. Same pattern: test fixes its own environment, production doesn't have the fix.
+
+### 3. Never tested the gateway code path
+The test calls `runWhisper()` and `transcribeSession()` directly — the same functions the gateway calls. But it constructs `WorkerDeps` manually with all dependencies perfectly wired. The gateway's `initGatewayAudioCapture()` was missing `ingestionDeps`, so ingestion was silently skipped. **The test proved the worker works when given correct deps. It didn't prove the gateway gives it correct deps.**
+
+### 4. Skip guard masks failures
+When Whisper isn't on PATH, the entire suite is skipped with `describe.skip`. This means in any CI or fresh environment, 0 tests run and the suite reports green. A skipped test is not a passing test.
+
+### What Needs To Change
+
+- **Test must verify the gateway environment**, not just the worker functions
+- **Test must NOT patch its own PATH** — if ffmpeg/whisper aren't available system-wide, the test should FAIL, not silently fix itself
+- **Test must verify deps wiring** — call `initGatewayAudioCapture()` and verify `workerDeps` has all fields populated
+- **Skip guard should emit a visible warning**, not silently skip
+- Consider a "deployment readiness" test that checks: whisper on PATH? ffmpeg on PATH? PYTHONIOENCODING set? Config has full binary paths?
+
+## Revision Comments (from TESTS-REVISION-REPORT.md, 2026-03-19)
+
+### RC-1: Remove environment patching (R2) — CRITICAL
+Delete the PATH and PYTHONIOENCODING patching from `whisper-e2e.test.ts` (lines 28-37). The production code (`transcribe.ts` lines 18-24, 168) now handles this. If tests can't find whisper without patching, that means the production code also can't — which is exactly what the test should tell you.
+
+### RC-2: Replace skip guard with explicit failure (R3) — CRITICAL
+Change `describeIf = whisperAvailable ? describe : describe.skip` to a CI-aware pattern: on CI, fail loudly if whisper is missing. Locally, skip is acceptable. A silently skipped test suite reports green and gives false confidence.
+
+### RC-3: Delete tautological tests (R10) — MEDIUM
+Remove "speaker labeling" tests from `transcribe.test.ts` (lines 120-139) — they create hardcoded data and assert their own values. Remove the "mocked runWhisper" test that manually replicates parsing logic instead of calling the function. Test count goes down, signal goes up.
+
+### RC-4: Add Whisper failure mode tests (R6) — HIGH
+Test `runWhisper()` behavior when:
+- Binary not found → expect clear error, not unhandled ENOENT
+- Exit code non-zero → expect error with stderr content
+- Output JSON malformed → expect parse error
+- Output file missing → expect clear error
+Mock `execFile` to simulate each failure. These are legitimate mocks — testing error handling, not Whisper itself.
+
+### RC-5: Test must verify gateway environment (from post-mortem)
+Do NOT test `runWhisper()` in isolation with perfect deps. Call `initGatewayAudioCapture()` → verify `workerDeps` is fully wired → trigger session-end → verify Whisper is actually invoked. If the gateway can't find Whisper, the test must fail.
+
 ## Notes
 
 - First run may be slow (~60s) as Whisper downloads the base.en model

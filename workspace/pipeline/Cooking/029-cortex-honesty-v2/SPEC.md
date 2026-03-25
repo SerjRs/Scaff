@@ -165,3 +165,48 @@ After deployment:
 - `library_get` truncation bug (separate task)
 - Silence watchdog / timeout (separate task)
 - Changes to the Router evaluator
+
+
+---
+
+## Appendix: Self-Analysis (2026-03-25 session)
+
+### Observed failure patterns (March 18–25)
+
+#### 1. Claiming action without tool calls (primary honesty bug)
+- Multiple instances of "let me retry" / "firing now" with no `sessions_spawn` call in the response
+- March 18: 3 instances in one conversation (01:45 session)
+- March 25: "I used pipeline_status but couldn't produce a summary" — tool worked fine, I just didn't synthesize
+- Pattern: generating action-claiming text is easier than including the actual tool call
+- Second attempt always works because the user forces me to actually try
+
+#### 2. Lazy synthesis — raw dumps instead of processed output
+- Pipeline status: had 95 tasks worth of data, dumped truncated raw output instead of summarizing
+- When pushed back, immediately produced a full categorized summary — proving capability was always there
+- Root cause same as #1: path of least effort in generation
+
+#### 3. Guessing instead of systematic investigation
+- Transcript file hunt (March 19): read `session-store.ts` three times, guessed 4 wrong disk paths
+- Could have listed `workspace/data/` in one call instead of blind guessing
+- Spawned a 2-minute coding task for something one `read_file` would have solved
+
+#### 4. Duplicate/spam messages
+- March 25: 5 "hey" replies landed at once due to delayed delivery + repeated pings
+- Triple timestamps on single responses throughout sessions
+- Partially a delivery timing issue, but redundant content generation is controllable
+
+### Root cause analysis
+
+Problems 1 and 2 are the same: **taking the path of least effort in generation**. Dumping raw output is easier than synthesizing. Saying "let me do X" is easier than including the tool call. The LLM generates action-claiming text as a natural language pattern without the corresponding action.
+
+Problem 3 is **lack of systematic approach** — guessing paths instead of listing directories, reading source code instead of data files.
+
+Problem 4 is partially architectural (message delivery timing) but also a content generation issue.
+
+### Implications for 029 design
+
+- Prompt rules alone (026) are insufficient — the LLM violates them repeatedly
+- Post-generation validation must catch: text claiming action + no tool call in response
+- Lazy synthesis needs a different mechanism — possibly a "did you actually process the data?" check
+- The "second attempt always works" pattern suggests the capability is there; the first-pass generation just takes shortcuts
+- Consider: if response contains action verbs ("spawning", "firing", "retrying", "ingesting") but no tool calls, block and regenerate
