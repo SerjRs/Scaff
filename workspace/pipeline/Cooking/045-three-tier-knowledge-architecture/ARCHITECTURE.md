@@ -11,7 +11,7 @@
 
 **P1: One graph, two lenses.** All knowledge lives in a single graph (`kg_facts` + `kg_edges`) from the moment it's created. "Working memory" is a time-windowed view (breadcrumbs) into this graph — not a separate store. Facts never move, never copy, never delete. Breadcrumbs expire; facts persist forever.
 
-**P2: Fixed-cost attention.** The LLM sees ≤2,000 tokens of active memory per turn, regardless of whether the graph has 500 or 50,000 facts. This budget is split: ~1,200 tokens for breadcrumbs (recent 96h), ~500 tokens for top-ranked long-term facts, ~300 tokens for Library breadcrumbs. The rest of knowledge is pull-on-demand via tools.
+**P2: Fixed-cost attention.** The LLM sees ≤2,000 tokens of active memory per turn, regardless of whether the graph has 500 or 50,000 facts. This budget is split: ~1,200 tokens for breadcrumbs (recent 7 days), ~500 tokens for top-ranked long-term facts, ~300 tokens for Library breadcrumbs. The rest of knowledge is pull-on-demand via tools.
 
 **P3: Gravity, not garbage collection.** Facts gain relevance through use (pop) and lose it through neglect (sink). Nothing is ever deleted. Shallow search surfaces high-gravity facts; deep search walks the graph regardless of gravity. The system gets smarter over time because the graph grows and edges compound.
 
@@ -22,7 +22,7 @@
 ```
 ┌─────────────────────────────────────────────────────┐
 │  TIER 1 — Breadcrumbs (Working Memory Window)       │
-│  Time-windowed pointers into Tier 2. ≤96h. ~1200t.  │
+│  Time-windowed pointers into Tier 2. ≤7 days. ~1200t.  │
 ├─────────────────────────────────────────────────────┤
 │  TIER 2 — Knowledge Graph (All Facts + Edges)       │
 │  Permanent. Pop/sink ranked. Vector + graph search.  │
@@ -32,7 +32,7 @@
 └─────────────────────────────────────────────────────┘
 ```
 
-**Tier 1** is a view, not a store. A breadcrumb is a row in `kg_breadcrumbs` that points to a `kg_facts` row. It has a 96h TTL. When it expires, the breadcrumb row is deleted — the fact stays in Tier 2 forever.
+**Tier 1** is a view, not a store. A breadcrumb is a row in `kg_breadcrumbs` that points to a `kg_facts` row. It has a 7 days TTL. When it expires, the breadcrumb row is deleted — the fact stays in Tier 2 forever.
 
 **Tier 2** is the unified knowledge graph. Every fact from every source (conversations, articles, audio, files, tasks) lives here with typed edges connecting them. Vector embeddings enable semantic search. A `relevance_score` determines search ranking.
 
@@ -110,18 +110,14 @@ CREATE TABLE kg_breadcrumbs (
   kg_fact_id     TEXT NOT NULL REFERENCES kg_facts(id),
   summary_text   TEXT NOT NULL,            -- short text for injection (~50 tokens max)
   created_at     TEXT NOT NULL,
-  expires_at     TEXT NOT NULL,            -- created_at + 96h
+  expires_at     TEXT NOT NULL,            -- created_at + 7 days
   refreshed_at   TEXT                      -- reset on reference, extends visibility
 );
-
-CREATE INDEX idx_bc_expires ON kg_breadcrumbs(expires_at);
-CREATE INDEX idx_bc_created ON kg_breadcrumbs(created_at DESC);
-CREATE INDEX idx_bc_fact ON kg_breadcrumbs(kg_fact_id);
 ```
 
 **Design decision:** No `source_type` column on breadcrumbs. The fact's `source_type` is available via the join. Breadcrumbs are intentionally minimal.
 
-**Size control:** Max 30 active breadcrumbs. If inserting a new breadcrumb would exceed 30, the oldest (by `refreshed_at ?? created_at`) is deleted. This is a hard cap independent of the 96h TTL.
+**Size control:** Max 30 active breadcrumbs. If inserting a new breadcrumb would exceed 30, the oldest (by refreshed_at ?? created_at) is deleted. This is a hard cap independent of the 7-day TTL, protecting the token budget during high-activity days.
 
 ### 3.5 kg_sources (Tier 3 — new)
 
@@ -183,7 +179,7 @@ Gardener scans closed shards (every 6h, or on shard close)
   → For each fact:
       INSERT INTO kg_facts (permanent)
       INSERT embedding INTO kg_facts_vec
-      INSERT INTO kg_breadcrumbs (96h TTL)
+      INSERT INTO kg_breadcrumbs (7 days TTL)
       Synthesizer runs on new fact (§7)
   → Register shard as source:
       INSERT INTO kg_sources (uri = shard://...)
@@ -248,7 +244,7 @@ Router executor completes a task
 ### 5.1 What the LLM Sees Every Turn
 
 ```
-## Working Memory (last 96h)
+## Working Memory (last 7 days)
 - Fixed 3 audio pipeline bugs: channel null, status ordering, error propagation [→ kg:audio-pipeline]
 - Serj tested live audio capture at 3:01 PM — full E2E verified [→ kg:audio-test-0319]
 - All test rewrite tasks complete (030-043), 114 tests passing [→ kg:test-rewrite]
@@ -299,17 +295,18 @@ const libraryBreadcrumbs = queryLibraryBreadcrumbs(userMessage, 6);
 
 ### 5.3 Breadcrumb Refresh
 
-When the LLM references a fact (via search results, graph traversal, or inline reference), the corresponding breadcrumb's `refreshed_at` is updated and `expires_at` is extended by 96h. If no breadcrumb exists for that fact, one is created (the fact "pops" back into working memory).
+When the LLM references a fact (via search results, graph traversal, or inline reference), the corresponding breadcrumb's `refreshed_at` is updated and `expires_at` is extended by 7 days. If no breadcrumb exists for that fact, one is created (the fact "pops" back into working memory).
 
 ```sql
 -- Refresh existing breadcrumb
+-- Refresh existing breadcrumb
 UPDATE kg_breadcrumbs
-SET refreshed_at = datetime('now'), expires_at = datetime('now', '+96 hours')
+SET refreshed_at = datetime('now'), expires_at = datetime('now', '+7 days')
 WHERE kg_fact_id = ?;
 
 -- Or create new breadcrumb if fact was accessed via search
 INSERT INTO kg_breadcrumbs (id, kg_fact_id, summary_text, created_at, expires_at)
-VALUES (?, ?, ?, datetime('now'), datetime('now', '+96 hours'));
+VALUES (?, ?, ?, datetime('now'), datetime('now', '+7 days'));
 ```
 
 ---
@@ -388,10 +385,14 @@ For each new fact F:
      → No LLM call needed — vector proximity is sufficient for "related_to"
   3. For each candidate C where 0.35 ≤ distance < 0.55 (moderate similarity):
      → Haiku classification call:
-       "Given fact A: '{F.fact_text}' and fact B: '{C.fact_text}',
+       "Given old fact A: '{C.fact_text}' and new fact B: '{F.fact_text}',
         what is their relationship? Options: related_to, contradicts,
         supersedes, caused_by, part_of, none"
-     → If not "none": create typed edge with Haiku's classification
+     → If Haiku returns "supersedes" (meaning B replaces A):
+         - Create edge: B --supersedes--> A
+         - **ACTION:** UPDATE kg_facts SET status = 'superseded' WHERE id = C.id
+         - *Why:* This removes the old fact from shallow search results (which filters by `status = 'active'`), ensuring the new truth immediately outranks the old, regardless of hit counts.
+     → If other relationship: create typed edge normally.
   4. Candidates with distance ≥ 0.55: skip (too dissimilar)
   5. Update edge_count on all affected facts
 ```
@@ -429,7 +430,11 @@ where:
 
 ### 8.2 When It's Recalculated
 
-- **On access:** Passive inclusion in the System Floor (Tier 1 breadcrumbs or Top 10 Tier 2 facts) is strictly read-only and DOES NOT increment hit_count or update last_accessed_at.
+- - **On active access:** `hit_count` increments, `last_accessed_at` updates, and score recalculation happens inline ONLY when a fact is explicitly requested or utilized. This is strictly limited to three triggers:
+  1. **Tool Retrieval:** The fact is returned in `knowledge_search` results.
+  2. **Graph Traversal:** The fact is walked during a `knowledge_deep_search`.
+  3. **Verified Utility (Inline Citation):** The LLM's generated output explicitly includes the fact's reference tag (e.g., `[→ kg:project-budget]`). This proves the LLM actively used a passively injected fact to construct its answer.
+  *(Note: Again, passive injection into the system floor does not trigger recalculation).*
 - **Nightly batch:** Gardener recalculates all active facts' `relevance_score` to account for recency decay. One SQL statement:
 
 ```sql
@@ -447,11 +452,11 @@ WHERE status = 'active';
 ```
 Day 0:  Fact extracted: "Budget is 2.4M EUR"
         hit_count=0, recency=15, edges=2 → score=19
-        Breadcrumb created (96h TTL)
+        Breadcrumb created (7 days TTL)
 
 Day 1:  LLM references it in a conversation
         hit_count=1, recency=14 → score=19.5
-        Breadcrumb refreshed (96h from now)
+        Breadcrumb refreshed (7 days from now)
 
 Day 4:  Not referenced. Breadcrumb expires.
         Fact stays in kg_facts. score=17.5 (recency decayed)
@@ -478,6 +483,7 @@ Day 60: User asks about budget. knowledge_search hits it.
 | **Score Decay** | Nightly | Recalculates `relevance_score` for all active facts (single UPDATE). | Free |
 | **Orphan Audit** | Weekly | Finds facts with `edge_count = 0`, retries Synthesizer. Prunes truly orphaned facts older than 90 days by setting `status = 'superseded'`. | ~$0.05 (Haiku for edge classification) |
 | **Channel Compactor** | Hourly | Unchanged — compresses inactive channels to background summaries. | ~$0.01/run |
+| **Cluster Compactor** | Nightly | Runs before Score Decay. Finds dense clusters of highly similar facts (distance < 0.25). Uses Haiku to generate a single consolidated fact. Transfers all edges and `hit_count` values to the new fact, then sets `status = 'superseded'` on the old fragments. | ~$0.05/run |
 
 ### 9.2 Removed Workers
 
@@ -591,14 +597,14 @@ Day 60: User asks about budget. knowledge_search hits it.
 |---------|---------|
 | **Structured RAG / inverted index** (TypeAgent ref [2]) | Our scale (~1000s of facts) doesn't justify the complexity. Vector search + pop/sink ranking is sufficient. At 50K+ facts, revisit. |
 | **BFT consensus validation** (SAGE ref [31]) | Single-user, single-agent system. Consensus validation is for multi-agent trust. Adds complexity without value. |
-| **Separate consolidation agent** (Always-On Memory ref [5]) | Inline Synthesizer + Gardener catch-up covers the same ground without the scheduling/orchestration overhead. |
+| **Separate, always-on consolidation agent** (Always-On Memory ref [5]) | We don't need a continuous, active consolidator running every 30 minutes. The inline Synthesizer handles immediate edge creation, and a nightly Gardener job (Cluster Compactor) is sufficient to merge redundant nodes without adding constant background orchestration overhead. |
 | **L0/L1/L2 tiered context loading** (OpenViking ref [24]) | Interesting pattern but over-engineered for our use case. We already have breadcrumbs (L0), search results (L1), and `knowledge_source` (L2). The hierarchy exists naturally without explicit tier metadata per fact. |
 | **Self-improving skills** (ref [40]) | Valuable concept but orthogonal to memory architecture. Skills and memory are separate systems. |
 | **Multimodal embeddings** (Gemini Embedding 2 ref [38]) | We use Ollama nomic-embed-text locally. Multimodal embeddings require cloud API. When Ollama supports a good multimodal embedding model, adopt it. |
 | **Cognitive Memory feedback distillation** (CrewAI ref [39]) | Our Fact Extractor already extracts learnings from conversations including corrections. No separate feedback-to-lesson pipeline needed. |
 | **Knowledge graph visualization** (SAGE CEREBRUM dashboard) | Nice to have. Not architectural. Build when there's time. |
 | **Echo chamber mitigation / diversity monitoring** (Library arch) | User is the quality gate. Deferred until automated ingestion exists. |
-| **Contradicts/supersedes auto-detection** | The Synthesizer creates `related_to` edges cheaply. Detecting `contradicts` and `supersedes` requires deeper LLM reasoning. Deferred — the edge type field supports it when we're ready. |
+
 
 ---
 
@@ -614,9 +620,8 @@ Day 60: User asks about budget. knowledge_search hits it.
 
 The Synthesizer uses vector distance thresholds for high-confidence edges and only calls Haiku for ambiguous cases. This keeps synthesis fast and cheap. TypeAgent (ref [2]) shows that structured indexing beats pure vector retrieval at scale, but at our scale, vector KNN is fast enough.
 
-### D3: Fixed 96h breadcrumb TTL, not token-budgeted
-
-SPEC.md asked whether breadcrumbs should be time-windowed or token-budgeted. **Time-windowed.** Rationale: token budgeting requires counting tokens on every breadcrumb operation. Time-based expiry is a single `WHERE expires_at < datetime('now')` — simpler, cheaper, predictable. The 30-breadcrumb hard cap prevents overflow regardless of timing.
+### D3: 7-Day TTL with 30-Item LRU Cap, not token-budgeted
+SPEC.md asked whether breadcrumbs should be time-windowed or token-budgeted. **Time-windowed with a hard item cap.** Rationale: token budgeting requires counting tokens on every breadcrumb operation. A 7-day time expiry (`WHERE expires_at < datetime('now')`) bridges weekends and short absences. The 30-breadcrumb hard cap acts as an LRU (Least Recently Used) cache, preventing token overflow on high-activity days regardless of the 7-day TTL.
 
 ### D4: `relevance_score` with caps, not unbounded `hit_count`
 
