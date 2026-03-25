@@ -45,7 +45,7 @@ function formatDuration(ms: number): string {
 function sortRowsStable(rows: TokensSnapshotResult["rows"]): TokensSnapshotResult["rows"] {
   return rows.toSorted((a, b) => {
     // Sort by status priority: Active/InProgress first, terminal last
-    const statusOrder = { Active: 0, InProgress: 1, Finished: 2, Canceled: 3, Failed: 4 };
+    const statusOrder = { Active: 0, Queued: 1, InProgress: 2, Finished: 3, Canceled: 4, Failed: 5 };
     const sa = statusOrder[a.status] ?? 2;
     const sb = statusOrder[b.status] ?? 2;
     if (sa !== sb) return sa - sb;
@@ -67,6 +67,8 @@ function colorStatus(status: string, rich: boolean): string {
       return theme.muted ? theme.muted(status) : status;
     case "Failed":
       return `\x1B[31m${status}\x1B[0m`; // red
+    case "Queued":
+      return `\x1B[33m${status}\x1B[0m`; // yellow
     case "Canceled":
       return `\x1B[33m${status}\x1B[0m`; // yellow
     default:
