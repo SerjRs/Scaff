@@ -134,6 +134,7 @@ openclaw.json.bak.*
 /.openclaw/
 /openclaw.json
 /openclaw.json.bak
+/openclaw.json.pre-rebuild
 /exec-approvals.json
 /update-check.json
 *.sqlite
@@ -141,6 +142,25 @@ openclaw.json.bak.*
 *.sqlite-wal
 auth.json
 auth-profiles.json
+
+# Audio data (large binary WAVs)
+workspace/data/audio/
+
+# .NET build artifacts
+**/obj/
+**/bin/
+
+# Temp scripts and prompt files
+/tmp/
+workspace/tmp/
+
+# Cron run logs
+/cron/runs/
+
+# Runtime logs
+/cortex-debug.log
+/rebuild.log
+/rebuild-err.log
 
 # Scaff runtime — safe to commit (config, templates, workspace, docs)
 !/workspace/

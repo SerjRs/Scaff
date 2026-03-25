@@ -13,3 +13,13 @@ _run_*
 _stress_*
 *.sqlite
 *.lock
+
+# Audio data (large binary)
+data/audio/
+
+# .NET build artifacts
+**/obj/
+**/bin/
+
+# Temp prompt files
+tmp/
