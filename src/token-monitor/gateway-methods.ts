@@ -11,6 +11,7 @@ import type { GatewayRequestHandlers } from "../gateway/server-methods/types.js"
 import {
   snapshot,
   reset,
+  record,
   updateStatusBySession,
   updateStatusByJobId,
   updateTaskBySession,
@@ -31,6 +32,9 @@ export type TokensSnapshotResult = {
 /** Map router job status → token monitor display status. */
 function mapJobStatus(dbStatus: string): TokenRowStatus | null {
   switch (dbStatus) {
+    case "in_queue":
+    case "pending":
+      return "Queued";
     case "in_execution":
     case "evaluating":
       return "InProgress";
@@ -102,6 +106,36 @@ function syncRouterStatuses(): void {
       // Bug 2 fix: use the job→session map to resolve jobs registered via
       // registerJobSession() — this is the primary linkage for router tasks
       updateStatusByJobId(row.id, mapped);
+    }
+
+    // Register pre-execution jobs (in_queue, pending, evaluating) as ledger entries
+    // so the CLI shows tasks from the moment they're dispatched.
+    const preExecRows = db
+      .prepare(
+        `SELECT id, status, payload, worker_id FROM jobs
+         WHERE status IN ('in_queue', 'pending', 'evaluating')`,
+      )
+      .all() as Array<{ id: string; status: string; payload: string; worker_id: string | null }>;
+
+    for (const row of preExecRows) {
+      const mapped = mapJobStatus(row.status);
+      if (!mapped) continue;
+      const taskText = extractTaskSummary(row.status, row.payload);
+
+      // Create a placeholder ledger entry if none exists for this job
+      record({
+        agentId: "router",
+        model: "pending",
+        tokensIn: 0,
+        tokensOut: 0,
+        cached: 0,
+        sessionId: row.id,
+        task: taskText || "Queued task",
+        channel: "router",
+      });
+
+      // Set the correct status (record() defaults to InProgress for session rows)
+      updateStatusBySession(row.id, mapped);
     }
 
     // Sync task text for active (in_execution / evaluating) jobs

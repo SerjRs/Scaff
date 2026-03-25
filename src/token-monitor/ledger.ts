@@ -6,7 +6,7 @@
  * Terminal rows (Finished/Canceled/Failed) auto-cleanup after 30 seconds.
  */
 
-export type TokenRowStatus = "Active" | "InProgress" | "Finished" | "Canceled" | "Failed";
+export type TokenRowStatus = "Active" | "Queued" | "InProgress" | "Finished" | "Canceled" | "Failed";
 
 export type TokenLedgerRow = {
   pid: string;
@@ -68,6 +68,9 @@ const CLEANUP_DELAY_MS = 30_000;
 
 /** Stale InProgress cleanup — rows with no activity for this long are marked Failed. */
 const STALE_INPROGRESS_MS = 120_000;
+
+/** Stale Queued cleanup — rows stuck in Queued for this long are marked Failed (orphaned). */
+const STALE_QUEUED_MS = 300_000;
 
 function rowKey(sessionIdOrAgent: string, model: string): string {
   return `${sessionIdOrAgent}\0${model}`;
@@ -209,6 +212,14 @@ export function snapshot(): TokenLedgerRow[] {
     if (
       row.status === "InProgress" &&
       now - row.lastCallAt > STALE_INPROGRESS_MS
+    ) {
+      row.status = "Failed";
+      row.statusChangedAt = now;
+    }
+    // Stale Queued cleanup: rows stuck in Queued for 5+ minutes are orphaned.
+    if (
+      row.status === "Queued" &&
+      now - row.lastCallAt > STALE_QUEUED_MS
     ) {
       row.status = "Failed";
       row.statusChangedAt = now;
