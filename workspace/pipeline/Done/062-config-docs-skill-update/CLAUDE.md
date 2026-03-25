@@ -13,7 +13,7 @@ Read `SPEC.md` for the full task specification.
 - Add "Agent Prerequisites" section to README (Claude CLI install + auth)
 - Update `skill/SKILL.md` with config file location, common edits, examples
 - Create `examples/pipeline.config.yaml` — fully commented example config
-- Update `CODEBASE.md` with new signatures from 060 (`load_config`) and 061 (spawn changes)
+- Update `CODEBASE.md` with any remaining changes (load_config and spawn changes are already documented in the task CODEBASE.md; the repo's root CODEBASE.md needs the same updates)
 - Remove any remaining references to codex-cli or gemini-cli from docs
 
 ## Do NOT Modify

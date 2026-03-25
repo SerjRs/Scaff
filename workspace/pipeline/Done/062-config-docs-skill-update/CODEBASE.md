@@ -342,15 +342,16 @@ Real subprocess spawning. Fire-and-forget — does NOT await the process.
 async def spawn_agent(stage: str, task: TaskRecord, db: ModuleType, config: PipelineConfig) -> None
     # 1. Resolves agent config via STAGE_TO_AGENT[stage] → config.agents[name]
     # 2. Model escalation: if agent_config.model_escalation has entry for (stage_attempts+1), use it
-    # 3. Builds CLI command per harness:
-    #    - claude-code: ["claude", "-p", prompt, "--model", model, "--permission-mode", "bypassPermissions", "--output-format", "text"]
-    #    - codex-cli:   [sys.executable, "-m", "agents.execution_wrapper"]
-    #    - gemini-cli:  ["gemini", "--model", model, "-p", prompt]
-    # 4. Injects env vars: PIPELINE_TASK_PATH, PIPELINE_TASK_ID, PIPELINE_MANIFEST, PIPELINE_TOKEN
+    # 3. Builds prompt content, writes PROMPT.md to task folder
+    # 4. Builds CLI command (claude-code only):
+    #    ["claude", "--model", model, "--permission-mode", "bypassPermissions", "--output-format", "text", "-p", "-"]
+    # 5. Injects env vars: PIPELINE_TASK_PATH, PIPELINE_TASK_ID, PIPELINE_MANIFEST, PIPELINE_TOKEN, PIPELINE_REPO_PATH
     #    For EXECUTION stage also: PIPELINE_STAGE_ATTEMPTS, PIPELINE_MODEL, PIPELINE_PROMPT_FILE, ORCHESTRATOR_API
-    # 5. Spawns via asyncio.create_subprocess_exec (stdout/stderr → AGENT.log)
-    # 6. Updates DB: status=WIP, agent_pid, started_at, current_model
-    # 7. Logs agent_spawned event
+    # 6. Spawns via asyncio.create_subprocess_exec:
+    #    - stdin=PROMPT.md (piped), stdout/stderr → AGENT.log
+    #    - cwd=repo_path (pipeline_root.parent)
+    # 7. Updates DB: status=WIP, agent_pid, started_at, current_model
+    # 8. Logs agent_spawned event
 
 async def kill_agent(pid: int) -> None
     # SIGTERM → wait 5s → check alive → SIGKILL (Windows: taskkill /F fallback)
@@ -358,33 +359,18 @@ async def kill_agent(pid: int) -> None
 
 ### Internal Helpers
 ```python
-def _build_prompt_content(prompt_file: str, task: TaskRecord, manifest_path: str) -> str
-    # Reads prompt file, prepends task context (task_id, task_path, manifest)
+def _build_prompt_content(prompt_file: str, task: TaskRecord, manifest_path: str, repo_path: str) -> str
+    # Reads prompt file, prepends task context (task_id, task_path, repo_path, manifest)
 
-def _build_command(harness: str, model: str, prompt_content: str) -> list[str]
-    # Returns CLI command list based on harness type
+def _build_command_args(harness: str, model: str) -> list[str]
+    # Returns CLI args for claude-code harness. Raises ValueError for unsupported harnesses.
 ```
 
-## Module: `agents/execution_wrapper.py`
+## ~~Module: `agents/execution_wrapper.py`~~ — DELETED (061b)
 
-Standalone bridge for CODEX CLI (doesn't speak MCP natively). Run via `python -m agents.execution_wrapper`.
+> Removed: codex-cli bridge no longer needed. All agents use claude-code harness since 060.
 
-```python
-async def main() -> None
-    # 1. Reads env vars: PIPELINE_TASK_ID, PIPELINE_TASK_PATH, PIPELINE_MANIFEST,
-    #    PIPELINE_STAGE_ATTEMPTS, PIPELINE_MODEL, PIPELINE_PROMPT_FILE
-    # 2. If stage_attempts > 1: git sanitize (checkout feature/<task_id>, reset --hard, clean -fd)
-    # 3. Builds CLI command based on model (codex exec --full-auto or claude -p)
-    # 4. Runs subprocess in task_path working dir
-    # 5. Reports outcome via REST API (httpx):
-    #    - Success: POST /tasks/{id}/signal-done
-    #    - Failure: POST /tasks/{id}/signal-back (target: SPECKING)
-
-def _find_git_root(path: str) -> str | None
-    # Walks up directory tree looking for .git
-```
-
-## Module: `core/config.py` — AgentConfig (added in 055)
+## Module: `core/config.py` — AgentConfig + YAML Loading (055, 060)
 
 ```python
 @dataclass
@@ -402,6 +388,13 @@ STAGE_TO_AGENT: dict[str, str] = {
 }
 
 # PipelineConfig.agents: dict[str, AgentConfig] — defaults for all 5 agent roles
+
+def load_config(pipeline_root: Path) -> PipelineConfig
+    # Loads pipeline.config.yaml from pipeline_root, merges with defaults.
+    # Supports: scalar overrides (tick_interval_seconds, max_context_bytes, max_lifetime_bounces),
+    #   dict merges (concurrency, sla_timeouts, retry),
+    #   agent overrides (per-agent harness, model, prompt_file, effort, thinking, model_escalation).
+    # Warns on unknown keys. Returns default config if file missing or empty.
 ```
 
 ## Module: `api/rest.py`
@@ -487,8 +480,7 @@ orchestrator/
 │   └── scheduler.py         # 054
 ├── agents/
 │   ├── __init__.py          # 054
-│   ├── base.py              # 055 (real subprocess spawning)
-│   └── execution_wrapper.py # 055
+│   └── base.py              # 055+061 (subprocess spawning, stdin prompt, repo cwd)
 ├── api/
 │   ├── __init__.py          # 053
 │   ├── __main__.py          # 053
@@ -501,10 +493,11 @@ orchestrator/
     ├── test_mcp.py           # 053 — 7 tests
     ├── test_reconciler.py    # 054 — 3 tests
     ├── test_scheduler.py     # 054 — 7 tests
-    ├── test_agents.py        # 055 — 7 tests
+    ├── test_agents.py        # 055+061b — agent spawn tests (codex tests removed)
+    ├── test_config.py        # 060 — YAML config loading tests
     ├── test_api.py           # 056 — 21 tests
     ├── test_cli.py           # 056 — 7 tests
     └── conftest.py           # 055 — autouse mock for create_subprocess_exec
 ```
 
-## Test Count: 70 (all passing)
+## Test Count: ~70+ (all passing — verify with `cd orchestrator && uv run pytest -v`)
