@@ -22,10 +22,10 @@
 
 ### What Was Missing
 
-- **Hard cap on breadcrumbs.** The spec defined 96h TTL but no maximum count. A long active day could create 50+ breadcrumbs, blowing the token budget. ARCHITECTURE.md adds a hard cap of 30 with LRU eviction.
+- **Hard cap on breadcrumbs.** The spec defined 96h TTL but no maximum count. A long active day could create 50+ breadcrumbs, blowing the token budget. ARCHITECTURE.md adds a hard cap of 30 with LRU eviction and extends the TTL to 7 days to bridge weekend inactivity..
 - **Score caps.** The `relevance_score` formula had `hit_count × 2` with no cap — a fact accessed 1000 times would have a base score of 2000, permanently dominating. ARCHITECTURE.md caps each component.
 - **Initial score for new facts.** The spec set `relevance_score DEFAULT 0.0` — new facts would start at the bottom. Changed to 5.0 so new facts are immediately searchable.
-- **Contradicts/supersedes edge creation.** The spec listed these edge types but didn't address how to detect them. ARCHITECTURE.md defers this explicitly — the Synthesizer creates `related_to` edges cheaply, and nuanced relationship classification is future work.
+- **Contradicts/supersedes edge creation.** The spec listed these edge types but didn't address how to detect them. Resolved in ARCHITECTURE.md. Instead of waiting for a complex belief-revision system, the Synthesizer uses its existing Haiku call to immediately update status = 'superseded' when a direct replacement is detected, preventing belief lock-in.
 
 ---
 
