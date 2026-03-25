@@ -16,6 +16,7 @@ You are building the infinite loop and crash recovery logic for the V2 Pipeline 
 - **Stub out agent spawning:** Implement `agents/base.py` with an `async def spawn_agent(...)` that *only* marks the task as `WIP` in the database and logs it. We will implement the actual subprocess `subprocess.exec` in the next task.
 
 ## Execution Steps
+0. MANDATORY FIRST STEP: Read CODEBASE.md in the repo root to understand the existing API surface, available dataclasses, and functions you must use.
 1. Read `STATE.md` to check current progress.
 2. Add `pyyaml` dependency. Update `core/config.py` with concurrency/SLA defaults.
 3. Implement `core/reconciler.py` per the specs.

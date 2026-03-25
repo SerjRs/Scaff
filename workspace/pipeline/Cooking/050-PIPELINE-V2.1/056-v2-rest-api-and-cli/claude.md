@@ -16,6 +16,7 @@ You are building the human-facing control plane for the autonomous pipeline. Thi
 - In `main.py` (`pipeline serve`), you must orchestrate the async startup of the API server, the MCP server, and the core Orchestrator loop simultaneously.
 
 ## Execution Steps
+0. MANDATORY FIRST STEP: Read CODEBASE.md in the repo root to understand the existing API surface, available dataclasses, and functions you must use.
 1. Read `STATE.md` to check current progress.
 2. Add dependencies: `uv add fastapi uvicorn typer rich httpx`.
 3. Implement `api/rest.py` per the specs.

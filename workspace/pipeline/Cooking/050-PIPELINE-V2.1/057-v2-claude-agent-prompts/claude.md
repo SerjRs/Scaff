@@ -14,6 +14,7 @@ You are finalizing the V2 pipeline by generating the system prompts for the AI a
 - Ensure the JSON syntax in `.claude/mcp.json` is perfectly valid.
 
 ## Execution Steps
+0. MANDATORY FIRST STEP: Read CODEBASE.md in the repo root to understand the existing API surface, available dataclasses, and functions you must use.
 1. Read `STATE.md` to check current progress.
 2. Create the directory `orchestrator/prompts/` if it does not exist.
 3. Create and populate `architect.md`.

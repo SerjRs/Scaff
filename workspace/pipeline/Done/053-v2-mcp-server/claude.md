@@ -15,6 +15,7 @@ You are building the MCP server that acts as the sole communication interface be
 - **Integration:** You must import and use `move_task` and `build_context_manifest` from `core/filesystem.py`, and the CRUD methods from `core/db.py`.
 
 ## Execution Steps
+0. MANDATORY FIRST STEP: Read CODEBASE.md in the repo root to understand the existing API surface, available dataclasses, and functions you must use.
 1. Read `STATE.md` to check current progress.
 2. Add the `mcp` dependency.
 3. Update `core/config.py` with the `PIPELINE_STAGES` list.

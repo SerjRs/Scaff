@@ -15,6 +15,7 @@ You are building the subprocess engine that the Orchestrator uses to spawn AI mo
 - In `execution_wrapper.py`, use standard synchronous `subprocess.run` for the git commands, as it runs in its own isolated process space.
 
 ## Execution Steps
+0. MANDATORY FIRST STEP: Read CODEBASE.md in the repo root to understand the existing API surface, available dataclasses, and functions you must use.
 1. Read `STATE.md` to check current progress.
 2. Update `core/config.py` to parse agent configurations.
 3. Implement `agents/base.py` with `spawn_agent` and `kill_agent`.
